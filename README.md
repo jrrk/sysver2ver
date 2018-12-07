@@ -13,15 +13,15 @@ patched version here (https://github.com/jrrk/verilator.git).
 
 opam must be installed and updated, and the following version was tested:
 
-opam switch 4.04.0
-eval `opam config env`
-eval `opam config env`
-opam install xml-light
-make vxml
+    opam switch 4.04.0
+    eval `opam config env`
+    eval `opam config env`
+    opam install xml-light
+    make vxml
 
 For now the package only runs in the toplevel REPL.
 
 Edit .ocamlinit appropriately, then
 
-./vxml
+    ./vxml
 
