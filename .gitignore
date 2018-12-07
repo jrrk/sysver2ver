@@ -3,3 +3,5 @@
 vxml
 *.cmi
 *.cmo
+*.tcl
+fm_shell_command*.log

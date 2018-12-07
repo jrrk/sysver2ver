@@ -1,6 +1,9 @@
 vxml: vxml.mli vxml.ml
-	ocamlmktop -I `ocamlfind query xml-light` xml-light.cma vxml.mli vxml.ml -o $@
+	ocamlmktop -I `ocamlfind query xml-light` unix.cma xml-light.cma vxml.mli vxml.ml -o $@
 
 test:
 	./vxml
 
+header_check:
+	ocamlc -i -I `ocamlfind query xml-light` vxml.ml >junk.mli
+	diff -w junk.mli vxml.mli

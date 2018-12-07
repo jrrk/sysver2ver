@@ -92,13 +92,13 @@ type rw =
 | CMP of cmpop * rw list
 | FRF of string * rw list
 | XRF of string * rw list
-| PKG of string * rw list
+| PKG of string * string * rw list
 | CAT of rw list
 | EXT of rw list
 | CPS of rw list
 | CND of rw list
 | REPL of string * rw list
-| MODUL of string * (string*string) list * rw list
+| MODUL of string * string * (string*string) list * rw list
 | BGN of string * rw list
 | RNG of rw list
 | ALWYS of rw list
@@ -118,10 +118,10 @@ type rw =
 | ARG of rw list
 | DSPLY of rw list
 | FILS of string * rw list
-| FIL of string
+| FIL of string * string
 | NL of rw list
 | CELLS of rw list
-| CELL of string * string * string *rw list
+| CELL of string * string * string * string *rw list
 | POSNEG of string*string
 | COMB
 | INITIAL
@@ -142,7 +142,9 @@ type itms = {
   inst: (string*string*string list) list ref;
 }
 
-val modules : (string, itms) Hashtbl.t
-val packages : (string, itms) Hashtbl.t
+val modules : (string, string * int * itms) Hashtbl.t
+val packages : (string, string * int * itms) Hashtbl.t
+val hierarchy : (string, string list) Hashtbl.t
 
 val translate : string -> int * (int * int)
+val dump : string -> string * int * itms -> unit

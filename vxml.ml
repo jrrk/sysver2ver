@@ -26,6 +26,8 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
+open Printf
+
 type unaryop =
 | Unknown
 | Unot
@@ -92,13 +94,13 @@ type rw =
 | CMP of cmpop * rw list
 | FRF of string * rw list
 | XRF of string * rw list
-| PKG of string * rw list
+| PKG of string * string * rw list
 | CAT of rw list
 | EXT of rw list
 | CPS of rw list
 | CND of rw list
 | REPL of string * rw list
-| MODUL of string * (string*string) list * rw list
+| MODUL of string * string * (string*string) list * rw list
 | BGN of string * rw list
 | RNG of rw list
 | ALWYS of rw list
@@ -118,10 +120,10 @@ type rw =
 | ARG of rw list
 | DSPLY of rw list
 | FILS of string * rw list
-| FIL of string
+| FIL of string * string
 | NL of rw list
 | CELLS of rw list
-| CELL of string * string * string *rw list
+| CELL of string * string * string * string * rw list
 | POSNEG of string*string
 | COMB
 | INITIAL
@@ -170,7 +172,7 @@ let arithop = function
 let rec rw' errlst = function
 | Xml.Element ("verilator_xml", [], xlst) -> XML (List.map (rw' errlst) xlst)
 | Xml.Element ("files"|"module_files" as fils, [], xlst) -> FILS (fils, List.map (rw' errlst) xlst)
-| Xml.Element ("file", [("id", _); ("filename", nam); ("language", "1800-2017")], []) -> FIL (nam)
+| Xml.Element ("file", [("id", encoding); ("filename", nam); ("language", "1800-2017")], []) -> FIL (encoding, nam)
 | Xml.Element ("netlist", [], xlst) -> NL (List.map (rw' errlst) xlst)
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("dir", dir); ("vartype", typ); ("origName", nam')], xlst) ->
                IO (nam, int_of_string tid, dir, typ, List.map (rw' errlst) xlst)
@@ -205,7 +207,7 @@ let rec rw' errlst = function
 | Xml.Element ("eq"|"neq"|"gt"|"gts"|"gte"|"eqwild"|"neqwild"|"ltes"|"lte"|"lt"|"lts" as cmp, [("fl", _); ("dtype_id", tid)], xlst) -> CMP (cmpop cmp, List.map (rw' errlst) xlst)
 | Xml.Element ("initial"|"final" as action, [("fl", _)], xlst) -> INIT (action, List.map (rw' errlst) xlst)
 | Xml.Element ("assign", [("fl", _); ("dtype_id", tid)], xlst) -> ASGN (List.map (rw' errlst) xlst)
-| Xml.Element ("package", [("fl", _); ("name", nam); ("origName", nam')], xlst) -> PKG (nam, List.map (rw' errlst) xlst)
+| Xml.Element ("package", [("fl", orig); ("name", nam); ("origName", nam')], xlst) -> PKG (orig, nam, List.map (rw' errlst) xlst)
 | Xml.Element ("typedef", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> TYP (nam, List.map (rw' errlst) xlst)
 | Xml.Element ("func", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> FNC (nam, List.map (rw' errlst) xlst)
 | Xml.Element ("jumplabel", [("fl", _)], xlst) -> JMPL (List.map (rw' errlst) xlst)
@@ -214,7 +216,7 @@ let rec rw' errlst = function
 | Xml.Element ("cvtpackstring", [("fl", _); ("dtype_id", tid)], xlst) -> CPS (List.map (rw' errlst) xlst)
 | Xml.Element ("cond", [("fl", _); ("dtype_id", tid)], xlst) -> CND (List.map (rw' errlst) xlst)
 | Xml.Element ("sformatf", [("fl", _); ("name", fmt); ("dtype_id", tid)], xlst) -> SFMT (fmt, List.map (rw' errlst) xlst)
-| Xml.Element ("module", ("fl", _) :: ("name", nam) :: attr, xlst) -> MODUL (nam, attr, List.map (rw' errlst) xlst)
+| Xml.Element ("module", ("fl", origin) :: ("name", nam) :: attr, xlst) -> MODUL (origin, nam, attr, List.map (rw' errlst) xlst)
 | Xml.Element ("case", [("fl", _)], xlst) -> CS (List.map (rw' errlst) xlst)
 | Xml.Element ("caseitem", [("fl", _)], xlst) -> CSITM (List.map (rw' errlst) xlst)
 | Xml.Element ("while", [("fl", _)], xlst) -> WHL (List.map (rw' errlst) xlst)
@@ -232,8 +234,8 @@ let rec rw' errlst = function
 | Xml.Element ("packarraydtype"|"unpackarraydtype"|"constdtype" as dtyp, [("fl", _); ("id", num); ("sub_dtype_id", subtype)], xlst) -> RDT (dtyp, num, "", subtype, List.map (rw' errlst) xlst)
 | Xml.Element ("enumitem" as dtyp, [("fl", _); ("name", nam); ("dtype_id", num)], xlst) -> RDT (dtyp, nam, "", num, List.map (rw' errlst) xlst)
 | Xml.Element ("cells", [], xlst) -> CELLS(List.map (rw' errlst) xlst)
-| Xml.Element ("cell", [("fl", _); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
-    CELL(nam, subnam, hier, List.map (rw' errlst) xlst)
+| Xml.Element ("cell", [("fl", origin); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
+    CELL(origin, nam, subnam, hier, List.map (rw' errlst) xlst)
 | Xml.Element ("display", [("fl", _)], xlst) -> DSPLY (List.map (rw' errlst) xlst)
 | Xml.Element (("fopen"|"fclose"|"readmem"|"typetable" as sys), [("fl", _)], xlst) -> SYS (sys, List.map (rw' errlst) xlst)
 | (Xml.Element (str, _, _) | Xml.PCData str) as err -> errlst := err :: !errlst; failwith str
@@ -254,6 +256,8 @@ type itms = {
 
 let modules = Hashtbl.create 255
 let packages = Hashtbl.create 255
+let files = Hashtbl.create 255
+let hierarchy = Hashtbl.create 255
 let empty_itms top = { top=top;
 io=ref [];
 v=ref [];
@@ -273,6 +277,7 @@ let csothlst = ref []
 let bgnothlst = ref []
 let itmothlst = ref []
 let catothlst = ref []
+let cellothlst = ref []
 
 let unaryopv = function
 | Unknown -> "???"
@@ -349,7 +354,7 @@ let rec ioconn = function
 | oth -> iothlst := oth :: !iothlst; failwith "iothlst"
 
 let rec stmt = function
-| BGN(str1, rw_lst) -> " begin "^String.concat ";\n\t" (List.map stmt rw_lst)^" end "
+| BGN(str1, rw_lst) -> " begin "^String.concat ";\n\t" (List.map stmt rw_lst)^"; end "
 | IF(cnd :: rw_lst) -> "if ("^expr cnd^") "^String.concat ";\n\t" (List.map stmt rw_lst)
 | ASGNDLY(src :: dst :: []) -> expr dst ^"<="^expr src
 | ASGN (src :: dst :: []) -> expr dst ^"<="^expr src
@@ -386,6 +391,23 @@ let rec catitm itms = function
 | IF(rw_lst) -> itms.gen := (List.map stmt rw_lst) :: !(itms.gen)
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
 
+let find_source origin =
+    let last = ref 0 in
+    for i = String.length origin - 1 downto 0 do
+        match origin.[i] with '0'..'9' -> last := i | _ -> ();
+    done;
+    if false then printf "%s: %d\n" origin !last;
+    let source = Hashtbl.find files (String.sub origin 0 !last) in
+    let line = String.sub origin !last (String.length origin - !last) in
+    (source, int_of_string line)
+
+let rec cell_hier = function
+| CELL (_, nam, subnam, hier, rw_lst) ->
+   let hier_lst = List.flatten (List.map cell_hier rw_lst) in
+   Hashtbl.replace hierarchy subnam hier_lst;
+   subnam :: hier_lst
+| oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
+
 let rec categorise itms = function
 | XML(rw_lst) -> catlst itms rw_lst
 | DT(str1, str2, str3, attr_list, rw_lst) -> catlst itms rw_lst
@@ -411,15 +433,17 @@ let rec categorise itms = function
 | CPS(rw_lst) -> catlst itms rw_lst
 | CND(rw_lst) -> catlst itms rw_lst
 | REPL(str1, rw_lst) -> catlst itms rw_lst
-| MODUL(str1, attr_list, rw_lst) ->
+| MODUL(origin, str1, attr_list, rw_lst) ->
+    let (source, line) = find_source origin in
     let top = match attr_list with ("topModule", "1") :: [] -> true | _ -> false in
     let itms = empty_itms top in
     List.iter (catitm itms) rw_lst;
-    Hashtbl.add modules str1 itms
-| PKG(str1, rw_lst) ->
+    Hashtbl.add modules str1 (source, line, itms)
+| PKG(origin, str1, rw_lst) ->
+    let (source, line) = find_source origin in
     let itms = empty_itms false in
     List.iter (catitm itms) rw_lst;
-    Hashtbl.add packages str1 itms
+    Hashtbl.add packages str1 (source, line, itms)
 | RNG(rw_lst) -> catlst itms rw_lst
 | SNTRE(rw_lst) -> catlst itms rw_lst
 | IRNG(rw_lst) -> catlst itms rw_lst
@@ -434,18 +458,39 @@ let rec categorise itms = function
 | WHL(rw_lst) -> catlst itms rw_lst
 | ARG(rw_lst) -> catlst itms rw_lst
 | FILS(str1, rw_lst) -> catlst itms rw_lst
-| FIL(fil) -> print_endline fil
+| FIL(enc, fil) -> Hashtbl.add files enc fil
 | NL(rw_lst) -> catlst itms rw_lst
-| CELLS(rw_lst) -> catlst itms rw_lst
-| CELL _ -> ()
+| CELLS(rw_lst) -> ignore (List.map cell_hier rw_lst)
 | oth -> catothlst := oth :: !catothlst; failwith "catothlst"
 and catlst itms lst = List.iter (categorise itms) lst
 
-open Printf
-
-let dump f modul =
-  print_endline ("f \""^f^"\";;");
-  let fd = open_out (f^"_trans.v") in
+let dump f (source, line, modul) =
+  let srcpath = "/local/scratch/jrrk2/ariane-vcs-regression/ariane" in
+  let outnam f = f^"_translate.v" in
+  let outtcl = "./"^f^"_fm.tcl" in
+  print_endline ("f \""^f^"\";; (* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl^" *)");
+  let fd = open_out outtcl in
+  fprintf fd "#!/opt/synopsys/fm_vO-2018.06-SP3/bin/fm_shell -f\n";
+  fprintf fd "read_sverilog -container r -libname WORK -12 { ";
+  let plst = ref [] in Hashtbl.iter (fun _ (s,_,_) -> plst := s :: !plst) packages;
+  let iflst = if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else [] in
+  let hlst = List.sort_uniq compare (source :: List.map (fun k -> let (s,l,_) = Hashtbl.find modules k in s) iflst) in
+  let slst = !plst @ hlst in
+  let cnt = ref 0 in List.iter (fun src -> incr cnt; print_endline (string_of_int !cnt^":"^src)) slst;
+  List.iter (fun src -> fprintf fd "%s/%s " srcpath src) slst;
+  fprintf fd " } \n";
+  fprintf fd "set_top r:/WORK/%s\n" f;
+  fprintf fd "read_sverilog -container i -libname WORK -12 {";
+  let hlst' = List.sort_uniq compare (f :: iflst) in
+  List.iter (fun nam -> fprintf fd "%s " (outnam nam)) hlst';
+  fprintf fd " } \n";
+  fprintf fd "set_top i:/WORK/%s\n" f;
+  fprintf fd "match\n";
+  fprintf fd "verify\n";
+  fprintf fd "quit\n";
+  close_out fd;
+  Unix.chmod outtcl 0o740;
+  let fd = open_out (outnam f) in
   fprintf fd "module %s(" f;
   let delim = ref "" in List.iter (fun (io, idx, dir, kind, lst) ->
                  fprintf fd "%s\n\t%s\t%s\t%s" !delim dir kind io;
@@ -462,12 +507,12 @@ let dump f modul =
   fprintf fd "\n";
   List.iter (function
              | (COMB, lst) ->
-                 fprintf fd "\talways_comb begin\n";
-                 List.iter (fun itm -> fprintf fd "%s\n" itm) (List.rev lst);
+                 fprintf fd "\talways @* begin\n";
+                 List.iter (fun itm -> fprintf fd "%s;\n" itm) (List.rev lst);
                  fprintf fd "\tend\n";
              | (POSNEG (ck, rst), lst) ->
-                 fprintf fd "\talways_ff @(posedge %s, negedge %s) begin\n" ck rst;
-                 List.iter (fun itm -> fprintf fd "%s\n" itm) (List.rev lst);
+                 fprintf fd "\talways @(posedge %s, negedge %s) begin\n" ck rst;
+                 List.iter (fun itm -> fprintf fd "%s;\n" itm) (List.rev lst);
                  fprintf fd "\tend\n";
              | (_, lst) -> fprintf fd "\t// not implemented\n";
                  ) (List.rev !(modul.alwys));
