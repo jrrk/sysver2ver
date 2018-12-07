@@ -1,0 +1,25 @@
+#directory "/home/jrrk2/.opam/4.04.0/lib/xml-light";;
+#load "xml-light.cma";;
+#print_length 1000000;;
+#print_depth 10000;;
+#use "vxml.mli";;
+#use "vxml.ml";;
+(*
+let xmlf = "work-xml/Variane_testharness.xml";;
+let xmlf = "obj_dir/Vjtag_xilinx_fixed.xml";;
+*)
+
+let xmlf = "obj_dir/Vdmi_jtag.xml";;
+let xmlerr = ref None
+let xml = try Xml.parse_file xmlf with Xml.Error err -> xmlerr := Some err; Xml.PCData "Xml.Error";;
+let (line,range) = match !xmlerr with Some (_, errpos) -> (Xml.line errpos, Xml.range errpos) | None -> (0, (0,0));;
+
+errlst := [];;
+let rwxml = rewrite xml;;
+
+categorise (empty_itms false) rwxml;;
+print_endline "MODULES:";
+Hashtbl.iter (fun k x -> print_endline ("f \""^k^"\";;")) modules;;
+
+let f k = Hashtbl.find modules k;;
+let d f = dump f
