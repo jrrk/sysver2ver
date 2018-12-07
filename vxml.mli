@@ -127,3 +127,22 @@ type rw =
 | INITIAL
 | FINAL
 | UNKNOWN
+
+type itms = { 
+  top: bool;
+  io: (string*int*string*string*string list) list ref;
+  v: (string*int*string*int) list ref;
+  ca: (string*string) list ref;
+  typ: string list ref;
+  alwys: (rw*string list) list ref;
+  init: (rw*string list) list ref;
+  bgn: (string*itms) list ref;
+  func: (string*string list) list ref;
+  gen : string list list ref;
+  inst: (string*string*string list) list ref;
+}
+
+val modules : (string, itms) Hashtbl.t
+val packages : (string, itms) Hashtbl.t
+
+val translate : string -> int * (int * int)

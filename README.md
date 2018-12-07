@@ -17,9 +17,11 @@ opam switch 4.04.0
 eval `opam config env`
 eval `opam config env`
 opam install xml-light
+make vxml
 
 For now the package only runs in the toplevel REPL.
 
 Edit .ocamlinit appropriately, then
 
-ocaml
+./vxml
+

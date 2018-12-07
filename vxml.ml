@@ -26,7 +26,107 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
-let errlst = ref []
+type unaryop =
+| Unknown
+| Unot
+| Unegate
+| Uextend
+
+type cmpop =
+| Cunknown
+| Ceq
+| Cneq
+| Cgt
+| Cgts
+| Cgte
+| Ceqwild
+| Cneqwild
+| Cltes
+| Clte
+| Clt
+| Clts
+
+type logop =
+| Lunknown
+| Land
+| Lredand
+| Lor
+| Lredor
+| Lxor
+| Lredxor
+| Lshiftl
+| Lshiftr
+| Lshiftrs
+
+type arithop =
+| Aunknown
+| Aadd
+| Asub
+| Amul
+| Amuls
+
+type rw =
+| XML of rw list
+| DT of string * string * string * (string*string) list * rw list
+| RDT of string * string * string * string * rw list
+| IO of string * int * string * string * rw list
+| VAR of string * int * string
+| IVAR of string * int * string * int
+| CNST of string * rw list
+| VRF of string * rw list
+| TYP of string * rw list
+| FNC of string * rw list
+| INST of string * string * rw list
+| SFMT of string * rw list
+| SYS of string * rw list
+| PORT of string * string * int * rw list
+| CA of rw list
+| UNRY of unaryop * rw list
+| SEL of rw list
+| ASEL of rw list
+| SNITM of string * rw list
+| ASGNDLY of rw list
+| ASGN of rw list
+| ARITH of arithop * rw list
+| LOGIC of logop * rw list
+| CMP of cmpop * rw list
+| FRF of string * rw list
+| XRF of string * rw list
+| PKG of string * rw list
+| CAT of rw list
+| EXT of rw list
+| CPS of rw list
+| CND of rw list
+| REPL of string * rw list
+| MODUL of string * (string*string) list * rw list
+| BGN of string * rw list
+| RNG of rw list
+| ALWYS of rw list
+| SNTRE of rw list
+| IF of rw list
+| INIT of string * rw list
+| IRNG of rw list
+| IFC of string * rw list
+| IRDT of string * rw list
+| IMP of string * rw list
+| IMRF of string * rw list
+| JMPL of rw list
+| JMPG of rw list
+| CS of rw list
+| CSITM of rw list
+| WHL of rw list
+| ARG of rw list
+| DSPLY of rw list
+| FILS of string * rw list
+| FIL of string
+| NL of rw list
+| CELLS of rw list
+| CELL of string * string * string *rw list
+| POSNEG of string*string
+| COMB
+| INITIAL
+| FINAL
+| UNKNOWN
 
 let unaryop = function
 |"not" -> Unot
@@ -67,75 +167,75 @@ let arithop = function
 |"muls" -> Amuls
 | _ -> Aunknown
 
-let rec rewrite = function
-| Xml.Element ("verilator_xml", [], xlst) -> XML (List.map rewrite xlst)
-| Xml.Element ("files"|"module_files" as fils, [], xlst) -> FILS (fils, List.map rewrite xlst)
+let rec rw' errlst = function
+| Xml.Element ("verilator_xml", [], xlst) -> XML (List.map (rw' errlst) xlst)
+| Xml.Element ("files"|"module_files" as fils, [], xlst) -> FILS (fils, List.map (rw' errlst) xlst)
 | Xml.Element ("file", [("id", _); ("filename", nam); ("language", "1800-2017")], []) -> FIL (nam)
-| Xml.Element ("netlist", [], xlst) -> NL (List.map rewrite xlst)
+| Xml.Element ("netlist", [], xlst) -> NL (List.map (rw' errlst) xlst)
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("dir", dir); ("vartype", typ); ("origName", nam')], xlst) ->
-               IO (nam, int_of_string tid, dir, typ, List.map rewrite xlst)
+               IO (nam, int_of_string tid, dir, typ, List.map (rw' errlst) xlst)
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')], []) ->
                VAR (nam, int_of_string tid, typ)
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')],
                [Xml.Element ("const", [("fl", _); ("name", lev); ("dtype_id", cid)], [])]) ->
                              IVAR (nam, int_of_string tid, lev, int_of_string cid)
-| Xml.Element ("const", [("fl", _); ("name", value); ("dtype_id", tid)], xlst) -> CNST (value, List.map rewrite xlst)
-| Xml.Element ("contassign", [("fl", _); ("dtype_id", tid)], xlst) -> CA (List.map rewrite xlst)
-| Xml.Element ("not"|"negate"|"extend" as op, [("fl", _); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map rewrite xlst)
-| Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (nam, List.map rewrite xlst)
+| Xml.Element ("const", [("fl", _); ("name", value); ("dtype_id", tid)], xlst) -> CNST (value, List.map (rw' errlst) xlst)
+| Xml.Element ("contassign", [("fl", _); ("dtype_id", tid)], xlst) -> CA (List.map (rw' errlst) xlst)
+| Xml.Element ("not"|"negate"|"extend" as op, [("fl", _); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' errlst) xlst)
+| Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (nam, List.map (rw' errlst) xlst)
 | Xml.Element ("instance", [("fl", _); ("name", nam); ("defName", dnam); ("origName", nam')], xlst) ->
-               INST (nam, dnam, List.map rewrite xlst)
-| Xml.Element ("range", [("fl", _)], xlst) -> RNG (List.map rewrite xlst)
+               INST (nam, dnam, List.map (rw' errlst) xlst)
+| Xml.Element ("range", [("fl", _)], xlst) -> RNG (List.map (rw' errlst) xlst)
 | Xml.Element ("port", [("fl", _); ("name", nam); ("direction", dir); ("portIndex", idx)], xlst) ->
-               PORT (nam, dir, int_of_string idx, List.map rewrite xlst)
+               PORT (nam, dir, int_of_string idx, List.map (rw' errlst) xlst)
 | Xml.Element ("port", [("fl", _); ("name", nam); ("portIndex", idx)], xlst) ->
-               PORT (nam, "N/A", int_of_string idx, List.map rewrite xlst)
-| Xml.Element ("sel", [("fl", _); ("dtype_id", tid)], xlst) -> SEL (List.map rewrite xlst)
-| Xml.Element ("arraysel", [("fl", _); ("dtype_id", tid)], xlst) -> ASEL (List.map rewrite xlst)
-| Xml.Element ("always", [("fl", _)], xlst) -> ALWYS (List.map rewrite xlst)
-| Xml.Element ("sentree", [("fl", _)], xlst) -> SNTRE (List.map rewrite xlst)
-| Xml.Element ("senitem", [("fl", _); ("edgeType", etyp)], xlst) -> SNITM (etyp, List.map rewrite xlst)
-| Xml.Element ("begin", [("fl", _); ("name", namedblk)], xlst) -> BGN (namedblk, List.map rewrite xlst)
-| Xml.Element ("begin", [("fl", _)], xlst) -> BGN ("", List.map rewrite xlst)
-| Xml.Element ("assigndly", [("fl", _); ("dtype_id", tid)], xlst) -> ASGNDLY (List.map rewrite xlst)
-| Xml.Element ("if", [("fl", _)], xlst) -> IF (List.map rewrite xlst)
-| Xml.Element ("add"|"sub"|"mul"|"muls" as op, [("fl", _); ("dtype_id", tid)], xlst) -> ARITH (arithop op, List.map rewrite xlst)
+               PORT (nam, "N/A", int_of_string idx, List.map (rw' errlst) xlst)
+| Xml.Element ("sel", [("fl", _); ("dtype_id", tid)], xlst) -> SEL (List.map (rw' errlst) xlst)
+| Xml.Element ("arraysel", [("fl", _); ("dtype_id", tid)], xlst) -> ASEL (List.map (rw' errlst) xlst)
+| Xml.Element ("always", [("fl", _)], xlst) -> ALWYS (List.map (rw' errlst) xlst)
+| Xml.Element ("sentree", [("fl", _)], xlst) -> SNTRE (List.map (rw' errlst) xlst)
+| Xml.Element ("senitem", [("fl", _); ("edgeType", etyp)], xlst) -> SNITM (etyp, List.map (rw' errlst) xlst)
+| Xml.Element ("begin", [("fl", _); ("name", namedblk)], xlst) -> BGN (namedblk, List.map (rw' errlst) xlst)
+| Xml.Element ("begin", [("fl", _)], xlst) -> BGN ("", List.map (rw' errlst) xlst)
+| Xml.Element ("assigndly", [("fl", _); ("dtype_id", tid)], xlst) -> ASGNDLY (List.map (rw' errlst) xlst)
+| Xml.Element ("if", [("fl", _)], xlst) -> IF (List.map (rw' errlst) xlst)
+| Xml.Element ("add"|"sub"|"mul"|"muls" as op, [("fl", _); ("dtype_id", tid)], xlst) -> ARITH (arithop op, List.map (rw' errlst) xlst)
 | Xml.Element ("and"|"redand"|"or"|"redor"|"xor"|"redxor"|"shiftl"|"shiftr"|"shiftrs" as log,
-               [("fl", _); ("dtype_id", tid)], xlst) -> LOGIC (logop log, List.map rewrite xlst)
-| Xml.Element ("eq"|"neq"|"gt"|"gts"|"gte"|"eqwild"|"neqwild"|"ltes"|"lte"|"lt"|"lts" as cmp, [("fl", _); ("dtype_id", tid)], xlst) -> CMP (cmpop cmp, List.map rewrite xlst)
-| Xml.Element ("initial"|"final" as action, [("fl", _)], xlst) -> INIT (action, List.map rewrite xlst)
-| Xml.Element ("assign", [("fl", _); ("dtype_id", tid)], xlst) -> ASGN (List.map rewrite xlst)
-| Xml.Element ("package", [("fl", _); ("name", nam); ("origName", nam')], xlst) -> PKG (nam, List.map rewrite xlst)
-| Xml.Element ("typedef", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> TYP (nam, List.map rewrite xlst)
-| Xml.Element ("func", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> FNC (nam, List.map rewrite xlst)
-| Xml.Element ("jumplabel", [("fl", _)], xlst) -> JMPL (List.map rewrite xlst)
-| Xml.Element ("jumpgo", [("fl", _)], xlst) -> JMPG (List.map rewrite xlst)
-| Xml.Element ("concat", [("fl", _); ("dtype_id", tid)], xlst) -> CAT (List.map rewrite xlst)
-| Xml.Element ("cvtpackstring", [("fl", _); ("dtype_id", tid)], xlst) -> CPS (List.map rewrite xlst)
-| Xml.Element ("cond", [("fl", _); ("dtype_id", tid)], xlst) -> CND (List.map rewrite xlst)
-| Xml.Element ("sformatf", [("fl", _); ("name", fmt); ("dtype_id", tid)], xlst) -> SFMT (fmt, List.map rewrite xlst)
-| Xml.Element ("module", ("fl", _) :: ("name", nam) :: attr, xlst) -> MODUL (nam, attr, List.map rewrite xlst)
-| Xml.Element ("case", [("fl", _)], xlst) -> CS (List.map rewrite xlst)
-| Xml.Element ("caseitem", [("fl", _)], xlst) -> CSITM (List.map rewrite xlst)
-| Xml.Element ("while", [("fl", _)], xlst) -> WHL (List.map rewrite xlst)
-| Xml.Element ("insiderange", [("fl", _); ("dtype_id", tid)], xlst) -> IRNG (List.map rewrite xlst)
-| Xml.Element ("funcref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> FRF (nam, List.map rewrite xlst)
-| Xml.Element ("varxref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> XRF (nam, List.map rewrite xlst)
-| Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map rewrite xlst)
-| Xml.Element ("replicate"|"initarray"|"streaml"|"extends"|"powsu" as op, [("fl", _); ("dtype_id", tid)], xlst) -> REPL (op, List.map rewrite xlst)
-| Xml.Element ("iface", [("fl", _); ("name", bus); ("origName", bus')], xlst) -> IFC (bus, List.map rewrite xlst)
-| Xml.Element ("ifacerefdtype", [("fl", _); ("id", num)], xlst) -> IRDT (num, List.map rewrite xlst)
-| Xml.Element ("modport", [("fl", _); ("name", port)], xlst) -> IMP (port, List.map rewrite xlst)
-| Xml.Element ("modportvarref", [("fl", _); ("name", member)], xlst) -> IMRF (member, List.map rewrite xlst)
-| Xml.Element ("basicdtype"|"structdtype"|"uniondtype" as dtyp, ("fl", _) :: ("id", num) :: ("name", nam) :: rnglst, xlst) -> DT (dtyp, num, nam, rnglst, List.map rewrite xlst)
-| Xml.Element ("refdtype"|"enumdtype"|"memberdtype"|"paramtypedtype" as dtyp, [("fl", _); ("id", num); ("name", nam); ("sub_dtype_id", subtype)], xlst) -> RDT (dtyp, num, nam, subtype, List.map rewrite xlst)
-| Xml.Element ("packarraydtype"|"unpackarraydtype"|"constdtype" as dtyp, [("fl", _); ("id", num); ("sub_dtype_id", subtype)], xlst) -> RDT (dtyp, num, "", subtype, List.map rewrite xlst)
-| Xml.Element ("enumitem" as dtyp, [("fl", _); ("name", nam); ("dtype_id", num)], xlst) -> RDT (dtyp, nam, "", num, List.map rewrite xlst)
-| Xml.Element ("cells", [], xlst) -> CELLS(List.map rewrite xlst)
+               [("fl", _); ("dtype_id", tid)], xlst) -> LOGIC (logop log, List.map (rw' errlst) xlst)
+| Xml.Element ("eq"|"neq"|"gt"|"gts"|"gte"|"eqwild"|"neqwild"|"ltes"|"lte"|"lt"|"lts" as cmp, [("fl", _); ("dtype_id", tid)], xlst) -> CMP (cmpop cmp, List.map (rw' errlst) xlst)
+| Xml.Element ("initial"|"final" as action, [("fl", _)], xlst) -> INIT (action, List.map (rw' errlst) xlst)
+| Xml.Element ("assign", [("fl", _); ("dtype_id", tid)], xlst) -> ASGN (List.map (rw' errlst) xlst)
+| Xml.Element ("package", [("fl", _); ("name", nam); ("origName", nam')], xlst) -> PKG (nam, List.map (rw' errlst) xlst)
+| Xml.Element ("typedef", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> TYP (nam, List.map (rw' errlst) xlst)
+| Xml.Element ("func", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> FNC (nam, List.map (rw' errlst) xlst)
+| Xml.Element ("jumplabel", [("fl", _)], xlst) -> JMPL (List.map (rw' errlst) xlst)
+| Xml.Element ("jumpgo", [("fl", _)], xlst) -> JMPG (List.map (rw' errlst) xlst)
+| Xml.Element ("concat", [("fl", _); ("dtype_id", tid)], xlst) -> CAT (List.map (rw' errlst) xlst)
+| Xml.Element ("cvtpackstring", [("fl", _); ("dtype_id", tid)], xlst) -> CPS (List.map (rw' errlst) xlst)
+| Xml.Element ("cond", [("fl", _); ("dtype_id", tid)], xlst) -> CND (List.map (rw' errlst) xlst)
+| Xml.Element ("sformatf", [("fl", _); ("name", fmt); ("dtype_id", tid)], xlst) -> SFMT (fmt, List.map (rw' errlst) xlst)
+| Xml.Element ("module", ("fl", _) :: ("name", nam) :: attr, xlst) -> MODUL (nam, attr, List.map (rw' errlst) xlst)
+| Xml.Element ("case", [("fl", _)], xlst) -> CS (List.map (rw' errlst) xlst)
+| Xml.Element ("caseitem", [("fl", _)], xlst) -> CSITM (List.map (rw' errlst) xlst)
+| Xml.Element ("while", [("fl", _)], xlst) -> WHL (List.map (rw' errlst) xlst)
+| Xml.Element ("insiderange", [("fl", _); ("dtype_id", tid)], xlst) -> IRNG (List.map (rw' errlst) xlst)
+| Xml.Element ("funcref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> FRF (nam, List.map (rw' errlst) xlst)
+| Xml.Element ("varxref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> XRF (nam, List.map (rw' errlst) xlst)
+| Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' errlst) xlst)
+| Xml.Element ("replicate"|"initarray"|"streaml"|"extends"|"powsu" as op, [("fl", _); ("dtype_id", tid)], xlst) -> REPL (op, List.map (rw' errlst) xlst)
+| Xml.Element ("iface", [("fl", _); ("name", bus); ("origName", bus')], xlst) -> IFC (bus, List.map (rw' errlst) xlst)
+| Xml.Element ("ifacerefdtype", [("fl", _); ("id", num)], xlst) -> IRDT (num, List.map (rw' errlst) xlst)
+| Xml.Element ("modport", [("fl", _); ("name", port)], xlst) -> IMP (port, List.map (rw' errlst) xlst)
+| Xml.Element ("modportvarref", [("fl", _); ("name", member)], xlst) -> IMRF (member, List.map (rw' errlst) xlst)
+| Xml.Element ("basicdtype"|"structdtype"|"uniondtype" as dtyp, ("fl", _) :: ("id", num) :: ("name", nam) :: rnglst, xlst) -> DT (dtyp, num, nam, rnglst, List.map (rw' errlst) xlst)
+| Xml.Element ("refdtype"|"enumdtype"|"memberdtype"|"paramtypedtype" as dtyp, [("fl", _); ("id", num); ("name", nam); ("sub_dtype_id", subtype)], xlst) -> RDT (dtyp, num, nam, subtype, List.map (rw' errlst) xlst)
+| Xml.Element ("packarraydtype"|"unpackarraydtype"|"constdtype" as dtyp, [("fl", _); ("id", num); ("sub_dtype_id", subtype)], xlst) -> RDT (dtyp, num, "", subtype, List.map (rw' errlst) xlst)
+| Xml.Element ("enumitem" as dtyp, [("fl", _); ("name", nam); ("dtype_id", num)], xlst) -> RDT (dtyp, nam, "", num, List.map (rw' errlst) xlst)
+| Xml.Element ("cells", [], xlst) -> CELLS(List.map (rw' errlst) xlst)
 | Xml.Element ("cell", [("fl", _); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
-    CELL(nam, subnam, hier, List.map rewrite xlst)
-| Xml.Element ("display", [("fl", _)], xlst) -> DSPLY (List.map rewrite xlst)
-| Xml.Element (("fopen"|"fclose"|"readmem"|"typetable" as sys), [("fl", _)], xlst) -> SYS (sys, List.map rewrite xlst)
+    CELL(nam, subnam, hier, List.map (rw' errlst) xlst)
+| Xml.Element ("display", [("fl", _)], xlst) -> DSPLY (List.map (rw' errlst) xlst)
+| Xml.Element (("fopen"|"fclose"|"readmem"|"typetable" as sys), [("fl", _)], xlst) -> SYS (sys, List.map (rw' errlst) xlst)
 | (Xml.Element (str, _, _) | Xml.PCData str) as err -> errlst := err :: !errlst; failwith str
 
 type itms = { 
@@ -227,7 +327,7 @@ let rec expr = function
     let (b,n) = cexp (expr wid) and (b',n') = cexp (expr strt) in
     let s = expr expr1^if n = 1 then "["^string_of_int n'^"]"
     else "["^string_of_int (n'+n-1)^":"^string_of_int n'^"]" in
-    print_endline s; s
+    s
 | ASEL (VRF (lval, []) :: expr1 :: []) -> lval^"["^expr expr1^"]"
 | CND (expr1 :: lft :: rght :: []) -> expr expr1^" ? "^expr lft^" : "^expr rght
 | CAT (expr1 :: expr2 :: []) -> "{"^expr expr1^","^expr expr2^"}"
@@ -343,8 +443,8 @@ and catlst itms lst = List.iter (categorise itms) lst
 
 open Printf
 
-let dump f =
-  let modul = Hashtbl.find modules f in
+let dump f modul =
+  print_endline ("f \""^f^"\";;");
   let fd = open_out (f^"_trans.v") in
   fprintf fd "module %s(" f;
   let delim = ref "" in List.iter (fun (io, idx, dir, kind, lst) ->
@@ -382,4 +482,16 @@ let dump f =
   fprintf fd "endmodule\n";
   fprintf fd "\n";
   close_out fd
+
+let translate xmlf =
+    let xmlerr = ref None in
+    let xml = try Xml.parse_file xmlf with Xml.Error err -> xmlerr := Some err; Xml.PCData "Xml.Error" in
+    let (line,range) = match !xmlerr with Some (_, errpos) -> (Xml.line errpos, Xml.range errpos) | None -> (0, (0,0)) in
+    let errlst = ref [] in
+    let rwxml = rw' errlst xml in
+    categorise (empty_itms false) rwxml;
+    print_endline "MODULES:";
+    Hashtbl.iter dump modules;
+    (line,range)
+    
 
