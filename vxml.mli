@@ -134,7 +134,7 @@ type itms = {
   v: (string*int*string*int) list ref;
   ca: (string*string) list ref;
   typ: string list ref;
-  alwys: (rw*string list) list ref;
+  alwys: (rw*rw list) list ref;
   init: (rw*string list) list ref;
   bgn: (string*itms) list ref;
   func: (string*string list) list ref;
@@ -145,6 +145,7 @@ type itms = {
 val modules : (string, string * int * itms) Hashtbl.t
 val packages : (string, string * int * itms) Hashtbl.t
 val hierarchy : (string, string list) Hashtbl.t
+val typetable : (string, string*string*(string*string) list*rw list) Hashtbl.t
 
 val translate : string -> int * (int * int)
 val dump : string -> string * int * itms -> unit

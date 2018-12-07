@@ -229,7 +229,8 @@ let rec rw' errlst = function
 | Xml.Element ("ifacerefdtype", [("fl", _); ("id", num)], xlst) -> IRDT (num, List.map (rw' errlst) xlst)
 | Xml.Element ("modport", [("fl", _); ("name", port)], xlst) -> IMP (port, List.map (rw' errlst) xlst)
 | Xml.Element ("modportvarref", [("fl", _); ("name", member)], xlst) -> IMRF (member, List.map (rw' errlst) xlst)
-| Xml.Element ("basicdtype"|"structdtype"|"uniondtype" as dtyp, ("fl", _) :: ("id", num) :: ("name", nam) :: rnglst, xlst) -> DT (dtyp, num, nam, rnglst, List.map (rw' errlst) xlst)
+| Xml.Element ("basicdtype"|"structdtype"|"uniondtype" as dtyp, ("fl", _) :: ("id", num) :: ("name", nam) :: rnglst, xlst) ->
+    DT (dtyp, num, nam, rnglst, List.map (rw' errlst) xlst)
 | Xml.Element ("refdtype"|"enumdtype"|"memberdtype"|"paramtypedtype" as dtyp, [("fl", _); ("id", num); ("name", nam); ("sub_dtype_id", subtype)], xlst) -> RDT (dtyp, num, nam, subtype, List.map (rw' errlst) xlst)
 | Xml.Element ("packarraydtype"|"unpackarraydtype"|"constdtype" as dtyp, [("fl", _); ("id", num); ("sub_dtype_id", subtype)], xlst) -> RDT (dtyp, num, "", subtype, List.map (rw' errlst) xlst)
 | Xml.Element ("enumitem" as dtyp, [("fl", _); ("name", nam); ("dtype_id", num)], xlst) -> RDT (dtyp, nam, "", num, List.map (rw' errlst) xlst)
@@ -246,7 +247,7 @@ type itms = {
   v: (string*int*string*int) list ref;
   ca: (string*string) list ref;
   typ: string list ref;
-  alwys: (rw*string list) list ref;
+  alwys: (rw*rw list) list ref;
   init: (rw*string list) list ref;
   bgn: (string*itms) list ref;
   func: (string*string list) list ref;
@@ -258,6 +259,7 @@ let modules = Hashtbl.create 255
 let packages = Hashtbl.create 255
 let files = Hashtbl.create 255
 let hierarchy = Hashtbl.create 255
+let typetable = Hashtbl.create 255
 let empty_itms top = { top=top;
 io=ref [];
 v=ref [];
@@ -339,14 +341,14 @@ let rec expr = function
 | FRF (fref, arglst) -> fref^"("^String.concat ", " (List.map (function ARG (arg :: []) -> expr arg | _ -> "???") arglst)^")"
 | REPL (kind, arglst) -> kind^"("^String.concat ", " (List.map expr arglst)^")"
 | IRNG (expr2 :: expr1 :: []) -> "["^expr expr1^":"^expr expr2^"]"
-| XRF (id, []) -> " (* "^id^" *) "
+| XRF (id, []) -> " /* "^id^" */ "
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 
 let rec portconn = function
 | VRF (id, []) -> "."^id
-| PORT (id_o, dir, idx, []) -> "."^id_o^" (*"^dir^","^string_of_int idx^"*)"
-| PORT (id_i, dir, idx, expr1 :: []) -> "."^id_i^"("^expr expr1^") (*"^dir^","^string_of_int idx^"*)"
-| RNG [CNST (lft, []); CNST (rght, [])] -> "(* ["^lft^":"^rght^"] *)"
+| PORT (id_o, dir, idx, []) -> "."^id_o^" /*"^dir^","^string_of_int idx^"*/"
+| PORT (id_i, dir, idx, expr1 :: []) -> "."^id_i^"("^expr expr1^") /*"^dir^","^string_of_int idx^"*/"
+| RNG [CNST (lft, []); CNST (rght, [])] -> "/* ["^lft^":"^rght^"] */"
 | oth -> portothlst := oth :: !portothlst; failwith "portothlst"
 
 let rec ioconn = function
@@ -355,13 +357,15 @@ let rec ioconn = function
 
 let rec stmt = function
 | BGN(str1, rw_lst) -> " begin "^String.concat ";\n\t" (List.map stmt rw_lst)^"; end "
-| IF(cnd :: rw_lst) -> "if ("^expr cnd^") "^String.concat ";\n\t" (List.map stmt rw_lst)
+| IF(cnd :: then_stmt :: []) -> "if ("^expr cnd^") "^stmt then_stmt
+| IF(cnd :: then_stmt :: else_stmt :: []) -> "if ("^expr cnd^") "^stmt then_stmt^" else "^stmt else_stmt
 | ASGNDLY(src :: dst :: []) -> expr dst ^"<="^expr src
 | ASGN (src :: dst :: []) -> expr dst ^"<="^expr src
-| CS (sel :: lst) -> "case ("^expr sel^") "^String.concat ";\n\t" (List.map (function
-    | CSITM (cexp :: st :: []) -> "case "^expr cexp^": "^stmt st
-    | CSITM (st :: []) -> "default: "^stmt st
-    | oth -> csothlst := oth :: !csothlst; failwith "csothlst") lst)
+| CS (sel :: lst) -> "case ("^expr sel^") "^String.concat "\n\t" (List.map (function
+    | CSITM (cexp :: (BGN _ as st) :: []) -> expr cexp^": "^stmt st
+    | CSITM (cexp :: st :: []) -> expr cexp^": "^stmt st^";"
+    | CSITM (st :: []) -> "default: "^stmt st^";"
+    | oth -> csothlst := oth :: !csothlst; failwith "csothlst") lst)^" endcase\n"
 | CA(rght::lft::[]) -> "assign "^expr lft^" = "^expr rght
 | VAR (id, _, kind) -> kind^" "^id
 | WHL (cnd :: stmts) -> "while ("^expr cnd^") "^String.concat ";\n\t" (List.map stmt stmts)
@@ -377,10 +381,14 @@ let rec catitm itms = function
 | IVAR(str1, int1, str2, int2) -> itms.v := (str1, int1, str2, int2) :: !(itms.v)
 | CA(rght::lft::[]) -> itms.ca := (expr lft, expr rght) :: !(itms.ca)
 | TYP(str1, []) -> itms.typ := str1 :: !(itms.typ)
-| INST(str1, str2, port_lst) -> itms.inst := (str1, str2, List.map portconn port_lst) :: !(itms.inst)
+| INST(str1, str2, port_lst) -> itms.inst := (str1, str2, List.map portconn (List.rev port_lst)) :: !(itms.inst)
 | ALWYS(SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("NEG", [VRF (rst, [])]) :: []) :: rw_lst) ->
-     itms.alwys := (POSNEG(ck,rst), List.map stmt rw_lst) :: !(itms.alwys)
-| ALWYS(rw_lst) -> itms.alwys := (COMB, List.map stmt rw_lst) :: !(itms.alwys)
+    let rw_lst' = match rw_lst with
+       | BGN("", (IF(VRF(rst',[]) :: thn :: els :: []) :: [])) :: [] ->
+           BGN("", (IF(UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
+       | _ -> rw_lst in
+    itms.alwys := (POSNEG(ck,rst), rw_lst') :: !(itms.alwys)
+| ALWYS(rw_lst) -> itms.alwys := (COMB, rw_lst) :: !(itms.alwys)
 | INIT ("initial", rw_lst) -> itms.init := (INITIAL, List.map stmt rw_lst) :: !(itms.init)
 | INIT ("final", rw_lst) -> itms.init := (FINAL, List.map stmt rw_lst) :: !(itms.init)
 | BGN(str1, rw_lst) ->
@@ -410,7 +418,9 @@ let rec cell_hier = function
 
 let rec categorise itms = function
 | XML(rw_lst) -> catlst itms rw_lst
-| DT(str1, str2, str3, attr_list, rw_lst) -> catlst itms rw_lst
+| DT(dtyp, num, nam, attr_list, rw_list) ->
+    print_endline (dtyp^":"^num^":"^nam);
+    Hashtbl.add typetable num (dtyp,nam,attr_list,rw_list)
 | RDT(str1, str2, str3, str4, rw_lst) -> catlst itms rw_lst
 | CNST(str1, rw_lst) -> catlst itms rw_lst
 | VRF(str1, rw_lst) -> catlst itms rw_lst
@@ -468,7 +478,7 @@ let dump f (source, line, modul) =
   let srcpath = "/local/scratch/jrrk2/ariane-vcs-regression/ariane" in
   let outnam f = f^"_translate.v" in
   let outtcl = "./"^f^"_fm.tcl" in
-  print_endline ("f \""^f^"\";; (* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl^" *)");
+  print_endline ("f \""^f^"\";; /* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl^" */");
   let fd = open_out outtcl in
   fprintf fd "#!/opt/synopsys/fm_vO-2018.06-SP3/bin/fm_shell -f\n";
   fprintf fd "read_sverilog -container r -libname WORK -12 { ";
@@ -508,11 +518,11 @@ let dump f (source, line, modul) =
   List.iter (function
              | (COMB, lst) ->
                  fprintf fd "\talways @* begin\n";
-                 List.iter (fun itm -> fprintf fd "%s;\n" itm) (List.rev lst);
+                 List.iter (fun itm -> fprintf fd "%s;\n" itm) (List.map stmt lst);
                  fprintf fd "\tend\n";
              | (POSNEG (ck, rst), lst) ->
                  fprintf fd "\talways @(posedge %s, negedge %s) begin\n" ck rst;
-                 List.iter (fun itm -> fprintf fd "%s;\n" itm) (List.rev lst);
+                 List.iter (fun itm -> fprintf fd "%s;\n" itm) (List.map stmt lst);
                  fprintf fd "\tend\n";
              | (_, lst) -> fprintf fd "\t// not implemented\n";
                  ) (List.rev !(modul.alwys));
