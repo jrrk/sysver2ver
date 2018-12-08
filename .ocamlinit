@@ -3,13 +3,11 @@
 open Vxml
 
 (*
-let xmlf = "work-xml/Variane_testharness.xml";;
-let xmlf = "obj_dir/Vjtag_xilinx_fixed.xml";;
 let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/obj_dir/Vdmi_jtag.xml";;
 *)
 
-let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/obj_dir/Vdmi_jtag.xml";;
 let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/work-xml/Variane_testharness.xml";;
+let xmlf = "obj_dir/Vjtag_xilinx_fixed.xml";;
 
 let errlst = ref [];;
 let (line,range) = Vxml.translate errlst xmlf;;
@@ -18,14 +16,6 @@ let f k = Hashtbl.find Vxml.modules k;;
 let p k = Hashtbl.find Vxml.packages k;;
 let d f = Vxml.dump f (Hashtbl.find Vxml.modules f)
 let h k = Hashtbl.find Vxml.hierarchy k;;
-
-let top = "dmi_jtag_tap";;
-let (s,i,tap) = f top;;
-let alwys = tap.Vxml.alwys;;
-let lst = ref [];;
-let l = String.length top in
-Hashtbl.iter (fun k (dtyp,nam,attr_list,rw_list) -> if String.length nam > l && String.sub nam 0 l=top then lst := (k,dtyp,nam,attr_list,rw_list) :: !lst) Vxml.typetable;;
-let dtypes k = Hashtbl.find Vxml.typetable k;;
 
 let othcnt = (
 List.length !exprothlst,

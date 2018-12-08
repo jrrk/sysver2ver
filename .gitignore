@@ -1,8 +1,10 @@
 *~
 *_trans.v
 vxml
+vxmlmain
 *.cmi
 *.cmo
 *.tcl
 *.v
 fm_shell_command*.log
+obj_dir
