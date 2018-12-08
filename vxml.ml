@@ -133,6 +133,11 @@ type rw =
 | FINAL
 | UNKNOWN
 
+let constnet = function
+| "1'h1" -> "supply1"
+| "1'h0" -> "supply0"
+| oth -> "wire"
+
 let unaryop = function
 |"not" -> Unot
 |"negate" -> Unegate
@@ -183,7 +188,7 @@ let rec rw' errlst = function
                VAR (nam, int_of_string tid, typ)
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')],
                [Xml.Element ("const", [("fl", _); ("name", lev); ("dtype_id", cid)], [])]) ->
-                             IVAR (nam, int_of_string tid, lev, int_of_string cid)
+                             IVAR (nam, int_of_string tid, constnet lev, int_of_string cid)
 | Xml.Element ("const", [("fl", _); ("name", value); ("dtype_id", tid)], xlst) -> CNST (value, List.map (rw' errlst) xlst)
 | Xml.Element ("contassign", [("fl", _); ("dtype_id", tid)], xlst) -> CA (List.map (rw' errlst) xlst)
 | Xml.Element ("not"|"negate"|"extend" as op, [("fl", _); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' errlst) xlst)
