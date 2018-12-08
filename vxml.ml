@@ -376,7 +376,7 @@ let rec stmt = function
     | CSITM (cexp :: (BGN _ as st) :: []) -> expr cexp^": "^stmt st
     | CSITM (cexp :: st :: []) -> expr cexp^": "^stmt st^";"
     | CSITM (st :: []) -> "default: "^stmt st^";"
-    | CSITM (cexplst) -> (match List.rev cexplst with (hd::tl) -> expr (List.hd tl)^": "^stmt hd^";" | [] -> "")
+    | CSITM (cexplst) -> (match List.rev cexplst with (hd::tl) -> String.concat ", " (List.map expr tl)^": "^stmt hd^";" | [] -> "")
     | oth -> csothlst := oth :: !csothlst; failwith "csothlst") lst)^" endcase\n"
 | CA(rght::lft::[]) -> "assign "^expr lft^" = "^expr rght
 | VAR (id, _, kind) -> kind^" "^id
