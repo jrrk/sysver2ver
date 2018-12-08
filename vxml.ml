@@ -532,7 +532,7 @@ let dump f (source, line, modul) =
 (*
  let cnt = ref 0 in List.iter (fun src -> incr cnt; print_endline (string_of_int !cnt^":"^src)) slst;
 *)
-  List.iter (fun src -> fprintf fd "%s/%s " srcpath src) slst;
+  List.iter (fun src -> if src.[0] == '/' then fprintf fd "%s " src else fprintf fd "%s/%s " srcpath src) slst;
   fprintf fd " } \n";
   fprintf fd "set_top r:/WORK/%s\n" f;
   fprintf fd "read_sverilog -container i -libname WORK -12 {";
