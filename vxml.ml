@@ -433,7 +433,9 @@ let rec cell_hier = function
 let rec categorise itms = function
 | XML(rw_lst) -> catlst itms rw_lst
 | DT(dtyp, num, nam, attr_list, rw_list) ->
+(*
     print_endline (dtyp^":"^num^":"^nam);
+*)
     Hashtbl.add typetable (int_of_string num) (dtyp,nam,attr_list,rw_list)
 | RDT(str1, str2, str3, str4, rw_lst) -> catlst itms rw_lst
 | EITM(str1, str2, str3, str4, rw_lst) -> catlst itms rw_lst
@@ -514,7 +516,7 @@ let dump f (source, line, modul) =
   let srcpath = "/local/scratch/jrrk2/ariane-vcs-regression/ariane" in
   let outnam f = f^"_translate.v" in
   let outtcl = "./"^f^"_fm.tcl" in
-  print_endline ("f \""^f^"\";; /* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl^" */");
+  if true then print_endline ("f \""^f^"\";; /* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl^" */");
   let fd = open_out outtcl in
   fprintf fd "#!/opt/synopsys/fm_vO-2018.06-SP3/bin/fm_shell -f\n";
   fprintf fd "read_sverilog -container r -libname WORK -12 { ";
@@ -522,7 +524,9 @@ let dump f (source, line, modul) =
   let iflst = if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else [] in
   let hlst = List.sort_uniq compare (source :: List.map (fun k -> let (s,l,_) = if Hashtbl.mem modules k then Hashtbl.find modules k else ("not_found", 0, empty_itms false) in s) iflst) in
   let slst = !plst @ hlst in
-  let cnt = ref 0 in List.iter (fun src -> incr cnt; print_endline (string_of_int !cnt^":"^src)) slst;
+(*
+ let cnt = ref 0 in List.iter (fun src -> incr cnt; print_endline (string_of_int !cnt^":"^src)) slst;
+*)
   List.iter (fun src -> fprintf fd "%s/%s " srcpath src) slst;
   fprintf fd " } \n";
   fprintf fd "set_top r:/WORK/%s\n" f;
@@ -538,7 +542,10 @@ let dump f (source, line, modul) =
   Unix.chmod outtcl 0o740;
   let fd = open_out (outnam f) in
   fprintf fd "module %s(" f;
-  let delim = ref "" in List.iter (fun (io, idx, dir, kind, lst) ->
+  let delim = ref "" in List.iter (fun (io, idx, dir, kind, lst) -> let wid = findmembers idx in
+                 if wid > 1 then
+                   fprintf fd "%s\n\t%s\tlogic [%d:0]\t%s" !delim dir (wid-1) io
+                 else
                  fprintf fd "%s\n\t%s\t%s\t%s" !delim dir kind io;
                  delim := ",";
                  ) (List.rev !(modul.io));
