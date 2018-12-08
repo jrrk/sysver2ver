@@ -68,7 +68,8 @@ type arithop =
 type rw =
 | XML of rw list
 | DT of string * string * string * (string*string) list * rw list
-| RDT of string * string * string * string * rw list
+| RDT of string * int * string * int * rw list
+| EITM of string * string * string * int * rw list
 | IO of string * int * string * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * string * int
@@ -123,6 +124,8 @@ type rw =
 | CELLS of rw list
 | CELL of string * string * string * string *rw list
 | POSNEG of string*string
+| NEGNEG of string*string
+| POSEDGE of string
 | COMB
 | INITIAL
 | FINAL
@@ -142,10 +145,23 @@ type itms = {
   inst: (string*string*string list) list ref;
 }
 
+val exprothlst : rw list ref
+val stmtothlst : rw list ref
+val portothlst : rw list ref
+val iothlst : rw list ref
+val csothlst : rw list ref
+val bgnothlst : rw list ref
+val itmothlst : rw list ref
+val catothlst : rw list ref
+val cellothlst : rw list ref
+val posneglst : rw list list ref
+val typothlst : (string * string * (string * string) list * rw list) list ref
+val memothlst : rw list ref
+
 val modules : (string, string * int * itms) Hashtbl.t
 val packages : (string, string * int * itms) Hashtbl.t
 val hierarchy : (string, string list) Hashtbl.t
-val typetable : (string, string*string*(string*string) list*rw list) Hashtbl.t
+val typetable : (int, string*string*(string*string) list*rw list) Hashtbl.t
 
-val translate : string -> int * (int * int)
+val translate : Xml.xml list ref -> string -> int * (int * int)
 val dump : string -> string * int * itms -> unit
