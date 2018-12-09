@@ -312,15 +312,15 @@ let cmpopv = function
 
 let logopv = function
 | Lunknown -> "???"
-| Land -> "&"
-| Lredand -> "&&"
-| Lor -> "|"
-| Lredor -> "||"
-| Lxor -> "^"
-| Lredxor -> "^^"
-| Lshiftl -> "<<"
-| Lshiftr -> ">>"
-| Lshiftrs -> ">>"
+| Land -> " & "
+| Lredand -> " && "
+| Lor -> " | "
+| Lredor -> " || "
+| Lxor -> " ^ "
+| Lredxor -> " ^^ "
+| Lshiftl -> " << "
+| Lshiftr -> " >> "
+| Lshiftrs -> " >> "
 
 let arithopv = function
 | Aadd -> "+"
@@ -334,11 +334,11 @@ let cexp exp = try Scanf.sscanf exp "%d'h%x" (fun b n -> (b,n)) with err -> (-1,
 let rec expr = function
 | VRF (id, []) -> id
 | CNST (cexp, []) -> cexp
-| UNRY (op, expr1 :: []) -> (unaryopv op^expr expr1)
-| CMP (op, expr2 :: expr1 :: []) -> (expr expr1^cmpopv op^expr expr2)
-| LOGIC (op, expr1 :: []) -> (logopv op^expr expr1)
-| LOGIC (op, expr2 :: expr1 :: []) -> (expr expr1^logopv op^expr expr2)
-| ARITH (op, expr2 :: expr1 :: []) -> (expr expr1^arithopv op^expr expr2)
+| UNRY (op, expr1 :: []) -> "("^unaryopv op^expr expr1^")"
+| CMP (op, expr1 :: expr2 :: []) -> "("^expr expr1^cmpopv op^expr expr2^")"
+| LOGIC (op, expr1 :: []) -> "("^logopv op^expr expr1^")"
+| LOGIC (op, expr1 :: expr2 :: []) -> "("^expr expr1^logopv op^expr expr2^")"
+| ARITH (op, expr1 :: expr2 :: []) -> "("^expr expr1^arithopv op^expr expr2^")"
 | SEL (expr1 :: strt :: wid :: []) ->
     let (b,n) = cexp (expr wid) and (b',n') = cexp (expr strt) in
     let s = expr expr1^if n = 1 then "["^string_of_int n'^"]"
