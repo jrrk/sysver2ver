@@ -518,27 +518,24 @@ and findmembers idx = if Hashtbl.mem typetable idx then
     wid' else 1
 
 let dump f (source, line, modul) =
-  let srcpath = "/local/scratch/jrrk2/ariane-vcs-regression/ariane" in
+  let srcpath = try Sys.getenv "XMLSRCPATH" with err -> "." in
   let outnam f = f^"_translate.v" in
   let outtcl = "./"^f^"_fm.tcl" in
   if true then print_endline ("f \""^f^"\";; /* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl^" */");
   let fd = open_out outtcl in
   fprintf fd "#!/opt/synopsys/fm_vO-2018.06-SP3/bin/fm_shell -f\n";
-  fprintf fd "read_sverilog -container r -libname WORK -12 { ";
+  fprintf fd "read_sverilog -container r -libname WORK -12 { \\\n";
   let plst = ref [] in Hashtbl.iter (fun _ (s,_,_) -> plst := s :: !plst) packages;
   let iflst = if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else [] in
   let hlst = List.sort_uniq compare (source :: List.map (fun k -> let (s,l,_) = if Hashtbl.mem modules k then Hashtbl.find modules k else ("not_found", 0, empty_itms false) in s) iflst) in
   let slst = !plst @ hlst in
-(*
- let cnt = ref 0 in List.iter (fun src -> incr cnt; print_endline (string_of_int !cnt^":"^src)) slst;
-*)
-  List.iter (fun src -> if src.[0] == '/' then fprintf fd "%s " src else fprintf fd "%s/%s " srcpath src) slst;
-  fprintf fd " } \n";
+  List.iter (fun src -> if src.[0] == '/' then fprintf fd "%s \\\n" src else fprintf fd "%s/%s \\\n" srcpath src) slst;
+  fprintf fd "}\n";
   fprintf fd "set_top r:/WORK/%s\n" f;
-  fprintf fd "read_sverilog -container i -libname WORK -12 {";
+  fprintf fd "read_sverilog -container i -libname WORK -12 { \\\n";
   let hlst' = List.sort_uniq compare (f :: iflst) in
-  List.iter (fun nam -> fprintf fd "%s " (outnam nam)) hlst';
-  fprintf fd " } \n";
+  List.iter (fun nam -> fprintf fd "%s \\\n" (outnam nam)) hlst';
+  fprintf fd "}\n";
   fprintf fd "set_top i:/WORK/%s\n" f;
   fprintf fd "match\n";
   fprintf fd "verify\n";
