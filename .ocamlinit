@@ -6,10 +6,12 @@ open Vxml
 let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/obj_dir/Vdmi_jtag.xml";;
 let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/work-xml/Variane_testharness.xml";;
 let xmlf = "obj_dir/Vjtag_xilinx_fixed.xml";;
-*)
-
+let xmlf = "obj_dir/Vdmi_testharness_0.xml";;
 let xmlf = "obj_dir/Vblif01g.xml";;
 let xmlf = "obj_dir/Vonehot16.xml";;
+*)
+
+let xmlf = "obj_dir/Vinterface_test.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml) = Vxml.translate errlst xmlf;;

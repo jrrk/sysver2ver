@@ -111,7 +111,7 @@ type rw =
 | IF of rw list
 | INIT of string * rw list
 | IRNG of rw list
-| IFC of string * rw list
+| IFC of string * string * rw list
 | IRDT of string * rw list
 | IMP of string * rw list
 | IMRF of string * rw list
@@ -127,6 +127,7 @@ type rw =
 | NL of rw list
 | CELLS of rw list
 | CELL of string * string * string * string * rw list
+| POSPOS of string*string
 | POSNEG of string*string
 | NEGNEG of string*string
 | POSEDGE of string
@@ -237,7 +238,7 @@ let rec rw' errlst = function
 | Xml.Element ("varxref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> XRF (nam, List.map (rw' errlst) xlst)
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' errlst) xlst)
 | Xml.Element ("replicate"|"initarray"|"streaml"|"extends"|"powsu" as op, [("fl", _); ("dtype_id", tid)], xlst) -> REPL (op, List.map (rw' errlst) xlst)
-| Xml.Element ("iface", [("fl", _); ("name", bus); ("origName", bus')], xlst) -> IFC (bus, List.map (rw' errlst) xlst)
+| Xml.Element ("iface", [("fl", src); ("name", bus); ("origName", bus')], xlst) -> IFC (src, bus, List.map (rw' errlst) xlst)
 | Xml.Element ("ifacerefdtype", [("fl", _); ("id", num)], xlst) -> IRDT (num, List.map (rw' errlst) xlst)
 | Xml.Element ("modport", [("fl", _); ("name", port)], xlst) -> IMP (port, List.map (rw' errlst) xlst)
 | Xml.Element ("modportvarref", [("fl", _); ("name", member)], xlst) -> IMRF (member, List.map (rw' errlst) xlst)
@@ -263,11 +264,13 @@ type itms = {
   init: (rw*string list) list ref;
   func: (string*string list) list ref;
   gen: (string list) list ref;
+  imp : string list list ref;
   inst: (string*string*string list) list ref;
 }
 
 let modules = Hashtbl.create 255
 let packages = Hashtbl.create 255
+let interfaces = Hashtbl.create 255
 let files = Hashtbl.create 255
 let hierarchy = Hashtbl.create 255
 let typetable = Hashtbl.create 255
@@ -280,6 +283,7 @@ alwys=ref [];
 init=ref [];
 func=ref [];
 gen=ref [];
+imp=ref [];
 inst=ref [] }
 let exprothlst = ref []
 let stmtothlst = ref []
@@ -408,6 +412,8 @@ let rec catitm pth itms = function
 | TYP(str1, []) -> itms.typ := str1 :: !(itms.typ)
 | INST(str1, str2, port_lst) -> let pth = if String.length pth > 0 then pth^"_"^str1 else str1 in
     itms.inst := (pth, str2, List.map portconn (List.rev port_lst)) :: !(itms.inst)
+| ALWYS(SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("POS", [VRF (rst, [])]) :: []) :: rw_lst) ->
+    itms.alwys := (POSPOS(ck,rst), rw_lst) :: !(itms.alwys)    
 | ALWYS(SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
     itms.alwys := (POSEDGE(ck), rw_lst) :: !(itms.alwys)
 | ALWYS(SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, [])]) :: SNITM ("NEG", [VRF (rst, [])]) :: []) :: rw_lst) ->
@@ -425,6 +431,7 @@ let rec catitm pth itms = function
     List.iter (catitm (pth^"_"^pth') itms) rw_lst
 | FNC(str1, rw_lst) -> itms.func := (str1, List.map stmt rw_lst) :: !(itms.func)
 | IF(rw_lst) -> itms.gen := (List.map stmt rw_lst) :: !(itms.gen)
+| IMP(str1, rw_lst) -> itms.imp := (List.map (function IMRF(str1, []) -> str1 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst") rw_lst) :: !(itms.imp)
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
 
 let find_source origin =
@@ -486,13 +493,15 @@ let rec categorise itms = function
     let itms = empty_itms false in
     List.iter (catitm str1 itms) rw_lst;
     Hashtbl.add packages str1 (source, line, itms)
+| IFC(origin, str1, rw_lst) ->
+    let (source, line) = find_source origin in
+    let itms = empty_itms false in
+    List.iter (catitm str1 itms) rw_lst;
+    Hashtbl.add interfaces str1 (source, line, itms, rw_lst)
 | RNG(rw_lst) -> catlst itms rw_lst
 | SNTRE(rw_lst) -> catlst itms rw_lst
 | IRNG(rw_lst) -> catlst itms rw_lst
-| IFC(str1, rw_lst) -> catlst itms rw_lst
 | IRDT(str1, rw_lst) -> catlst itms rw_lst
-| IMP(str1, rw_lst) -> catlst itms rw_lst
-| IMRF(str1, rw_lst) -> catlst itms rw_lst
 | JMPL(rw_lst) -> catlst itms rw_lst
 | JMPG(rw_lst) -> catlst itms rw_lst
 | CS(rw_lst) -> catlst itms rw_lst
@@ -516,7 +525,7 @@ let rec cntbasic = function
 | ("structdtype",_,[],rw_lst) -> fold1 (+) (List.map cntmembers rw_lst)
 | ("uniondtype",_,[],rw_lst) -> fold1 (max) (List.map cntmembers rw_lst)
 | ("basicdtype", ("logic"|"integer"|"int"), [("left", hi); ("right", lo)], []) -> (int_of_string hi) - (int_of_string lo) + 1
-| ("basicdtype", "logic", [], []) -> 1
+| ("basicdtype", ("logic"|"bit"), [], []) -> 1
 | oth -> typothlst := oth :: !typothlst; failwith "typothlst"
 
 and cntmembers = function
