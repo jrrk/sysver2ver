@@ -8,7 +8,7 @@ let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/work-xml/Variane_t
 let xmlf = "obj_dir/Vjtag_xilinx_fixed.xml";;
 *)
 
-let xmlf = "obj_dir/Vblif01f.xml";;
+let xmlf = "obj_dir/Vblif01g.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml) = Vxml.translate errlst xmlf;;
