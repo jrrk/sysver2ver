@@ -9,6 +9,7 @@ let xmlf = "obj_dir/Vjtag_xilinx_fixed.xml";;
 *)
 
 let xmlf = "obj_dir/Vblif01g.xml";;
+let xmlf = "obj_dir/Vonehot16.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml) = Vxml.translate errlst xmlf;;

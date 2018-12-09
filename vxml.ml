@@ -346,15 +346,16 @@ let rec expr = function
 | LOGIC (op, expr1 :: []) -> "("^logopv op^expr expr1^")"
 | LOGIC (op, expr1 :: expr2 :: []) -> "("^expr expr1^logopv op^expr expr2^")"
 | ARITH (op, expr1 :: expr2 :: []) -> "("^expr expr1^arithopv op^expr expr2^")"
+| SEL ((VRF _ as expr1) :: expr2 :: (CNST _ as wid) :: []) ->
+    let (b,n) = cexp (expr wid) in
+    let s = expr expr1^if n = 1 then "["^expr expr2^"]"
+    else "["^expr expr2^"+:"^string_of_int n^"]" in
+    s
+| SEL (expr1 :: CNST ("32'h0", []) :: (CNST _ as wid) :: []) -> expr expr1
 | SEL (expr1 :: (CNST _ as strt) :: wid :: []) ->
     let (b,n) = cexp (expr wid) and (b',n') = cexp (expr strt) in
     let s = expr expr1^if n = 1 then "["^string_of_int n'^"]"
     else "["^string_of_int (n'+n-1)^":"^string_of_int n'^"]" in
-    s
-| SEL (expr1 :: expr2 :: (CNST _ as wid) :: []) ->
-    let (b,n) = cexp (expr wid) in
-    let s = expr expr1^if n = 1 then "["^expr expr2^"]"
-    else "["^expr expr2^"+:"^string_of_int n^"]" in
     s
 | ASEL (VRF (lval, []) :: expr1 :: []) -> lval^"["^expr expr1^"]"
 | CND (expr1 :: lft :: rght :: []) -> expr expr1^" ? "^expr lft^" : "^expr rght
