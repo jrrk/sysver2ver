@@ -298,7 +298,7 @@ let unaryopv = function
 | Unknown -> "???"
 | Unot -> " ~ "
 | Unegate -> " - "
-| Uextend -> "extend"
+| Uextend -> "???"
 
 let cmpopv = function
 | Cunknown -> "???"
@@ -340,6 +340,7 @@ let cexp exp = try Scanf.sscanf exp "%d'h%x" (fun b n -> (b,n)) with err -> (-1,
 let rec expr = function
 | VRF (id, []) -> id
 | CNST (cexp, []) -> cexp
+| UNRY (Uextend, expr1 :: []) -> "{1'b0,"^expr expr1^"}"
 | UNRY (op, expr1 :: []) -> "("^unaryopv op^expr expr1^")"
 | CMP (op, expr1 :: expr2 :: []) -> "("^expr expr1^cmpopv op^expr expr2^")"
 | LOGIC (op, expr1 :: []) -> "("^logopv op^expr expr1^")"
