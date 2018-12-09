@@ -1,14 +1,7 @@
-open Vxml
-
-(*
-let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/obj_dir/Vdmi_jtag.xml";;
-*)
-
-let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/work-xml/Variane_testharness.xml";;
-let xmlf = "obj_dir/Vjtag_xilinx_fixed.xml";;
+open Vxml;;
 
 let errlst = ref [] in
-let (line,range) = Vxml.translate (ref []) Sys.argv.(1) in
+let (line,range,rwxml) = Vxml.translate (ref []) Sys.argv.(1) in
 List.iter (fun l -> Printf.printf "%d:" (List.length l)) [
 !exprothlst;
 !stmtothlst;

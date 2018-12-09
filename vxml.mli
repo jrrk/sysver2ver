@@ -139,7 +139,6 @@ type itms = {
   typ: string list ref;
   alwys: (rw*rw list) list ref;
   init: (rw*string list) list ref;
-  bgn: (string*itms) list ref;
   func: (string*string list) list ref;
   gen : string list list ref;
   inst: (string*string*string list) list ref;
@@ -163,5 +162,5 @@ val packages : (string, string * int * itms) Hashtbl.t
 val hierarchy : (string, string list) Hashtbl.t
 val typetable : (int, string*string*(string*string) list*rw list) Hashtbl.t
 
-val translate : Xml.xml list ref -> string -> int * (int * int)
+val translate : Xml.xml list ref -> string -> int * (int * int) * rw
 val dump : string -> string * int * itms -> unit

@@ -257,7 +257,6 @@ type itms = {
   typ: string list ref;
   alwys: (rw*rw list) list ref;
   init: (rw*string list) list ref;
-  bgn: (string*itms) list ref;
   func: (string*string list) list ref;
   gen: (string list) list ref;
   inst: (string*string*string list) list ref;
@@ -275,7 +274,6 @@ ca=ref [];
 typ=ref [];
 alwys=ref [];
 init=ref [];
-bgn=ref [];
 func=ref [];
 gen=ref [];
 inst=ref [] }
@@ -389,13 +387,14 @@ let rec stmt = function
 | CNST(cexpr, []) -> cexpr
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
 
-let rec catitm itms = function
+let rec catitm pth itms = function
 | IO(str1, int1, str2, str3, clst) -> itms.io := (str1, int1, str2, str3, List.map ioconn clst) :: !(itms.io)
 | VAR(str1, int1, str2) -> itms.v := (str1, int1, str2, -1) :: !(itms.v)
 | IVAR(str1, int1, str2, int2) -> itms.v := (str1, int1, str2, int2) :: !(itms.v)
 | CA(rght::lft::[]) -> itms.ca := (expr lft, expr rght) :: !(itms.ca)
 | TYP(str1, []) -> itms.typ := str1 :: !(itms.typ)
-| INST(str1, str2, port_lst) -> itms.inst := (str1, str2, List.map portconn (List.rev port_lst)) :: !(itms.inst)
+| INST(str1, str2, port_lst) -> let pth = if String.length pth > 0 then pth^"_"^str1 else str1 in
+    itms.inst := (pth, str2, List.map portconn (List.rev port_lst)) :: !(itms.inst)
 | ALWYS(SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
     itms.alwys := (POSEDGE(ck), rw_lst) :: !(itms.alwys)
 | ALWYS(SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, [])]) :: SNITM ("NEG", [VRF (rst, [])]) :: []) :: rw_lst) ->
@@ -409,10 +408,8 @@ let rec catitm itms = function
 | ALWYS(rw_lst) -> itms.alwys := (COMB, rw_lst) :: !(itms.alwys)
 | INIT ("initial", rw_lst) -> itms.init := (INITIAL, List.map stmt rw_lst) :: !(itms.init)
 | INIT ("final", rw_lst) -> itms.init := (FINAL, List.map stmt rw_lst) :: !(itms.init)
-| BGN(str1, rw_lst) ->
-    let itms = empty_itms false in
-    List.iter (catitm itms) rw_lst;
-    itms.bgn := (str1, itms) :: !(itms.bgn)
+| BGN(str1, rw_lst) -> let pth' = String.map (function ('A'..'Z' | 'a'..'z' | '0'..'9') as ch -> ch | _ -> '_') str1 in
+    List.iter (catitm (pth^"_"^pth') itms) rw_lst
 | FNC(str1, rw_lst) -> itms.func := (str1, List.map stmt rw_lst) :: !(itms.func)
 | IF(rw_lst) -> itms.gen := (List.map stmt rw_lst) :: !(itms.gen)
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
@@ -469,12 +466,12 @@ let rec categorise itms = function
     let (source, line) = find_source origin in
     let top = match attr_list with ("topModule", "1") :: [] -> true | _ -> false in
     let itms = empty_itms top in
-    List.iter (catitm itms) rw_lst;
+    List.iter (catitm "" itms) rw_lst;
     Hashtbl.add modules str1 (source, line, itms)
 | PKG(origin, str1, rw_lst) ->
     let (source, line) = find_source origin in
     let itms = empty_itms false in
-    List.iter (catitm itms) rw_lst;
+    List.iter (catitm str1 itms) rw_lst;
     Hashtbl.add packages str1 (source, line, itms)
 | RNG(rw_lst) -> catlst itms rw_lst
 | SNTRE(rw_lst) -> catlst itms rw_lst
@@ -586,7 +583,7 @@ let dump f (source, line, modul) =
   List.iter (fun (inst, kind, lst) ->
                  fprintf fd "\t%s %s (" kind inst;
                  let delim = ref "" in List.iter (fun term -> fprintf fd "%s\n\t%s" !delim term; delim := ",") (List.rev lst);
-                 fprintf fd "\n\t);\n";
+                 fprintf fd "\n\t);\n\n";
                  ) (List.rev !(modul.inst));
   fprintf fd "\n";
   fprintf fd "endmodule\n";
@@ -601,6 +598,6 @@ let translate errlst xmlf =
     categorise (empty_itms false) rwxml;
     print_endline "MODULES:";
     Hashtbl.iter dump modules;
-    (line,range)
+    (line,range,rwxml)
     
 

@@ -4,13 +4,14 @@ open Vxml
 
 (*
 let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/obj_dir/Vdmi_jtag.xml";;
-*)
-
 let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/work-xml/Variane_testharness.xml";;
 let xmlf = "obj_dir/Vjtag_xilinx_fixed.xml";;
+*)
+
+let xmlf = "obj_dir/Vblif01a.xml";;
 
 let errlst = ref [];;
-let (line,range) = Vxml.translate errlst xmlf;;
+let (line,range,rwxml) = Vxml.translate errlst xmlf;;
 
 let f k = Hashtbl.find Vxml.modules k;;
 let p k = Hashtbl.find Vxml.packages k;;

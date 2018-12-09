@@ -1,3 +1,5 @@
+all: vxml vxmlmain
+
 vxml: vxml.mli vxml.ml
 	ocamlmktop -I `ocamlfind query xml-light` unix.cma xml-light.cma vxml.mli vxml.ml -o $@
 
