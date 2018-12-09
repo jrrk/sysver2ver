@@ -53,7 +53,9 @@ type logop =
 | Lor
 | Lredor
 | Lxor
+| Lxnor
 | Lredxor
+| Lredxnor
 | Lshiftl
 | Lshiftr
 | Lshiftrs

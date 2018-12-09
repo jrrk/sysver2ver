@@ -55,7 +55,9 @@ type logop =
 | Lor
 | Lredor
 | Lxor
+| Lxnor
 | Lredxor
+| Lredxnor
 | Lshiftl
 | Lshiftr
 | Lshiftrs
@@ -164,7 +166,9 @@ let logop = function
 |"or" -> Lor
 |"redor" -> Lredor
 |"xor" -> Lxor
+|"xnor" -> Lxnor
 |"redxor" -> Lredxor
+|"redxnor" -> Lredxnor
 |"shiftl" -> Lshiftl
 |"shiftr" -> Lshiftr
 |"shiftrs" -> Lshiftrs
@@ -210,7 +214,7 @@ let rec rw' errlst = function
 | Xml.Element ("assigndly", [("fl", _); ("dtype_id", tid)], xlst) -> ASGNDLY (List.map (rw' errlst) xlst)
 | Xml.Element ("if", [("fl", _)], xlst) -> IF (List.map (rw' errlst) xlst)
 | Xml.Element ("add"|"sub"|"mul"|"muls" as op, [("fl", _); ("dtype_id", tid)], xlst) -> ARITH (arithop op, List.map (rw' errlst) xlst)
-| Xml.Element ("and"|"redand"|"or"|"redor"|"xor"|"redxor"|"shiftl"|"shiftr"|"shiftrs" as log,
+| Xml.Element ("and"|"redand"|"or"|"redor"|"xor"|"redxor"|"xnor"|"redxnor"|"shiftl"|"shiftr"|"shiftrs" as log,
                [("fl", _); ("dtype_id", tid)], xlst) -> LOGIC (logop log, List.map (rw' errlst) xlst)
 | Xml.Element ("eq"|"neq"|"gt"|"gts"|"gte"|"eqwild"|"neqwild"|"ltes"|"lte"|"lt"|"lts" as cmp, [("fl", _); ("dtype_id", tid)], xlst) -> CMP (cmpop cmp, List.map (rw' errlst) xlst)
 | Xml.Element ("initial"|"final" as action, [("fl", _)], xlst) -> INIT (action, List.map (rw' errlst) xlst)
@@ -292,23 +296,23 @@ let memothlst = ref []
 
 let unaryopv = function
 | Unknown -> "???"
-| Unot -> "!"
-| Unegate -> "-"
+| Unot -> " ~ "
+| Unegate -> " - "
 | Uextend -> "extend"
 
 let cmpopv = function
 | Cunknown -> "???"
-| Ceq -> "=="
-| Cneq -> "!="
-| Cgt -> ">"
-| Cgts -> ">"
-| Cgte -> ">="
-| Ceqwild -> "=="
-| Cneqwild -> "!="
-| Cltes -> "<="
-| Clte -> "<="
-| Clt -> "<"
-| Clts -> "<"
+| Ceq -> " == "
+| Cneq -> " != "
+| Cgt -> " > "
+| Cgts -> " > "
+| Cgte -> " >= "
+| Ceqwild -> " == "
+| Cneqwild -> " != "
+| Cltes -> " <= "
+| Clte -> " <= "
+| Clt -> " < "
+| Clts -> " < "
 
 let logopv = function
 | Lunknown -> "???"
@@ -317,7 +321,9 @@ let logopv = function
 | Lor -> " | "
 | Lredor -> " || "
 | Lxor -> " ^ "
+| Lxnor -> " ~^ "
 | Lredxor -> " ^^ "
+| Lredxnor -> " ~^^ "
 | Lshiftl -> " << "
 | Lshiftr -> " >> "
 | Lshiftrs -> " >> "
