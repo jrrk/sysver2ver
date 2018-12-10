@@ -110,9 +110,8 @@ type rw =
 | INIT of string * rw list
 | IRNG of rw list
 | IFC of string * string * rw list
-| IRDT of string * rw list
 | IMP of string * rw list
-| IMRF of string * rw list
+| IMRF of string * string * rw list
 | JMPL of rw list
 | JMPG of rw list
 | CS of rw list
@@ -144,7 +143,7 @@ type itms = {
   init: (rw*string list) list ref;
   func: (string*string list) list ref;
   gen : string list list ref;
-  imp : string list list ref;
+  imp : (string*string) list list ref;
   inst: (string*string*string list) list ref;
 }
 
@@ -163,9 +162,10 @@ val memothlst : rw list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val packages : (string, string * int * itms) Hashtbl.t
-val hierarchy : (string, string list) Hashtbl.t
+val hierarchy : (string, (string * string) list) Hashtbl.t
 val typetable : (int, string*string*(string*string) list*rw list) Hashtbl.t
 val interfaces : (string, string * int * itms * rw list) Hashtbl.t
+val top : (string * string) list ref
 
-val translate : Xml.xml list ref -> string -> int * (int * int) * rw
+val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml
 val dump : string -> string * int * itms -> unit

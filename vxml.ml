@@ -112,9 +112,8 @@ type rw =
 | INIT of string * rw list
 | IRNG of rw list
 | IFC of string * string * rw list
-| IRDT of string * rw list
 | IMP of string * rw list
-| IMRF of string * rw list
+| IMRF of string * string * rw list
 | JMPL of rw list
 | JMPG of rw list
 | CS of rw list
@@ -186,9 +185,16 @@ let rec rw' errlst = function
 | Xml.Element ("verilator_xml", [], xlst) -> XML (List.map (rw' errlst) xlst)
 | Xml.Element ("files"|"module_files" as fils, [], xlst) -> FILS (fils, List.map (rw' errlst) xlst)
 | Xml.Element ("file", [("id", encoding); ("filename", nam); ("language", "1800-2017")], []) -> FIL (encoding, nam)
-| Xml.Element ("netlist", [], xlst) -> NL (List.map (rw' errlst) xlst)
+| Xml.Element ("netlist", [], xlst) -> NL (List.rev(List.map (rw' errlst) xlst))
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("dir", dir); ("vartype", typ); ("origName", nam')], xlst) ->
                IO (nam, int_of_string tid, dir, typ, List.map (rw' errlst) xlst)
+| Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", ("ifaceref" as typ)); ("origName", nam')], []) ->
+               let m = "__Viftop" in
+	       let lm = String.length m in
+	       let l = String.length nam in if l <= lm || String.sub nam (l-lm) lm <> m then
+	       IO (nam, int_of_string tid, "", typ, [])
+	       else
+	       VAR (nam, int_of_string tid, typ)
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')], []) ->
                VAR (nam, int_of_string tid, typ)
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')],
@@ -239,9 +245,9 @@ let rec rw' errlst = function
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' errlst) xlst)
 | Xml.Element ("replicate"|"initarray"|"streaml"|"extends"|"powsu" as op, [("fl", _); ("dtype_id", tid)], xlst) -> REPL (op, List.map (rw' errlst) xlst)
 | Xml.Element ("iface", [("fl", src); ("name", bus); ("origName", bus')], xlst) -> IFC (src, bus, List.map (rw' errlst) xlst)
-| Xml.Element ("ifacerefdtype", [("fl", _); ("id", num)], xlst) -> IRDT (num, List.map (rw' errlst) xlst)
+| Xml.Element ("ifacerefdtype" as ifr, [("fl", _); ("id", num); ("modportname", nam)], xlst) -> DT (ifr, num, nam, [], List.map (rw' errlst) xlst)
 | Xml.Element ("modport", [("fl", _); ("name", port)], xlst) -> IMP (port, List.map (rw' errlst) xlst)
-| Xml.Element ("modportvarref", [("fl", _); ("name", member)], xlst) -> IMRF (member, List.map (rw' errlst) xlst)
+| Xml.Element ("modportvarref", [("fl", _); ("name", member); ("direction", dir)], xlst) -> IMRF (member, dir, List.map (rw' errlst) xlst)
 | Xml.Element ("basicdtype"|"structdtype"|"uniondtype" as dtyp, ("fl", _) :: ("id", num) :: ("name", nam) :: rnglst, xlst) ->
     DT (dtyp, num, nam, rnglst, List.map (rw' errlst) xlst)
 | Xml.Element ("refdtype"|"enumdtype"|"memberdtype"|"paramtypedtype" as dtyp, [("fl", _); ("id", num); ("name", nam); ("sub_dtype_id", subtype)], xlst) -> RDT (dtyp, int_of_string num, nam, int_of_string subtype, List.map (rw' errlst) xlst)
@@ -264,7 +270,7 @@ type itms = {
   init: (rw*string list) list ref;
   func: (string*string list) list ref;
   gen: (string list) list ref;
-  imp : string list list ref;
+  imp : (string*string) list list ref;
   inst: (string*string*string list) list ref;
 }
 
@@ -274,6 +280,7 @@ let interfaces = Hashtbl.create 255
 let files = Hashtbl.create 255
 let hierarchy = Hashtbl.create 255
 let typetable = Hashtbl.create 255
+let top = ref []
 let empty_itms top = { top=top;
 io=ref [];
 v=ref [];
@@ -405,7 +412,14 @@ let rec stmt = function
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
 
 let rec catitm pth itms = function
+| IO(str1, int1, "", "ifaceref", []) ->
+    let (dtype, dir, _, _) = Hashtbl.find typetable int1 in
+    itms.io := (str1, int1, dir, "logic", []) :: !(itms.io)
+
 | IO(str1, int1, str2, str3, clst) -> itms.io := (str1, int1, str2, str3, List.map ioconn clst) :: !(itms.io)
+| VAR(str1, int1, "ifaceref") ->
+    let (dtype, dir, _, _) = Hashtbl.find typetable int1 in
+    itms.v := (str1, int1, dtype, -2) :: !(itms.v)
 | VAR(str1, int1, str2) -> itms.v := (str1, int1, str2, -1) :: !(itms.v)
 | IVAR(str1, int1, str2, int2) -> itms.v := (str1, int1, str2, int2) :: !(itms.v)
 | CA(rght::lft::[]) -> itms.ca := (expr lft, expr rght) :: !(itms.ca)
@@ -431,7 +445,7 @@ let rec catitm pth itms = function
     List.iter (catitm (pth^"_"^pth') itms) rw_lst
 | FNC(str1, rw_lst) -> itms.func := (str1, List.map stmt rw_lst) :: !(itms.func)
 | IF(rw_lst) -> itms.gen := (List.map stmt rw_lst) :: !(itms.gen)
-| IMP(str1, rw_lst) -> itms.imp := (List.map (function IMRF(str1, []) -> str1 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst") rw_lst) :: !(itms.imp)
+| IMP(str1, rw_lst) -> itms.imp := (List.map (function IMRF(str1, str2, []) -> (str1,str2) | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst") rw_lst) :: !(itms.imp)
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
 
 let find_source origin =
@@ -449,7 +463,7 @@ let rec cell_hier = function
 | CELL (_, nam, subnam, hier, rw_lst) ->
    let hier_lst = List.flatten (List.map cell_hier rw_lst) in
    Hashtbl.replace hierarchy subnam hier_lst;
-   subnam :: hier_lst
+   (nam,subnam) :: hier_lst
 | oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
 
 let rec categorise itms = function
@@ -501,7 +515,6 @@ let rec categorise itms = function
 | RNG(rw_lst) -> catlst itms rw_lst
 | SNTRE(rw_lst) -> catlst itms rw_lst
 | IRNG(rw_lst) -> catlst itms rw_lst
-| IRDT(str1, rw_lst) -> catlst itms rw_lst
 | JMPL(rw_lst) -> catlst itms rw_lst
 | JMPG(rw_lst) -> catlst itms rw_lst
 | CS(rw_lst) -> catlst itms rw_lst
@@ -511,7 +524,7 @@ let rec categorise itms = function
 | FILS(str1, rw_lst) -> catlst itms rw_lst
 | FIL(enc, fil) -> Hashtbl.add files enc fil
 | NL(rw_lst) -> catlst itms rw_lst
-| CELLS(rw_lst) -> ignore (List.map cell_hier rw_lst)
+| CELLS(rw_lst) -> top := List.flatten(List.map cell_hier rw_lst)
 | TYP(id, []) -> ()
 | VAR(id, n, id_t) -> ()
 | oth -> catothlst := oth :: !catothlst; failwith "catothlst"
@@ -526,6 +539,7 @@ let rec cntbasic = function
 | ("uniondtype",_,[],rw_lst) -> fold1 (max) (List.map cntmembers rw_lst)
 | ("basicdtype", ("logic"|"integer"|"int"), [("left", hi); ("right", lo)], []) -> (int_of_string hi) - (int_of_string lo) + 1
 | ("basicdtype", ("logic"|"bit"), [], []) -> 1
+| ("ifacerefdtype", _, [], []) -> 0
 | oth -> typothlst := oth :: !typothlst; failwith "typothlst"
 
 and cntmembers = function
@@ -545,7 +559,7 @@ let dump f (source, line, modul) =
   fprintf fd "#!/opt/synopsys/fm_vO-2018.06-SP3/bin/fm_shell -f\n";
   fprintf fd "read_sverilog -container r -libname WORK -12 { \\\n";
   let plst = ref [] in Hashtbl.iter (fun _ (s,_,_) -> plst := s :: !plst) packages;
-  let iflst = if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else [] in
+  let iflst = List.map snd (if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else []) in
   let hlst = List.sort_uniq compare (source :: List.map (fun k -> let (s,l,_) = if Hashtbl.mem modules k then Hashtbl.find modules k else ("not_found", 0, empty_itms false) in s) iflst) in
   let slst = !plst @ hlst in
   List.iter (fun src -> if src.[0] == '/' then fprintf fd "%s \\\n" src else fprintf fd "%s/%s \\\n" srcpath src) slst;
@@ -612,14 +626,33 @@ let dump f (source, line, modul) =
   fprintf fd "\n";
   close_out fd
 
+let iterate f (source, line, modul) =
+    List.iter (fun (inst, kind, iolst) ->
+        if Hashtbl.mem interfaces kind then
+           begin
+           print_endline kind;
+           let (src, lin, intf, _) = Hashtbl.find interfaces kind in
+           List.iter (fun (nam, idx, kind, _) ->
+                 let wid = findmembers idx in
+                 let pth = inst^"_"^nam in
+                 if wid > 1 then
+                   fprintf stdout "\tlogic [%d:0]\t%s;\n" (wid-1) pth
+                 else fprintf stdout "\t%s\t%s;\n" kind pth;
+                ) !(intf.v);
+           end
+        ) !(modul.inst);
+    print_endline (f^" done")
+
 let translate errlst xmlf =
     let xmlerr = ref None in
     let xml = try Xml.parse_file xmlf with Xml.Error err -> xmlerr := Some err; Xml.PCData "Xml.Error" in
     let (line,range) = match !xmlerr with Some (_, errpos) -> (Xml.line errpos, Xml.range errpos) | None -> (0, (0,0)) in
     let rwxml = rw' errlst xml in
     categorise (empty_itms false) rwxml;
-    print_endline "MODULES:";
+    let top = snd(List.hd !top) in
+    print_endline ("toplevel is "^top);
+    iterate top (Hashtbl.find modules top);
     Hashtbl.iter dump modules;
-    (line,range,rwxml)
+    (line,range,rwxml,xml)
     
 

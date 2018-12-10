@@ -1,7 +1,7 @@
 open Vxml;;
 
 let errlst = ref [] in
-let (line,range,rwxml) = Vxml.translate (ref []) Sys.argv.(1) in
+let (line,range,rwxml,xml) = Vxml.translate (ref []) Sys.argv.(1) in
 List.iter (fun l -> Printf.printf "%d:" (List.length l)) [
 !exprothlst;
 !stmtothlst;

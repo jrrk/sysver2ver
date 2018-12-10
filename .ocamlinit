@@ -1,4 +1,6 @@
 #directory "/home/jrrk2/.opam/system/lib/xml-light";;
+#print_depth 10000;;
+#print_length 10000;;
 
 open Vxml
 
@@ -9,12 +11,13 @@ let xmlf = "obj_dir/Vjtag_xilinx_fixed.xml";;
 let xmlf = "obj_dir/Vdmi_testharness_0.xml";;
 let xmlf = "obj_dir/Vblif01g.xml";;
 let xmlf = "obj_dir/Vonehot16.xml";;
+let xmlf = "obj_dir/Vinterface_test.xml";;
 *)
 
-let xmlf = "obj_dir/Vinterface_test.xml";;
+let xmlf = "obj_dir/Vsimple.xml";;
 
 let errlst = ref [];;
-let (line,range,rwxml) = Vxml.translate errlst xmlf;;
+let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;
 
 let f k = Hashtbl.find Vxml.modules k;;
 let p k = Hashtbl.find Vxml.packages k;;

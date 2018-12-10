@@ -12,14 +12,16 @@ module test (input clk, input rst);
    int cnt;
    int cnt_src;
    int cnt_drn;
-
+   int inf_cnt;
+   
    // add all counters
-   assign cnt = cnt_src + cnt_drn + inf.cnt;
+   assign cnt = cnt_src + cnt_drn + inf_cnt;
 
    // interface instance
    handshake inf (
       .clk (clk),
-      .rst (rst)
+      .rst (rst),
+      .cnt (inf_cnt)
    );
 
    // source instance
@@ -52,7 +54,8 @@ interface handshake #(
    parameter int unsigned WC = 32
 )(
    input logic clk,
-   input logic rst
+   input logic rst,
+   output integer cnt  // counter
 );
 
    // modport signals
@@ -61,7 +64,6 @@ interface handshake #(
    logic inc;  // increment
 
    // local signals
-   integer cnt;  // counter
 
    // source
    modport src (
@@ -75,7 +77,7 @@ interface handshake #(
       output grt
    );
 
-   // incremet condition
+   // increment condition
    assign inc = req & grt;
 
    // local logic (counter)
