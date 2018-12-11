@@ -67,22 +67,31 @@ type arithop =
 | Amul
 | Amuls
 
+type dirop = 
+| Dunknown
+| Dinput
+| Doutput
+| Dinout
+| Dvif
+| Dinam of string 
+| Dport of (string * int * dirop * string * string list)
+
 type rw =
 | XML of rw list
 | DT of string * string * string * (string*string) list * rw list
 | RDT of string * int * string * int * rw list
 | EITM of string * string * string * int * rw list
-| IO of string * int * string * string * rw list
+| IO of string * int * dirop * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * string * int
 | CNST of string * rw list
 | VRF of string * rw list
 | TYP of string * rw list
 | FNC of string * rw list
-| INST of string * string * rw list
+| INST of string * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * rw list
-| PORT of string * string * int * rw list
+| PORT of string * dirop * int * rw list
 | CA of rw list
 | UNRY of unaryop * rw list
 | SEL of rw list
@@ -135,8 +144,9 @@ type rw =
 
 type itms = { 
   top: bool;
-  io: (string*int*string*string*string list) list ref;
-  v: (string*int*string*int) list ref;
+  io: (string*int*dirop*string*string list) list ref;
+  v: (string*(int*string*int)) list ref;
+  ir: (string*int) list ref;
   ca: (string*string) list ref;
   typ: string list ref;
   alwys: (rw*rw list) list ref;
@@ -144,7 +154,7 @@ type itms = {
   func: (string*string list) list ref;
   gen : string list list ref;
   imp : (string*string) list list ref;
-  inst: (string*string*string list) list ref;
+  inst: (string*(string*rw list)) list ref;
 }
 
 val exprothlst : rw list ref

@@ -57,10 +57,10 @@ endmodule
 module drain (
    input logic    clk,
    input logic    rst,
-   handshake.dir1 inf1,
-   handshake.dir2 inf2
+   handshake.dir2 inf1,
+   handshake.dir1 inf2
 );
 
-   assign inf2.port2 = inf1.port2;
+   assign inf2.port1 = inf1.port1;
 
 endmodule

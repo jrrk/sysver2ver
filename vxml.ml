@@ -69,22 +69,31 @@ type arithop =
 | Amul
 | Amuls
 
+type dirop = 
+| Dunknown
+| Dinput
+| Doutput
+| Dinout
+| Dvif
+| Dinam of string 
+| Dport of (string * int * dirop * string * string list)
+
 type rw =
 | XML of rw list
 | DT of string * string * string * (string*string) list * rw list
 | RDT of string * int * string * int * rw list
 | EITM of string * string * string * int * rw list
-| IO of string * int * string * string * rw list
+| IO of string * int * dirop * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * string * int
 | CNST of string * rw list
 | VRF of string * rw list
 | TYP of string * rw list
 | FNC of string * rw list
-| INST of string * string * rw list
+| INST of string * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * rw list
-| PORT of string * string * int * rw list
+| PORT of string * dirop * int * rw list
 | CA of rw list
 | UNRY of unaryop * rw list
 | SEL of rw list
@@ -140,6 +149,14 @@ let constnet = function
 | "1'h0" -> "supply0"
 | oth -> "wire"
 
+let dirop = function
+| "output" -> Doutput
+| "input" -> Dinput
+| "inout" -> Dinout
+| "out" -> Doutput
+| "in" -> Dinput
+| oth -> failwith oth
+
 let unaryop = function
 |"not" -> Unot
 |"negate" -> Unegate
@@ -181,20 +198,26 @@ let arithop = function
 |"muls" -> Amuls
 | _ -> Aunknown
 
+let chkvif nam =
+       let m = "__Viftop" in
+       let lm = String.length m in
+       let l = String.length nam in
+       let vif = l > lm && String.sub nam (l-lm) lm = m in
+       (vif, if vif then String.sub nam 0 (l-lm) else nam)
+
 let rec rw' errlst = function
 | Xml.Element ("verilator_xml", [], xlst) -> XML (List.map (rw' errlst) xlst)
 | Xml.Element ("files"|"module_files" as fils, [], xlst) -> FILS (fils, List.map (rw' errlst) xlst)
 | Xml.Element ("file", [("id", encoding); ("filename", nam); ("language", "1800-2017")], []) -> FIL (encoding, nam)
 | Xml.Element ("netlist", [], xlst) -> NL (List.rev(List.map (rw' errlst) xlst))
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("dir", dir); ("vartype", typ); ("origName", nam')], xlst) ->
-               IO (nam, int_of_string tid, dir, typ, List.map (rw' errlst) xlst)
+               IO (nam, int_of_string tid, dirop dir, typ, List.map (rw' errlst) xlst)
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", ("ifaceref" as typ)); ("origName", nam')], []) ->
-               let m = "__Viftop" in
-	       let lm = String.length m in
-	       let l = String.length nam in if l <= lm || String.sub nam (l-lm) lm <> m then
-	       IO (nam, int_of_string tid, "", typ, [])
+	       let (vif, sub) = chkvif nam in
+	       if vif then
+	       VAR (sub, int_of_string tid, typ)
 	       else
-	       VAR (nam, int_of_string tid, typ)
+	       IO (nam, int_of_string tid, Dunknown, typ, [])
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')], []) ->
                VAR (nam, int_of_string tid, typ)
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')],
@@ -203,14 +226,14 @@ let rec rw' errlst = function
 | Xml.Element ("const", [("fl", _); ("name", value); ("dtype_id", tid)], xlst) -> CNST (value, List.map (rw' errlst) xlst)
 | Xml.Element ("contassign", [("fl", _); ("dtype_id", tid)], xlst) -> CA (List.map (rw' errlst) xlst)
 | Xml.Element ("not"|"negate"|"extend" as op, [("fl", _); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' errlst) xlst)
-| Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (nam, List.map (rw' errlst) xlst)
+| Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (snd (chkvif nam), List.map (rw' errlst) xlst)
 | Xml.Element ("instance", [("fl", _); ("name", nam); ("defName", dnam); ("origName", nam')], xlst) ->
-               INST (nam, dnam, List.map (rw' errlst) xlst)
+               INST (nam, (dnam, List.map (rw' errlst) xlst))
 | Xml.Element ("range", [("fl", _)], xlst) -> RNG (List.map (rw' errlst) xlst)
 | Xml.Element ("port", [("fl", _); ("name", nam); ("direction", dir); ("portIndex", idx)], xlst) ->
-               PORT (nam, dir, int_of_string idx, List.map (rw' errlst) xlst)
-| Xml.Element ("port", [("fl", _); ("name", nam); ("portIndex", idx)], xlst) ->
-               PORT (nam, "N/A", int_of_string idx, List.map (rw' errlst) xlst)
+               PORT (nam, dirop dir, int_of_string idx, List.map (rw' errlst) xlst)
+| Xml.Element ("port", [("fl", _); ("name", nam); ("portIndex", idx)], xlst) -> let (vif,sub) = chkvif nam in
+               PORT (sub, Dvif, int_of_string idx, List.map (rw' errlst) xlst)
 | Xml.Element ("sel", [("fl", _); ("dtype_id", tid)], xlst) -> SEL (List.map (rw' errlst) xlst)
 | Xml.Element ("arraysel", [("fl", _); ("dtype_id", tid)], xlst) -> ASEL (List.map (rw' errlst) xlst)
 | Xml.Element ("always", [("fl", _)], xlst) -> ALWYS (List.map (rw' errlst) xlst)
@@ -262,8 +285,9 @@ let rec rw' errlst = function
 
 type itms = { 
   top: bool;
-  io: (string*int*string*string*string list) list ref;
-  v: (string*int*string*int) list ref;
+  io: (string*int*dirop*string*string list) list ref;
+  v: (string*(int*string*int)) list ref;
+  ir: (string*int) list ref;
   ca: (string*string) list ref;
   typ: string list ref;
   alwys: (rw*rw list) list ref;
@@ -271,7 +295,7 @@ type itms = {
   func: (string*string list) list ref;
   gen: (string list) list ref;
   imp : (string*string) list list ref;
-  inst: (string*string*string list) list ref;
+  inst: (string*(string*rw list)) list ref;
 }
 
 let modules = Hashtbl.create 255
@@ -279,11 +303,12 @@ let packages = Hashtbl.create 255
 let interfaces = Hashtbl.create 255
 let files = Hashtbl.create 255
 let hierarchy = Hashtbl.create 255
-let typetable = Hashtbl.create 255
+let (typetable : (int, string*string*(string*string) list*rw list) Hashtbl.t) = Hashtbl.create 255
 let top = ref []
 let empty_itms top = { top=top;
 io=ref [];
 v=ref [];
+ir=ref [];
 ca=ref [];
 typ=ref [];
 alwys=ref [];
@@ -292,6 +317,18 @@ func=ref [];
 gen=ref [];
 imp=ref [];
 inst=ref [] }
+let copy_itms prev = { top=prev.top;
+io=ref !(prev.io);
+v=ref !(prev.v);
+ir=ref !(prev.ir);
+ca=ref !(prev.ca);
+typ=ref !(prev.typ);
+alwys=ref !(prev.alwys);
+init=ref !(prev.init);
+func=ref !(prev.func);
+gen=ref !(prev.gen);
+imp=ref !(prev.imp);
+inst=ref !(prev.inst) }
 let exprothlst = ref []
 let stmtothlst = ref []
 let portothlst = ref []
@@ -346,6 +383,15 @@ let arithopv = function
 | Amuls -> "*"
 | Aunknown -> "???"
 
+let diropv = function
+| Dinput -> "input"
+| Doutput -> "output"
+| Dinout -> "inout"
+| Dvif -> "vif"
+| Dinam str -> str
+| Dport _ -> "ifport"
+| Dunknown -> "inout"
+
 let cexp exp = try Scanf.sscanf exp "%d'h%x" (fun b n -> (b,n)) with err -> (-1,-1)
 
 let rec expr = function
@@ -379,8 +425,8 @@ let rec expr = function
 
 let rec portconn = function
 | VRF (id, []) -> "."^id
-| PORT (id_o, dir, idx, []) -> "."^id_o^" /*"^dir^","^string_of_int idx^"*/"
-| PORT (id_i, dir, idx, expr1 :: []) -> "."^id_i^"("^expr expr1^") /*"^dir^","^string_of_int idx^"*/"
+| PORT (id_o, dir, idx, []) -> "."^id_o^" /*"^diropv dir^","^string_of_int idx^"*/"
+| PORT (id_i, dir, idx, expr1 :: []) -> "."^id_i^"("^expr expr1^") /*"^diropv dir^","^string_of_int idx^"*/"
 | RNG [CNST (lft, []); CNST (rght, [])] -> "/* ["^lft^":"^rght^"] */"
 | oth -> portothlst := oth :: !portothlst; failwith "portothlst"
 
@@ -406,26 +452,23 @@ let rec stmt = function
 | DSPLY (SFMT (fmt, arglst) :: []) -> "$display("^fmt^", "^String.concat ", " (List.map expr arglst)^")"
 | DSPLY (SFMT (fmt, arglst) :: expr1 :: []) -> "$fdisplay("^expr expr1^", "^fmt^", "^String.concat ", " (List.map expr arglst)^")"
 | SYS (fn, arglst) -> "$"^fn^"("^String.concat ", " (List.map expr arglst)^")"
-| IO(str1, int1, str2, str3, []) -> str2^" "^str3^" "^str1
+| IO(str1, int1, str2, str3, []) -> diropv str2^" "^str3^" "^str1
 | JMPL _ -> "jmpl"
 | CNST(cexpr, []) -> cexpr
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
 
 let rec catitm pth itms = function
-| IO(str1, int1, "", "ifaceref", []) ->
+| IO(str1, int1, Dunknown, "ifaceref", []) ->
     let (dtype, dir, _, _) = Hashtbl.find typetable int1 in
-    itms.io := (str1, int1, dir, "logic", []) :: !(itms.io)
-
-| IO(str1, int1, str2, str3, clst) -> itms.io := (str1, int1, str2, str3, List.map ioconn clst) :: !(itms.io)
-| VAR(str1, int1, "ifaceref") ->
-    let (dtype, dir, _, _) = Hashtbl.find typetable int1 in
-    itms.v := (str1, int1, dtype, -2) :: !(itms.v)
-| VAR(str1, int1, str2) -> itms.v := (str1, int1, str2, -1) :: !(itms.v)
-| IVAR(str1, int1, str2, int2) -> itms.v := (str1, int1, str2, int2) :: !(itms.v)
+    itms.io := (str1, int1, Dinam dir, "logic", []) :: !(itms.io)
+| IO(str1, int1, dir, str3, clst) -> itms.io := (str1, int1, dir, str3, List.map ioconn clst) :: !(itms.io)
+| VAR(str1, int1, "ifaceref") -> itms.ir := (str1, int1) :: !(itms.ir)
+| VAR(str1, int1, str2) -> itms.v := (str1, (int1, str2, -1)) :: !(itms.v)
+| IVAR(str1, int1, str2, int2) -> itms.v := (str1, (int1, str2, int2)) :: !(itms.v)
 | CA(rght::lft::[]) -> itms.ca := (expr lft, expr rght) :: !(itms.ca)
 | TYP(str1, []) -> itms.typ := str1 :: !(itms.typ)
-| INST(str1, str2, port_lst) -> let pth = if String.length pth > 0 then pth^"_"^str1 else str1 in
-    itms.inst := (pth, str2, List.map portconn (List.rev port_lst)) :: !(itms.inst)
+| INST(str1, (str2, port_lst)) -> let pth = if String.length pth > 0 then pth^"_"^str1 else str1 in
+    itms.inst := (pth, (str2, List.rev port_lst)) :: !(itms.inst)
 | ALWYS(SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("POS", [VRF (rst, [])]) :: []) :: rw_lst) ->
     itms.alwys := (POSPOS(ck,rst), rw_lst) :: !(itms.alwys)    
 | ALWYS(SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
@@ -577,7 +620,7 @@ let dump f (source, line, modul) =
   Unix.chmod outtcl 0o740;
   let fd = open_out (outnam f) in
   fprintf fd "module %s(" f;
-  let delim = ref "" in List.iter (fun (io, idx, dir, kind, lst) -> let wid = findmembers idx in
+  let delim = ref "" in List.iter (fun (io, idx, dir, kind, lst) -> let wid = findmembers idx and dir = diropv dir in
                  if wid > 1 then
                    fprintf fd "%s\n\t%s\tlogic [%d:0]\t%s" !delim dir (wid-1) io
                  else
@@ -585,7 +628,7 @@ let dump f (source, line, modul) =
                  delim := ",";
                  ) (List.rev !(modul.io));
   fprintf fd "\n);\n\n";
-  List.iter (fun (id, idx, kind, n) -> let wid = findmembers idx in
+  List.iter (fun (id, (idx, kind, n)) -> let wid = findmembers idx in
                  if wid > 1 then
                    fprintf fd "\tlogic [%d:0]\t%s;\n" (wid-1) id
                  else fprintf fd "\t%s\t%s;\n" kind id;
@@ -616,9 +659,9 @@ let dump f (source, line, modul) =
                  ) (List.rev !(modul.alwys));
   fprintf fd "\n";
   fprintf fd "\n";
-  List.iter (fun (inst, kind, lst) ->
+  List.iter (fun (inst, (kind, lst)) ->
                  fprintf fd "\t%s %s (" kind inst;
-                 let delim = ref "" in List.iter (fun term -> fprintf fd "%s\n\t%s" !delim term; delim := ",") (List.rev lst);
+                 let delim = ref "" in List.iter (fun term -> fprintf fd "%s\n\t%s" !delim (portconn term); delim := ",") (List.rev lst);
                  fprintf fd "\n\t);\n\n";
                  ) (List.rev !(modul.inst));
   fprintf fd "\n";
@@ -626,21 +669,69 @@ let dump f (source, line, modul) =
   fprintf fd "\n";
   close_out fd
 
-let iterate f (source, line, modul) =
-    List.iter (fun (inst, kind, iolst) ->
+let rec iterate f (source, line, modul) iolst =
+    let newitms = copy_itms modul in
+    newitms.ir := [];
+    newitms.inst := [];
+    newitms.io := [];
+    let i = ref 0 in List.iter (function
+        | (io, idx, Dinam inam, kind, []) when !i < List.length iolst ->
+        (match List.nth iolst !i with
+            | PORT (id_i, dir, idx, VRF (id, []) :: []) ->
+              newitms.io := (io, idx, Dinam inam, kind, [id_i]) :: !(newitms.io);
+            | oth -> portothlst := oth :: !portothlst; failwith "portothlst"); incr i
+        | (io, idx, dir, kind, lst) ->
+        newitms.io := (io, idx, dir, kind, lst) :: !(newitms.io); incr i
+        ) (List.rev !(modul.io));
+    List.iter (fun (inst, (kind, iolst)) ->
         if Hashtbl.mem interfaces kind then
            begin
-           print_endline kind;
+(*           print_endline ("Interface: "^kind); *)
            let (src, lin, intf, _) = Hashtbl.find interfaces kind in
-           List.iter (fun (nam, idx, kind, _) ->
-                 let wid = findmembers idx in
+           List.iter (fun (nam, (idx, kind, n)) ->
                  let pth = inst^"_"^nam in
-                 if wid > 1 then
-                   fprintf stdout "\tlogic [%d:0]\t%s;\n" (wid-1) pth
-                 else fprintf stdout "\t%s\t%s;\n" kind pth;
+                 newitms.v := (pth, (idx, kind, n)) :: !(newitms.v);
                 ) !(intf.v);
            end
+        else if Hashtbl.mem modules kind then
+           begin
+(*           print_endline ("Instance: "^kind); *)
+           let (src, lin, itms) = Hashtbl.find modules kind in
+           let newiolst = ref [] in
+           List.iter2 (fun (_, _, idir, _, _) -> function
+		       | VRF (id, []) -> fprintf stdout "%s\n" ("."^id)
+                       | PORT (id_o, dir, idx, []) ->
+                           fprintf stdout "%s\n" ("."^id_o^" /*"^diropv dir^","^string_of_int idx^"*/")
+		       | PORT (id_i, Dvif, idx, VRF (id, []) :: []) as pat ->
+                           if List.mem_assoc id !(modul.inst) then
+			       let (inam,_) = List.assoc id !(modul.inst) in
+			       if Hashtbl.mem interfaces inam then (match idir with Dinam iport ->
+				  begin
+				  let (src, lin, intf, imp) = Hashtbl.find interfaces inam in
+				  let imp' = List.filter (function IMP _ -> true | _ -> false) imp in 
+                                  let imp'' = List.map (function IMP(str, lst) -> (str,lst) | _ -> ("",[])) imp' in
+                                  if List.mem_assoc iport imp'' then
+				  List.iter (function IMRF (nam, dir, []) ->
+                                        print_endline (inam^":"^iport^":"^nam^":"^id_i);
+                                        let (idx, kind, _) = List.assoc nam !(intf.v) in
+					newiolst := PORT(id_i^"_"^nam, dirop dir, idx, [VRF(id^"_"^nam, [])]) :: !newiolst
+				       | _ -> ()) (List.assoc iport imp'')
+				  end
+                               | _ -> newiolst := pat :: !newiolst)
+			       else newiolst := pat :: !newiolst
+                           else
+			       newiolst := pat :: !newiolst
+		       | PORT _ as pat -> newiolst := pat :: !newiolst
+		       | RNG [CNST (lft, []); CNST (rght, [])] -> fprintf stdout "%s" ("/* ["^lft^":"^rght^"] */")
+		       | oth -> portothlst := oth :: !portothlst; failwith "portothlst"
+		       ) !(itms.io) iolst;
+	   let kind_opt = kind^"_opt" in
+           newitms.inst := (inst, (kind_opt, !newiolst)) :: !(newitms.inst);
+           if not (Hashtbl.mem modules kind_opt) then
+	       iterate kind (Hashtbl.find modules kind) !newiolst;
+           end
         ) !(modul.inst);
+    Hashtbl.add modules (f^"_opt") (source, line, newitms);
     print_endline (f^" done")
 
 let translate errlst xmlf =
@@ -651,7 +742,7 @@ let translate errlst xmlf =
     categorise (empty_itms false) rwxml;
     let top = snd(List.hd !top) in
     print_endline ("toplevel is "^top);
-    iterate top (Hashtbl.find modules top);
+    iterate top (Hashtbl.find modules top) [];
     Hashtbl.iter dump modules;
     (line,range,rwxml,xml)
     
