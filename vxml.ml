@@ -669,24 +669,13 @@ let dump f (source, line, modul) =
   fprintf fd "\n";
   close_out fd
 
-let rec iterate f (source, line, modul) iolst =
+let rec iterate f (source, line, modul) =
     let newitms = copy_itms modul in
     newitms.ir := [];
     newitms.inst := [];
-    newitms.io := [];
-    let i = ref 0 in List.iter (function
-        | (io, idx, Dinam inam, kind, []) when !i < List.length iolst ->
-        (match List.nth iolst !i with
-            | PORT (id_i, dir, idx, VRF (id, []) :: []) ->
-              newitms.io := (io, idx, Dinam inam, kind, [id_i]) :: !(newitms.io);
-            | oth -> portothlst := oth :: !portothlst; failwith "portothlst"); incr i
-        | (io, idx, dir, kind, lst) ->
-        newitms.io := (io, idx, dir, kind, lst) :: !(newitms.io); incr i
-        ) (List.rev !(modul.io));
     List.iter (fun (inst, (kind, iolst)) ->
         if Hashtbl.mem interfaces kind then
            begin
-(*           print_endline ("Interface: "^kind); *)
            let (src, lin, intf, _) = Hashtbl.find interfaces kind in
            List.iter (fun (nam, (idx, kind, n)) ->
                  let pth = inst^"_"^nam in
@@ -695,13 +684,14 @@ let rec iterate f (source, line, modul) iolst =
            end
         else if Hashtbl.mem modules kind then
            begin
-(*           print_endline ("Instance: "^kind); *)
            let (src, lin, itms) = Hashtbl.find modules kind in
            let newiolst = ref [] in
-           List.iter2 (fun (_, _, idir, _, _) -> function
-		       | VRF (id, []) -> fprintf stdout "%s\n" ("."^id)
-                       | PORT (id_o, dir, idx, []) ->
-                           fprintf stdout "%s\n" ("."^id_o^" /*"^diropv dir^","^string_of_int idx^"*/")
+           let newinnerlst = ref [] in
+	   let previolst = !(itms.io) in
+           List.iter2 (fun ((_, ix, idir, typ, ilst) as inr) -> function
+		       | VRF (id, []) ->
+                           newiolst := PORT(id, idir, ix, [VRF(id, [])]) :: !newiolst;
+                           newinnerlst := inr :: !newinnerlst;
 		       | PORT (id_i, Dvif, idx, VRF (id, []) :: []) as pat ->
                            if List.mem_assoc id !(modul.inst) then
 			       let (inam,_) = List.assoc id !(modul.inst) in
@@ -714,24 +704,39 @@ let rec iterate f (source, line, modul) iolst =
 				  List.iter (function IMRF (nam, dir, []) ->
                                         print_endline (inam^":"^iport^":"^nam^":"^id_i);
                                         let (idx, kind, _) = List.assoc nam !(intf.v) in
-					newiolst := PORT(id_i^"_"^nam, dirop dir, idx, [VRF(id^"_"^nam, [])]) :: !newiolst
+					newiolst := PORT(id_i^"_"^nam, dirop dir, ix, [VRF(id^"_"^nam, [])]) :: !newiolst;
+				        newinnerlst := (id_i^"_"^nam, ix, dirop dir, typ, ilst) :: !newinnerlst;
 				       | _ -> ()) (List.assoc iport imp'')
 				  end
-                               | _ -> newiolst := pat :: !newiolst)
-			       else newiolst := pat :: !newiolst
-                           else
-			       newiolst := pat :: !newiolst
-		       | PORT _ as pat -> newiolst := pat :: !newiolst
+                               | _ -> newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst)
+			       else
+			          begin
+			          newiolst := pat :: !newiolst;
+				  newinnerlst := inr :: !newinnerlst;
+				  end
+			    else
+			       begin
+			       newiolst := pat :: !newiolst;
+			       newinnerlst := inr :: !newinnerlst;
+			       end
+		       | PORT _ as pat -> newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst
 		       | RNG [CNST (lft, []); CNST (rght, [])] -> fprintf stdout "%s" ("/* ["^lft^":"^rght^"] */")
 		       | oth -> portothlst := oth :: !portothlst; failwith "portothlst"
-		       ) !(itms.io) iolst;
+		       ) previolst iolst;
+           let newinnerlst = List.rev !newinnerlst in
 	   let kind_opt = kind^"_opt" in
-           newitms.inst := (inst, (kind_opt, !newiolst)) :: !(newitms.inst);
            if not (Hashtbl.mem modules kind_opt) then
-	       iterate kind (Hashtbl.find modules kind) !newiolst;
+               begin
+               printf "%d:%d\n" (List.length newinnerlst) (List.length previolst);
+               let newinneritms = copy_itms itms in
+               newinneritms.io := newinnerlst;
+               let newhash = (src, lin, newinneritms) in
+	       iterate kind newhash
+               end;
+           newitms.inst := (inst, (kind_opt, !newiolst)) :: !(newitms.inst);
            end
         ) !(modul.inst);
-    Hashtbl.add modules (f^"_opt") (source, line, newitms);
+    Hashtbl.replace modules (f^"_opt") (source, line, newitms);
     print_endline (f^" done")
 
 let translate errlst xmlf =
@@ -742,7 +747,7 @@ let translate errlst xmlf =
     categorise (empty_itms false) rwxml;
     let top = snd(List.hd !top) in
     print_endline ("toplevel is "^top);
-    iterate top (Hashtbl.find modules top) [];
+    iterate top (Hashtbl.find modules top);
     Hashtbl.iter dump modules;
     (line,range,rwxml,xml)
     
