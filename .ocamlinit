@@ -15,6 +15,7 @@ let xmlf = "obj_dir/Vinterface_test.xml";;
 *)
 
 let xmlf = "obj_dir/Vsimple.xml";;
+let xmlf = "obj_dir/Vmaster.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;

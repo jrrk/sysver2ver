@@ -86,7 +86,7 @@ type rw =
 | IO of string * int * dirop * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * string * int
-| CNST of string * rw list
+| CNST of string * int * rw list
 | VRF of string * rw list
 | TYP of string * rw list
 | FNC of string * rw list
@@ -105,7 +105,7 @@ type rw =
 | LOGIC of logop * rw list
 | CMP of cmpop * rw list
 | FRF of string * rw list
-| XRF of string * rw list
+| XRF of string * string * string * rw list
 | PKG of string * string * rw list
 | CAT of rw list
 | EXT of rw list
@@ -143,6 +143,13 @@ type rw =
 | INITIAL
 | FINAL
 | UNKNOWN
+
+type typmap =
+| TYPNONE
+| SUBTYP of int
+| TYPRNG of int*int
+| TYPMEMBER of int*string*int
+| TYPENUM of string * int * string
 
 let constnet = function
 | "1'h1" -> "supply1"
@@ -223,7 +230,7 @@ let rec rw' errlst = function
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')],
                [Xml.Element ("const", [("fl", _); ("name", lev); ("dtype_id", cid)], [])]) ->
                              IVAR (nam, int_of_string tid, constnet lev, int_of_string cid)
-| Xml.Element ("const", [("fl", _); ("name", value); ("dtype_id", tid)], xlst) -> CNST (value, List.map (rw' errlst) xlst)
+| Xml.Element ("const", [("fl", _); ("name", value); ("dtype_id", tid)], xlst) -> CNST (value, int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("contassign", [("fl", _); ("dtype_id", tid)], xlst) -> CA (List.map (rw' errlst) xlst)
 | Xml.Element ("not"|"negate"|"extend" as op, [("fl", _); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' errlst) xlst)
 | Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (snd (chkvif nam), List.map (rw' errlst) xlst)
@@ -264,7 +271,8 @@ let rec rw' errlst = function
 | Xml.Element ("while", [("fl", _)], xlst) -> WHL (List.map (rw' errlst) xlst)
 | Xml.Element ("insiderange", [("fl", _); ("dtype_id", tid)], xlst) -> IRNG (List.map (rw' errlst) xlst)
 | Xml.Element ("funcref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> FRF (nam, List.map (rw' errlst) xlst)
-| Xml.Element ("varxref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> XRF (nam, List.map (rw' errlst) xlst)
+| Xml.Element ("varxref", [("fl", _); ("name", nam); ("dtype_id", tid); ("dotted", dotted)], xlst) ->
+    XRF (nam, tid, dotted, List.map (rw' errlst) xlst)
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' errlst) xlst)
 | Xml.Element ("replicate"|"initarray"|"streaml"|"extends"|"powsu" as op, [("fl", _); ("dtype_id", tid)], xlst) -> REPL (op, List.map (rw' errlst) xlst)
 | Xml.Element ("iface", [("fl", src); ("name", bus); ("origName", bus')], xlst) -> IFC (src, bus, List.map (rw' errlst) xlst)
@@ -303,7 +311,7 @@ let packages = Hashtbl.create 255
 let interfaces = Hashtbl.create 255
 let files = Hashtbl.create 255
 let hierarchy = Hashtbl.create 255
-let (typetable : (int, string*string*(string*string) list*rw list) Hashtbl.t) = Hashtbl.create 255
+let (typetable : (int, string*string*typmap*typmap list) Hashtbl.t) = Hashtbl.create 255
 let top = ref []
 let empty_itms top = { top=top;
 io=ref [];
@@ -341,6 +349,8 @@ let cellothlst = ref []
 let posneglst = ref []
 let typothlst = ref []
 let memothlst = ref []
+let mapothlst = ref []
+let subothlst = ref []
 
 let unaryopv = function
 | Unknown -> "???"
@@ -392,11 +402,12 @@ let diropv = function
 | Dport _ -> "ifport"
 | Dunknown -> "inout"
 
-let cexp exp = try Scanf.sscanf exp "%d'h%x" (fun b n -> (b,n)) with err -> (-1,-1)
+let cexp exp = try Scanf.sscanf exp "%d'h%x" (fun b n -> (b,n)) with err ->
+    try Scanf.sscanf exp "%d'sh%x" (fun b n -> (b,n)) with err -> (-1,-1)
 
 let rec expr = function
 | VRF (id, []) -> id
-| CNST (cexp, []) -> cexp
+| CNST (cexp, tid, []) -> cexp
 | UNRY (Uextend, expr1 :: []) -> "{1'b0,"^expr expr1^"}"
 | UNRY (op, expr1 :: []) -> "("^unaryopv op^expr expr1^")"
 | CMP (op, expr1 :: expr2 :: []) -> "("^expr expr1^cmpopv op^expr expr2^")"
@@ -408,7 +419,7 @@ let rec expr = function
     let s = expr expr1^if n = 1 then "["^expr expr2^"]"
     else "["^expr expr2^"+:"^string_of_int n^"]" in
     s
-| SEL (expr1 :: CNST ("32'h0", []) :: (CNST _ as wid) :: []) -> expr expr1
+| SEL (expr1 :: CNST ("32'h0", _, []) :: (CNST _ as wid) :: []) -> expr expr1
 | SEL (expr1 :: (CNST _ as strt) :: wid :: []) ->
     let (b,n) = cexp (expr wid) and (b',n') = cexp (expr strt) in
     let s = expr expr1^if n = 1 then "["^string_of_int n'^"]"
@@ -420,18 +431,18 @@ let rec expr = function
 | FRF (fref, arglst) -> fref^"("^String.concat ", " (List.map (function ARG (arg :: []) -> expr arg | _ -> "???") arglst)^")"
 | REPL (kind, arglst) -> kind^"("^String.concat ", " (List.map expr arglst)^")"
 | IRNG (expr2 :: expr1 :: []) -> "["^expr expr1^":"^expr expr2^"]"
-| XRF (id, []) -> " /* "^id^" */ "
+| XRF (id, tid, dotted, []) -> dotted^"_"^id
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 
 let rec portconn = function
 | VRF (id, []) -> "."^id
 | PORT (id_o, dir, idx, []) -> "."^id_o^" /*"^diropv dir^","^string_of_int idx^"*/"
 | PORT (id_i, dir, idx, expr1 :: []) -> "."^id_i^"("^expr expr1^") /*"^diropv dir^","^string_of_int idx^"*/"
-| RNG [CNST (lft, []); CNST (rght, [])] -> "/* ["^lft^":"^rght^"] */"
+| RNG [CNST (lft, _, []); CNST (rght, _, [])] -> "/* ["^lft^":"^rght^"] */"
 | oth -> portothlst := oth :: !portothlst; failwith "portothlst"
 
 let rec ioconn = function
-| CNST (cnst, []) -> cnst
+| CNST (cnst, _, []) -> cnst
 | oth -> iothlst := oth :: !iothlst; failwith "iothlst"
 
 let rec stmt = function
@@ -454,7 +465,7 @@ let rec stmt = function
 | SYS (fn, arglst) -> "$"^fn^"("^String.concat ", " (List.map expr arglst)^")"
 | IO(str1, int1, str2, str3, []) -> diropv str2^" "^str3^" "^str1
 | JMPL _ -> "jmpl"
-| CNST(cexpr, []) -> cexpr
+| CNST(cexpr, _, []) -> cexpr
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
 
 let rec catitm pth itms = function
@@ -509,16 +520,25 @@ let rec cell_hier = function
    (nam,subnam) :: hier_lst
 | oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
 
+let rec typmap = function
+| [] -> TYPNONE
+| [("left", lft); ("right", rght)] -> TYPRNG(int_of_string lft, int_of_string rght)
+| oth -> mapothlst := oth :: !mapothlst; failwith "mapothlst"
+
+let rec subtypmap = function
+| RNG [CNST (cexp1, _, []); CNST (cexp2, _, [])] -> let (b,n) = cexp cexp1 and (b',n') = cexp cexp2 in TYPRNG(n,n')
+| EITM ("enumitem", itm, "", n, [CNST (cexp, _, [])]) -> TYPENUM(itm, n, cexp)
+| RDT ("memberdtype", idx1, id, idx2, []) -> TYPMEMBER(idx1, id, idx2)
+| oth -> subothlst := oth :: !subothlst; failwith "subothlst"
+
 let rec categorise itms = function
 | XML(rw_lst) -> catlst itms rw_lst
-| DT(dtyp, num, nam, attr_list, rw_list) ->
-(*
-    print_endline (dtyp^":"^num^":"^nam);
-*)
-    Hashtbl.add typetable (int_of_string num) (dtyp,nam,attr_list,rw_list)
-| RDT(str1, str2, str3, str4, rw_lst) -> catlst itms rw_lst
+| DT(dtyp, num, nam, attr_list, rw_lst) ->
+    Hashtbl.add typetable (int_of_string num) (dtyp,nam,typmap attr_list,List.map subtypmap rw_lst)
+| RDT(dtyp, int1, nam, int2, rw_lst) ->
+    Hashtbl.add typetable int1 (dtyp,nam,SUBTYP int2,List.map subtypmap rw_lst)
 | EITM(str1, str2, str3, str4, rw_lst) -> catlst itms rw_lst
-| CNST(str1, rw_lst) -> catlst itms rw_lst
+| CNST(str1, tid, rw_lst) -> catlst itms rw_lst
 | VRF(str1, rw_lst) -> catlst itms rw_lst
 | FNC(str1, rw_lst) -> catlst itms rw_lst
 | SFMT(str1, rw_lst) -> catlst itms rw_lst
@@ -533,7 +553,7 @@ let rec categorise itms = function
 | LOGIC(str1, rw_lst) -> catlst itms rw_lst
 | CMP(str1, rw_lst) -> catlst itms rw_lst
 | FRF(str1, rw_lst) -> catlst itms rw_lst
-| XRF(str1, rw_lst) -> catlst itms rw_lst
+| XRF(str1, str2, str3, rw_lst) -> catlst itms rw_lst
 | CAT(rw_lst) -> catlst itms rw_lst
 | EXT(rw_lst) -> catlst itms rw_lst
 | CPS(rw_lst) -> catlst itms rw_lst
@@ -578,16 +598,20 @@ let fold1 fn = function
 | (hd::tl) -> List.fold_left fn hd tl
 
 let rec cntbasic = function
-| ("structdtype",_,[],rw_lst) -> fold1 (+) (List.map cntmembers rw_lst)
-| ("uniondtype",_,[],rw_lst) -> fold1 (max) (List.map cntmembers rw_lst)
-| ("basicdtype", ("logic"|"integer"|"int"), [("left", hi); ("right", lo)], []) -> (int_of_string hi) - (int_of_string lo) + 1
-| ("basicdtype", ("logic"|"bit"), [], []) -> 1
-| ("ifacerefdtype", _, [], []) -> 0
+| ("structdtype",_,typmap,rw_lst) -> fold1 (+) (List.map cntmembers rw_lst)
+| ("uniondtype",_,typmap,rw_lst) -> fold1 (max) (List.map cntmembers rw_lst)
+| ("basicdtype", ("logic"|"integer"|"int"), TYPRNG(hi, lo), []) -> hi - lo + 1
+| ("basicdtype", ("logic"|"bit"), TYPNONE, []) -> 1
+| ("ifacerefdtype", _, TYPNONE, []) -> 0
+| ("packarraydtype", "", SUBTYP subtyp, [TYPRNG(n,n')]) -> let subw = findmembers subtyp in subw * (n - n' + 1)
 | oth -> typothlst := oth :: !typothlst; failwith "typothlst"
 
 and cntmembers = function
+| TYPMEMBER (idx1, field1, idx2) -> findmembers idx2
+(*
 | RDT ("memberdtype", idx1, field1, idx2, []) -> findmembers idx2
-| oth -> memothlst := oth :: !memothlst; failwith "cntmembers"
+*)
+| oth -> memothlst := oth :: !memothlst; failwith "memothlst"
 
 and findmembers idx = if Hashtbl.mem typetable idx then
     let wid' = cntbasic (Hashtbl.find typetable idx) in
@@ -628,7 +652,9 @@ let dump f (source, line, modul) =
                  delim := ",";
                  ) (List.rev !(modul.io));
   fprintf fd "\n);\n\n";
-  List.iter (fun (id, (idx, kind, n)) -> let wid = findmembers idx in
+  List.iter (fun (id, (idx, kind, n)) -> 
+                 let (dtype,_,_,rw_lst) as entry = Hashtbl.find typetable idx in let wid = cntbasic entry in
+                 fprintf fd "/* %d=>%s,%d */" idx dtype wid;
                  if wid > 1 then
                    fprintf fd "\tlogic [%d:0]\t%s;\n" (wid-1) id
                  else fprintf fd "\t%s\t%s;\n" kind id;
@@ -702,7 +728,7 @@ let rec iterate f (source, line, modul) =
                                   let imp'' = List.map (function IMP(str, lst) -> (str,lst) | _ -> ("",[])) imp' in
                                   if List.mem_assoc iport imp'' then
 				  List.iter (function IMRF (nam, dir, []) ->
-                                        print_endline (inam^":"^iport^":"^nam^":"^id_i);
+                                        (* print_endline (inam^":"^iport^":"^nam^":"^id_i); *)
                                         let (idx, kind, _) = List.assoc nam !(intf.v) in
 					newiolst := PORT(id_i^"_"^nam, dirop dir, ix, [VRF(id^"_"^nam, [])]) :: !newiolst;
 				        newinnerlst := (id_i^"_"^nam, ix, dirop dir, typ, ilst) :: !newinnerlst;
@@ -720,7 +746,7 @@ let rec iterate f (source, line, modul) =
 			       newinnerlst := inr :: !newinnerlst;
 			       end
 		       | PORT _ as pat -> newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst
-		       | RNG [CNST (lft, []); CNST (rght, [])] -> fprintf stdout "%s" ("/* ["^lft^":"^rght^"] */")
+		       | RNG [CNST (lft, _, []); CNST (rght, _, [])] -> fprintf stdout "%s" ("/* ["^lft^":"^rght^"] */")
 		       | oth -> portothlst := oth :: !portothlst; failwith "portothlst"
 		       ) previolst iolst;
            let newinnerlst = List.rev !newinnerlst in

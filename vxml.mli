@@ -84,7 +84,7 @@ type rw =
 | IO of string * int * dirop * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * string * int
-| CNST of string * rw list
+| CNST of string * int * rw list
 | VRF of string * rw list
 | TYP of string * rw list
 | FNC of string * rw list
@@ -103,7 +103,7 @@ type rw =
 | LOGIC of logop * rw list
 | CMP of cmpop * rw list
 | FRF of string * rw list
-| XRF of string * rw list
+| XRF of string * string * string * rw list
 | PKG of string * string * rw list
 | CAT of rw list
 | EXT of rw list
@@ -142,6 +142,13 @@ type rw =
 | FINAL
 | UNKNOWN
 
+type typmap =
+| TYPNONE
+| SUBTYP of int
+| TYPRNG of int*int
+| TYPMEMBER of int*string*int
+| TYPENUM of string * int * string
+
 type itms = { 
   top: bool;
   io: (string*int*dirop*string*string list) list ref;
@@ -167,13 +174,15 @@ val itmothlst : rw list ref
 val catothlst : rw list ref
 val cellothlst : rw list ref
 val posneglst : rw list list ref
-val typothlst : (string * string * (string * string) list * rw list) list ref
-val memothlst : rw list ref
+val typothlst : (string * string * typmap * typmap list) list ref
+val memothlst : typmap list ref
+val subothlst : rw list ref
+val mapothlst : (string * string) list list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val packages : (string, string * int * itms) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
-val typetable : (int, string*string*(string*string) list*rw list) Hashtbl.t
+val typetable : (int, string*string*typmap*typmap list) Hashtbl.t
 val interfaces : (string, string * int * itms * rw list) Hashtbl.t
 val top : (string * string) list ref
 
