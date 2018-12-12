@@ -446,17 +446,21 @@ let rec ioconn = function
 | oth -> iothlst := oth :: !iothlst; failwith "iothlst"
 
 let rec stmt = function
-| BGN(str1, rw_lst) -> " begin "^String.concat ";\n\t" (List.map stmt rw_lst)^"; end "
+| BGN(str1, rw_lst) -> "\n\tbegin\n\t"^String.concat ";\n\t" (List.map stmt rw_lst)^";\n\tend "
 | IF(cnd :: then_stmt :: []) -> "if ("^expr cnd^") "^stmt then_stmt
-| IF(cnd :: then_stmt :: else_stmt :: []) -> "if ("^expr cnd^") "^stmt then_stmt^" else "^stmt else_stmt
+| IF(cnd :: (BGN _ as then_stmt) :: else_stmt :: []) -> "if ("^expr cnd^") "^stmt then_stmt^"\n\telse\n\t"^stmt else_stmt
+| IF(cnd :: then_stmt :: else_stmt :: []) -> "if ("^expr cnd^") "^stmt then_stmt^";\n\telse\n\t"^stmt else_stmt
 | ASGNDLY(src :: dst :: []) -> expr dst ^"<="^expr src
 | ASGN (src :: dst :: []) -> expr dst ^"<="^expr src
-| CS (sel :: lst) -> "case ("^expr sel^") "^String.concat "\n\t" (List.map (function
+| CS (sel :: lst) -> "case ("^expr sel^")\n\t"^String.concat "\n\t" (List.map (function
     | CSITM (cexp :: (BGN _ as st) :: []) -> expr cexp^": "^stmt st
     | CSITM (cexp :: st :: []) -> expr cexp^": "^stmt st^";"
     | CSITM (st :: []) -> "default: "^stmt st^";"
-    | CSITM (cexplst) -> (match List.rev cexplst with (hd::tl) -> String.concat ", " (List.map expr tl)^": "^stmt hd^";" | [] -> "")
-    | oth -> csothlst := oth :: !csothlst; failwith "csothlst") lst)^" endcase\n"
+    | CSITM (cexplst) -> (match List.rev cexplst with
+				| ((BGN _ as hd)::tl) -> String.concat ", " (List.map expr tl)^": "^stmt hd
+				| (hd::tl) -> String.concat ", " (List.map expr tl)^": "^stmt hd^";"
+                                | [] -> "")
+    | oth -> csothlst := oth :: !csothlst; failwith "csothlst") lst)^"\n\tendcase\n"
 | CA(rght::lft::[]) -> "assign "^expr lft^" = "^expr rght
 | VAR (id, _, kind) -> kind^" "^id
 | WHL (cnd :: stmts) -> "while ("^expr cnd^") "^String.concat ";\n\t" (List.map stmt stmts)
@@ -666,19 +670,19 @@ let dump f (source, line, modul) =
   fprintf fd "\n";
   List.iter (function
              | (COMB, lst) ->
-                 fprintf fd "\talways @* begin\n";
+                 fprintf fd "\talways @*\n\tbegin\n";
                  List.iter (fun itm -> fprintf fd "%s;\n" itm) (List.map stmt lst);
                  fprintf fd "\tend\n";
              | (POSNEG (ck, rst), lst) ->
-                 fprintf fd "\talways @(posedge %s, negedge %s) begin\n" ck rst;
+                 fprintf fd "\talways @(posedge %s, negedge %s)\n\tbegin\n\t" ck rst;
                  List.iter (fun itm -> fprintf fd "%s;\n" itm) (List.map stmt lst);
                  fprintf fd "\tend\n";
              | (NEGNEG (ck, rst), lst) ->
-                 fprintf fd "\talways @(negedge %s, negedge %s) begin\n" ck rst;
+                 fprintf fd "\talways @(negedge %s, negedge %s)\n\tbegin\n\t" ck rst;
                  List.iter (fun itm -> fprintf fd "%s;\n" itm) (List.map stmt lst);
                  fprintf fd "\tend\n";
              | (POSEDGE (ck), lst) ->
-                 fprintf fd "\talways @(posedge %s) begin\n" ck;
+                 fprintf fd "\talways @(posedge %s)\n\tbegin\n\t" ck;
                  List.iter (fun itm -> fprintf fd "%s;\n" itm) (List.map stmt lst);
                  fprintf fd "\tend\n";
              | (_, lst) -> fprintf fd "\t// not implemented\n";
