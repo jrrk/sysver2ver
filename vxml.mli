@@ -87,7 +87,7 @@ type rw =
 | CNST of string * int * rw list
 | VRF of string * rw list
 | TYP of string * rw list
-| FNC of string * rw list
+| FNC of string * int * rw list
 | INST of string * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * rw list
@@ -158,7 +158,7 @@ type itms = {
   typ: string list ref;
   alwys: (rw*rw list) list ref;
   init: (rw*string list) list ref;
-  func: (string*string list) list ref;
+  func: (string*int*rw list) list ref;
   gen : string list list ref;
   imp : (string*string) list list ref;
   inst: (string*(string*rw list)) list ref;
