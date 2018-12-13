@@ -12,3 +12,4 @@ verilator \
 example/master.sv \
 --top-module master
 ./vxmlmain obj_dir/Vmaster.xml
+emacs --batch master_opt_translate.v -f verilog-batch-indent
