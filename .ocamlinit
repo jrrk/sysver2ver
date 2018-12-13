@@ -20,9 +20,9 @@ let xmlf = "obj_dir/Vmaster.xml";;
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;
 
-let f k = Hashtbl.find Vxml.modules k;;
+let f k = Hashtbl.find Vxml.modules_opt k;;
 let p k = Hashtbl.find Vxml.packages k;;
-let d f = Vxml.dump f (Hashtbl.find Vxml.modules f)
+let d f = Vxml.dump stdout true f (Hashtbl.find Vxml.modules f)
 let h k = Hashtbl.find Vxml.hierarchy k;;
 
 let othcnt = (

@@ -180,6 +180,7 @@ val subothlst : rw list ref
 val mapothlst : (string * string) list list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
+val modules_opt : (string, string * int * itms) Hashtbl.t
 val packages : (string, string * int * itms) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
 val typetable : (int, string*string*typmap*typmap list) Hashtbl.t
@@ -187,4 +188,4 @@ val interfaces : (string, string * int * itms * rw list) Hashtbl.t
 val top : (string * string) list ref
 
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml
-val dump : string -> string * int * itms -> unit
+val dump : out_channel -> bool -> string -> string * int * itms -> unit

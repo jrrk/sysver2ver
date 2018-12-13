@@ -307,6 +307,7 @@ type itms = {
 }
 
 let modules = Hashtbl.create 255
+let modules_opt = Hashtbl.create 255
 let packages = Hashtbl.create 255
 let interfaces = Hashtbl.create 255
 let files = Hashtbl.create 255
@@ -414,17 +415,15 @@ let rec expr = function
 | LOGIC (op, expr1 :: []) -> "("^logopv op^expr expr1^")"
 | LOGIC (op, expr1 :: expr2 :: []) -> "("^expr expr1^logopv op^expr expr2^")"
 | ARITH (op, expr1 :: expr2 :: []) -> "("^expr expr1^arithopv op^expr expr2^")"
+| SEL ((VRF _ as expr1) :: (CNST _ as lo) :: (CNST _ as wid) :: []) ->
+    let (szlo,lo') = cexp (expr lo) and (szw,wid') = cexp (expr wid) in
+    expr expr1^if wid' = 1 then "["^string_of_int lo'^"]"
+    else "["^string_of_int (lo'+wid'-1)^":"^string_of_int lo'^"]"
 | SEL ((VRF _ as expr1) :: expr2 :: (CNST _ as wid) :: []) ->
-    let (b,n) = cexp (expr wid) in
-    let s = expr expr1^if n = 1 then "["^expr expr2^"]"
-    else "["^expr expr2^"+:"^string_of_int n^"]" in
-    s
+    let (szw,wid') = cexp (expr wid) in
+    expr expr1^if wid' = 1 then "["^expr expr2^"]"
+    else "["^expr expr2^"+:"^string_of_int wid'^"]"
 | SEL (expr1 :: CNST ("32'h0", _, []) :: (CNST _ as wid) :: []) -> expr expr1
-| SEL (expr1 :: (CNST _ as strt) :: wid :: []) ->
-    let (b,n) = cexp (expr wid) and (b',n') = cexp (expr strt) in
-    let s = expr expr1^if n = 1 then "["^string_of_int n'^"]"
-    else "["^string_of_int (n'+n-1)^":"^string_of_int n'^"]" in
-    s
 | ASEL (VRF (lval, []) :: expr1 :: []) -> lval^"["^expr expr1^"]"
 | CND (expr1 :: lft :: rght :: []) -> expr expr1^" ? "^expr lft^" : "^expr rght
 | CAT (expr1 :: expr2 :: []) -> "{"^expr expr1^","^expr expr2^"}"
@@ -649,32 +648,34 @@ let rec fnstmt dly fd nam delim = function
   fprintf fd "%s%s" !delim (stmt dly itm);
   delim := ";\n\t"
 
-let dump f (source, line, modul) =
-  let srcpath = try Sys.getenv "XMLSRCPATH" with err -> "." in
-  let outnam f = f^"_translate.v" in
-  let outtcl = "./"^f^"_fm.tcl" in
-  if true then print_endline ("f \""^f^"\";; /* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl^" */");
-  let fd = open_out outtcl in
-  fprintf fd "#!/opt/synopsys/fm_vO-2018.06-SP3/bin/fm_shell -f\n";
-  fprintf fd "read_sverilog -container r -libname WORK -12 { \\\n";
-  let plst = ref [] in Hashtbl.iter (fun _ (s,_,_) -> plst := s :: !plst) packages;
-  let iflst = List.map snd (if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else []) in
-  let hlst = List.sort_uniq compare (source :: List.map (fun k -> let (s,l,_) = if Hashtbl.mem modules k then Hashtbl.find modules k else ("not_found", 0, empty_itms false) in s) iflst) in
-  let slst = !plst @ hlst in
-  List.iter (fun src -> if src.[0] == '/' then fprintf fd "%s \\\n" src else fprintf fd "%s/%s \\\n" srcpath src) slst;
-  fprintf fd "}\n";
-  fprintf fd "set_top r:/WORK/%s\n" f;
-  fprintf fd "read_sverilog -container i -libname WORK -12 { \\\n";
-  let hlst' = List.sort_uniq compare (f :: iflst) in
-  List.iter (fun nam -> fprintf fd "%s \\\n" (outnam nam)) hlst';
-  fprintf fd "}\n";
-  fprintf fd "set_top i:/WORK/%s\n" f;
-  fprintf fd "match\n";
-  fprintf fd "verify\n";
-  fprintf fd "quit\n";
-  close_out fd;
-  Unix.chmod outtcl 0o740;
-  let fd = open_out (outnam f) in
+let outnam f = f^"_translate.v"
+let outtcl f = "./"^f^"_fm.tcl"
+
+let dumpform f source = 
+    let fd = open_out (outtcl f) in
+    let srcpath = try Sys.getenv "XMLSRCPATH" with err -> "." in
+    fprintf fd "#!/opt/synopsys/fm_vO-2018.06-SP3/bin/fm_shell -f\n";
+    fprintf fd "read_sverilog -container r -libname WORK -12 { \\\n";
+    let plst = ref [] in Hashtbl.iter (fun _ (s,_,_) -> plst := s :: !plst) packages;
+    let iflst = List.map snd (if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else []) in
+    let hlst = List.sort_uniq compare (source :: List.map (fun k -> let (s,l,_) = if Hashtbl.mem modules k then Hashtbl.find modules k else ("not_found", 0, empty_itms false) in s) iflst) in
+    let slst = !plst @ hlst in
+    List.iter (fun src -> if src.[0] == '/' then fprintf fd "%s \\\n" src else fprintf fd "%s/%s \\\n" srcpath src) slst;
+    fprintf fd "}\n";
+    fprintf fd "set_top r:/WORK/%s\n" f;
+    fprintf fd "read_sverilog -container i -libname WORK -12 { \\\n";
+    let hlst' = List.sort_uniq compare (f :: iflst) in
+    List.iter (fun nam -> fprintf fd "%s \\\n" (outnam nam)) hlst';
+    fprintf fd "}\n";
+    fprintf fd "set_top i:/WORK/%s\n" f;
+    fprintf fd "match\n";
+    fprintf fd "verify\n";
+    fprintf fd "quit\n";
+    close_out fd;
+    Unix.chmod (outtcl f) 0o740
+
+let dump fd formality f (source, line, modul) =
+  if true then print_endline ("f \""^f^"\";; /* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl f ^" */");
   fprintf fd "module %s(" f;
   let delim = ref "" in List.iter (fun (io, idx, dir, kind', lst) -> let wid = findmembers idx and dir = diropv dir in
                  if wid > 1 then
@@ -728,10 +729,7 @@ let dump f (source, line, modul) =
                  let delim = ref "" in List.iter (fun term -> fprintf fd "%s\n\t%s" !delim (portconn term); delim := ",") (List.rev lst);
                  fprintf fd "\n\t);\n\n";
                  ) (List.rev !(modul.inst));
-  fprintf fd "\n";
-  fprintf fd "endmodule\n";
-  fprintf fd "\n";
-  close_out fd
+  fprintf fd "\nendmodule\n\n"
 
 let rec iterate f (source, line, modul) =
     let newitms = copy_itms modul in
@@ -768,8 +766,8 @@ let rec iterate f (source, line, modul) =
 				  List.iter (function IMRF (nam, dir, []) ->
                                         (* print_endline (inam^":"^iport^":"^nam^":"^id_i); *)
                                         let (idx, kind, _) = List.assoc nam !(intf.v) in
-					newiolst := PORT(id_i^"_"^nam, dirop dir, ix, [VRF(id^"_"^nam, [])]) :: !newiolst;
-				        newinnerlst := (id_i^"_"^nam, ix, dirop dir, typ, ilst) :: !newinnerlst;
+					newiolst := PORT(id_i^"_"^nam, dirop dir, idx, [VRF(id^"_"^nam, [])]) :: !newiolst;
+				        newinnerlst := (id_i^"_"^nam, idx, dirop dir, typ, ilst) :: !newinnerlst;
 				       | _ -> ()) (List.assoc iport imp'')
 				  end
                                | _ -> newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst)
@@ -789,7 +787,7 @@ let rec iterate f (source, line, modul) =
 		       ) previolst iolst;
            let newinnerlst = List.rev !newinnerlst in
 	   let kind_opt = kind^"_opt" in
-           if not (Hashtbl.mem modules kind_opt) then
+           if not (Hashtbl.mem modules_opt kind_opt) then
                begin
                printf "%d:%d\n" (List.length newinnerlst) (List.length previolst);
                let newinneritms = copy_itms itms in
@@ -800,7 +798,7 @@ let rec iterate f (source, line, modul) =
            newitms.inst := (inst, (kind_opt, !newiolst)) :: !(newitms.inst);
            end
         ) !(modul.inst);
-    Hashtbl.replace modules (f^"_opt") (source, line, newitms);
+    Hashtbl.replace modules_opt (f^"_opt") (source, line, newitms);
     print_endline (f^" done")
 
 let translate errlst xmlf =
@@ -811,8 +809,14 @@ let translate errlst xmlf =
     categorise (empty_itms false) rwxml;
     let top = snd(List.hd !top) in
     print_endline ("toplevel is "^top);
-    iterate top (Hashtbl.find modules top);
-    Hashtbl.iter dump modules;
+    let (topsrc, topline, topmodul) as tophash = Hashtbl.find modules top in
+    iterate top tophash;
+    let top_opt = top^"_opt" in
+    dumpform top_opt topsrc;
+    let fd = open_out (outnam top_opt) in
+    fprintf fd "`default_nettype none\n";
+    Hashtbl.iter (dump fd true) modules_opt;
+    close_out fd;
     (line,range,rwxml,xml)
     
 
