@@ -45,8 +45,8 @@ module master #(
     output logic          sbbusy_o,
     output logic          sberror_valid_o, // bus error occurred
     output logic [2:0]    sberror_o,       // bus error occurred
-    output logic                         rom_req, rom_req_prev, rom_we,
-    output logic [AXI_ADDRESS_WIDTH-1:0] rom_addr, rom_addr_prev,
+    output logic                         rom_req, rom_we,
+    output logic [AXI_ADDRESS_WIDTH-1:0] rom_addr,
     output logic [AXI_DATA_WIDTH-1:0]    rom_wdata,
     output logic [AXI_DATA_WIDTH/8-1:0]  rom_be,
     input logic [AXI_DATA_WIDTH-1:0]     rom_rdata
