@@ -39,6 +39,7 @@ type cmpop =
 | Cgt
 | Cgts
 | Cgte
+| Cgtes
 | Ceqwild
 | Cneqwild
 | Cltes
@@ -77,17 +78,19 @@ type dirop =
 | Dport of (string * int * dirop * string * string list)
 
 type rw =
+| UNKNOWN
 | XML of rw list
 | DT of string * string * string * (string*string) list * rw list
 | RDT of string * int * string * int * rw list
 | EITM of string * string * string * int * rw list
 | IO of string * int * dirop * string * rw list
 | VAR of string * int * string
-| IVAR of string * int * string * int
+| IVAR of string * int * rw list * int
 | CNST of string * int * rw list
 | VRF of string * rw list
 | TYP of string * rw list
 | FNC of string * int * rw list
+| TASK of string * string * rw list
 | INST of string * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * rw list
@@ -140,7 +143,7 @@ type rw =
 | COMB
 | INITIAL
 | FINAL
-| UNKNOWN
+| MODPORTFTR of string
 
 type typmap =
 | TYPNONE
@@ -153,12 +156,14 @@ type itms = {
   top: bool;
   io: (string*int*dirop*string*string list) list ref;
   v: (string*(int*string*int)) list ref;
+  iv: (string*(int*rw list*int)) list ref;
   ir: (string*int) list ref;
   ca: (string*string) list ref;
   typ: string list ref;
   alwys: (rw*rw list) list ref;
   init: (rw*string list) list ref;
   func: (string*int*rw list) list ref;
+  task: (string*rw list) list ref;
   gen : string list list ref;
   imp : (string*string) list list ref;
   inst: (string*(string*rw list)) list ref;
