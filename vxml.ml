@@ -461,55 +461,112 @@ let rec ioconn = function
 | CNST (cnst, _, []) -> cnst
 | oth -> iothlst := oth :: !iothlst; failwith "iothlst"
 
-let stmtdly = function
-| false -> " = "
-| true -> " <= "
+type token =
+| SP
+| SEMI
+| COLON
+| COMMA
+| AT
+| STAR
+| NL
+| EXPR of string
+| BEGIN
+| END
+| DEFAULT
+| LPAREN
+| RPAREN
+| LBRACK
+| RBRACK
+| IFF
+| ELSE
+| ASSIGN
+| ASSIGNMENT
+| ASSIGNDLY
+| CASE
+| ENDCASE
+| WHILE
+| ALWAYS
+| POSEDGE
+| NEGEDGE
+| RETURN
 
-let rec csitm dly fd = function
-    | CSITM (cexp :: (BGN _ as st) :: []) -> fprintf fd "%s" ( expr cexp^": "); cstmt dly fd st; fprintf fd "\n\t"
-    | CSITM (cexp :: st :: []) -> fprintf fd "%s" ( expr cexp^": "); cstmt dly fd st; fprintf fd ";\n\t"
-    | CSITM (st :: []) -> fprintf fd "default: "; cstmt dly fd st; fprintf fd ";"
+let stmtdly = function
+| false -> ASSIGNMENT
+| true -> ASSIGNDLY
+
+let outlst = ref []
+let tokenout fd = function
+| SP -> fprintf fd " "
+| SEMI -> fprintf fd ";"
+| COLON -> fprintf fd ":"
+| COMMA -> fprintf fd ","
+| LPAREN -> fprintf fd "("
+| RPAREN -> fprintf fd ")"
+| LBRACK -> fprintf fd "["
+| RBRACK -> fprintf fd "]"
+| AT -> fprintf fd "@"
+| STAR -> fprintf fd "*"
+| NL -> fprintf fd "\n\t"
+| DEFAULT -> fprintf fd "default: "
+| EXPR str -> fprintf fd "%s " str
+| BEGIN -> fprintf fd "begin "
+| END -> fprintf fd "end "
+| IFF -> fprintf fd "if "
+| ELSE -> fprintf fd "else "
+| ASSIGN -> fprintf fd "assign "
+| ASSIGNMENT  -> fprintf fd " = "
+| ASSIGNDLY  -> fprintf fd " <= "
+| CASE -> fprintf fd "case "
+| ENDCASE -> fprintf fd "endcase "
+| WHILE -> fprintf fd "while "
+| ALWAYS -> fprintf fd "always "
+| POSEDGE -> fprintf fd "posedge "
+| NEGEDGE -> fprintf fd "negedge "
+| RETURN -> fprintf fd "return "
+
+let reviter lst =
+    let delim = ref COLON in
+    List.rev (List.flatten (List.map (fun itm -> let lst' = !delim :: EXPR (expr itm) :: [] in delim := COMMA; lst') lst))
+
+let rec iter2 dly tok lst =
+    let delim = ref [tok] in
+    List.flatten (List.map (fun itm -> let lst' = !delim @ cstmt dly itm in delim := [SEMI;NL]; lst') lst)
+
+and csitm dly = function
+    | CSITM (cexp :: (BGN _ as st) :: []) -> EXPR (expr cexp) :: COLON :: cstmt dly st @ [NL]
+    | CSITM (cexp :: st :: []) -> EXPR (expr cexp) :: COLON :: cstmt dly st @ [SEMI;NL]
+    | CSITM (st :: []) -> DEFAULT :: cstmt dly st @ [SEMI]
     | CSITM (cexplst) -> (match List.rev cexplst with
-				| ((BGN _ as hd)::tl) ->
-                                    fprintf fd "%s" ( String.concat ", " (List.map expr tl)^": "); cstmt dly fd hd; fprintf fd "\n"
-				| (hd::tl) -> fprintf fd "%s" ( String.concat ", " (List.map expr tl)^": "); cstmt dly fd hd;fprintf fd ";\n"
-                                | [] -> fprintf fd "%s" ( ""))
+			| ((BGN _ as hd)::tl) -> reviter tl @ cstmt dly hd @ [NL]
+			| (hd::tl) -> reviter tl @ cstmt dly hd @ [SEMI; NL]
+                        | [] -> [])
     | oth -> csothlst := oth :: !csothlst; failwith "csothlst"
     
-and cstmt dly fd = function
-| BGN(str1, rw_lst) -> let delim = ref "\n\tbegin\n\t" in
-    List.iter (fun itm -> fprintf fd "%s" !delim; cstmt dly fd itm; delim := ";\n\t") rw_lst; fprintf fd ";\n\tend\n\t"
-| IF(cnd :: then_stmt :: []) ->
-    fprintf fd "%s" ( "if ("^expr cnd^") ");
-    cstmt dly fd then_stmt
-| IF(cnd :: (BGN _ as then_stmt) :: else_stmt :: []) -> fprintf fd "if (%s) " ( expr cnd );
-    cstmt dly fd then_stmt;
-    fprintf fd "\n\telse\n\t";
-    cstmt dly fd else_stmt
+and cstmt dly = function
+| JMPG [] -> []
+| BGN(str1, rw_lst) -> iter2 dly BEGIN rw_lst @ [SEMI;NL;END;NL]
+| IF(cnd :: then_stmt :: []) -> IFF :: LPAREN :: EXPR (expr cnd) :: RPAREN :: cstmt dly then_stmt
+| IF(cnd :: (BGN _ as then_stmt) :: else_stmt :: []) ->
+    IFF :: LPAREN :: EXPR (expr cnd) :: RPAREN :: cstmt dly then_stmt @ [NL;ELSE;NL] @ cstmt dly else_stmt
 | IF(cnd :: then_stmt :: else_stmt :: []) ->
-    fprintf fd "if (%s) " (expr cnd);
-    cstmt dly fd then_stmt;
-    fprintf fd ";\n\telse\n\t";
-    cstmt dly fd else_stmt
-| ASGNDLY(src :: dst :: []) -> fprintf fd "%s%s%s" ( expr dst) (stmtdly dly) (expr src)
-| ASGN (src :: dst :: []) -> fprintf fd "%s%s%s" ( expr dst) (stmtdly dly) (expr src)
-| CS (sel :: lst) -> fprintf fd "case (%s)\n\t" (expr sel); List.iter (csitm dly fd) lst; fprintf fd "\n\tendcase\n"
-| CA(rght::lft::[]) -> fprintf fd "assign %s = %s" (expr lft) (expr rght)
-| VAR (id, _, kind) -> fprintf fd "%s %s" kind id
-| WHL (cnd :: stmts) ->
-    fprintf fd "while (%s) " (expr cnd);
-    let delim = ref "" in
-    List.iter (fun itm -> fprintf fd "%s" !delim; cstmt dly fd itm; delim := ";\n\t") stmts;
-| DSPLY (SFMT (fmt, arglst) :: []) -> fprintf fd "$display(%s, %s)" fmt (String.concat ", " (List.map expr arglst))
-| DSPLY (SFMT (fmt, arglst) :: expr1 :: []) -> fprintf fd "$fdisplay(%s, %s, %s)" (expr expr1) fmt (String.concat ", " (List.map expr arglst))
-| SYS (fn, arglst) -> fprintf fd "%s" ( "$"^fn^"("^String.concat ", " (List.map expr arglst)^")")
-| CNST(cexpr, _, []) -> fprintf fd "%s" cexpr
-| TASK ("taskref", nam, arglst) -> fprintf fd "%s(%s)" nam (String.concat ", " (List.map expr arglst))
-| JMPL(rw_lst) ->  let delim = ref "\n\tbegin" in
-    List.iter (fun itm -> fprintf fd "%s" !delim; cstmt dly fd itm; delim := "\n\t") rw_lst;
-    fprintf fd "\n\tend\n\t"
-| JMPG [] -> fprintf fd ""
+    IFF :: LPAREN :: EXPR (expr cnd) :: RPAREN :: cstmt dly then_stmt @ [SEMI;NL;ELSE;NL] @ cstmt dly else_stmt
+| ASGNDLY(src :: dst :: []) -> EXPR ( expr dst) :: (stmtdly dly) :: EXPR (expr src) :: []
+| ASGN (src :: dst :: []) -> EXPR ( expr dst) :: (stmtdly dly) :: EXPR (expr src) :: []
+| CS (sel :: lst) -> CASE :: LPAREN :: EXPR (expr sel) :: RPAREN :: NL :: List.flatten (List.map (csitm dly) lst) @ [NL;ENDCASE;NL]
+| CA(rght::lft::[]) -> ASSIGN :: EXPR (expr lft) :: stmtdly dly :: EXPR (expr rght) :: []
+| VAR (id, _, kind) -> EXPR kind :: EXPR id :: []
+| WHL (cnd :: stmts) -> WHILE :: LPAREN :: EXPR (expr cnd) :: iter2 dly RPAREN stmts
+| DSPLY (SFMT (fmt, arglst) :: []) -> EXPR "$display" :: LPAREN :: EXPR fmt :: COMMA :: reviter arglst @ [LPAREN]
+| DSPLY (SFMT (fmt, arglst) :: expr1 :: []) ->
+    EXPR "$fdisplay" :: LPAREN :: EXPR (expr expr1) :: COMMA :: EXPR fmt :: COMMA :: reviter arglst @ [LPAREN]
+| SYS (fn, arglst) -> EXPR ("$"^fn) :: LPAREN :: EXPR fn :: COMMA :: reviter arglst @ [LPAREN]
+| CNST(cexpr, _, []) -> EXPR cexpr :: []
+| TASK ("taskref", nam, arglst) -> EXPR nam :: LPAREN :: reviter arglst @ [LPAREN]
+| JMPL(rw_lst) -> iter2 dly BEGIN rw_lst @ [NL;END;NL]
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
+
+let flatten1 dly lst = 
+BEGIN :: List.flatten (List.map (cstmt dly) lst) @ [END;NL;NL]
 
 let rec catitm pth itms = function
 | IO(str1, int1, Dunknown, "ifaceref", []) ->
@@ -666,28 +723,22 @@ and findmembers idx = if Hashtbl.mem typetable idx then
 let rec fnstmt dly fd nam delim = function
 | IO (io, idx, dir, kind', lst) ->
     let wid = findmembers idx and dir = diropv dir in
-    if wid > 1 then
-       fprintf fd "%s\n\t%s\tlogic [%d:0]\t%s" !delim dir (wid-1) io
-    else
-       fprintf fd "%s\n\t%s\tlogic\t%s" !delim dir io;
-    delim := ",";
+    let lst = EXPR !delim :: NL :: EXPR dir :: EXPR "logic" ::
+    (if wid > 1 then LBRACK :: EXPR (string_of_int (wid-1)) :: COLON :: EXPR "0" :: RBRACK :: [] else []) @ [SP; EXPR io] in
+    delim := ","; lst
 | VAR (id, idx, kind') -> let wid = findmembers idx in
   if !delim <> ";\n\t" then delim := ");\n\t";
-    if wid > 1 then
-       fprintf fd "%slogic [%d:0]\t%s;\n" !delim (wid-1) id
-    else fprintf fd "%slogic\t%s;\n" !delim id;
-  delim := ";\n\t"
+    let lst = EXPR !delim :: EXPR "logic" ::
+    (if wid > 1 then LBRACK :: EXPR (string_of_int (wid-1)) :: COLON :: EXPR "0" :: RBRACK :: [] else []) @ [SP; EXPR id] in
+    delim := ";\n\t"; lst
 | ASGN (expr1 :: VRF (nam', []) :: []) when nam = nam' ->
-    fprintf fd "%sreturn %s;" !delim (expr expr1)
-| JMPL(rw_lst) ->
-  fprintf fd "\n\tbegin";
-  delim := "\n\t";
-  List.iter (fnstmt dly fd nam delim) rw_lst;
-  fprintf fd "\n\tend ";
-| JMPG [] -> ()
+    EXPR !delim :: RETURN :: EXPR (expr expr1) :: SEMI :: []
+| JMPL(rw_lst) -> BEGIN :: List.flatten (List.map (fnstmt dly fd nam delim) rw_lst) @ [END]
+| JMPG [] -> []
 | itm ->
-  fprintf fd "%s" !delim; cstmt dly fd itm;
-  delim := ";\n\t"
+  let lst = EXPR !delim :: cstmt dly itm in
+  delim := ";\n\t";
+  lst
 
 let outnam f = f^"_translate.v"
 let outtcl f = "./"^f^"_fm.tcl"
@@ -737,7 +788,7 @@ let dump fd formality f (source, line, modul) =
                  fprintf fd "function logic";
                  if wid > 1 then fprintf fd " [%d:0]" (wid-1);
                  fprintf fd " %s " nam;
-		 let delim = ref "(" in List.iter (fnstmt false fd nam delim) (List.tl lst);
+		 let delim = ref "(" in List.iter (tokenout fd) (List.flatten (List.map (fnstmt false fd nam delim) (List.tl lst)));
 		 fprintf fd "\nendfunction\n\n";
                  ) (List.rev !(modul.func));
   List.iter (fun (dst, src) ->
@@ -745,24 +796,16 @@ let dump fd formality f (source, line, modul) =
                  ) (List.rev !(modul.ca));
   fprintf fd "\n";
   List.iter (function
-             | (COMB, lst) ->
-                 fprintf fd "\talways @*\n\tbegin\n";
-                 List.iter (cstmt false fd) lst;
-                 fprintf fd "\tend\n\n";
-             | (POSNEG (ck, rst), lst) ->
-                 fprintf fd "\talways @(posedge %s, negedge %s)\n\tbegin\n\t" ck rst;
-                 List.iter (cstmt true fd) lst;
-                 fprintf fd "\tend\n\n";
-             | (NEGNEG (ck, rst), lst) ->
-                 fprintf fd "\talways @(negedge %s, negedge %s)\n\tbegin\n\t" ck rst;
-                 List.iter (cstmt true fd) lst;
-                 fprintf fd "\tend\n\n";
-             | (POSEDGE (ck), lst) ->
-                 fprintf fd "\talways @(posedge %s)\n\tbegin\n\t" ck;
-                 List.iter (cstmt true fd) lst;
-                 fprintf fd "\tend\n\n";
-             | (_, lst) -> fprintf fd "\t// not implemented\n";
-                 ) (List.rev !(modul.alwys));
+    | (COMB, lst) ->
+      List.iter (tokenout fd) (ALWAYS :: AT :: STAR :: flatten1 false lst);
+    | (POSNEG (ck, rst), lst) ->
+      List.iter (tokenout fd) (ALWAYS :: AT :: LPAREN :: POSEDGE :: EXPR ck :: COMMA :: NEGEDGE :: EXPR rst :: RPAREN :: flatten1 true lst);
+    | (NEGNEG (ck, rst), lst) ->
+      List.iter (tokenout fd) (ALWAYS :: AT :: LPAREN :: NEGEDGE :: EXPR ck :: COMMA :: NEGEDGE :: EXPR rst :: RPAREN :: flatten1 true lst);
+    | (POSEDGE (ck), lst) ->
+      List.iter (tokenout fd) (ALWAYS :: AT :: LPAREN :: POSEDGE :: EXPR ck :: RPAREN :: flatten1 true lst);
+    | (_, lst) -> fprintf fd "\t// not implemented\n";
+    ) (List.rev !(modul.alwys));
   fprintf fd "\n";
   fprintf fd "\n";
   List.iter (fun (inst, (kind, lst)) ->
