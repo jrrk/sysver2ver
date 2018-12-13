@@ -161,10 +161,10 @@ type itms = {
   ca: (string*string) list ref;
   typ: string list ref;
   alwys: (rw*rw list) list ref;
-  init: (rw*string list) list ref;
+  init: (rw*rw list) list ref;
   func: (string*int*rw list) list ref;
   task: (string*rw list) list ref;
-  gen : string list list ref;
+  gen : rw list list ref;
   imp : (string*string) list list ref;
   inst: (string*(string*rw list)) list ref;
 }
