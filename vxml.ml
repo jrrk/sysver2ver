@@ -508,7 +508,7 @@ let rec expr = function
 | EXT (tid, arg :: []) -> LPAREN :: expr arg @ [RPAREN]
 | IRNG (expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
 | XRF (id, tid, dotted, []) -> EXPR (dotted^"_"^id) :: []
-| TPLSRGS (id, tid, []) -> EXPR ("$test$plusargs()") :: []
+| TPLSRGS (id, tid, []) -> EXPR "$test$plusargs" :: LPAREN :: DQUOTE :: EXPR id :: DQUOTE :: RPAREN :: []
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 
 let rec portconn = function
@@ -620,6 +620,14 @@ let tokendump fd = function
 | MODULE -> output_string fd "MODULE\n"
 | ENDMODULE -> output_string fd "ENDMODULE\n"
 
+let rec reformat0 = function
+| [] -> []
+| END :: NL :: SEMI :: NL :: ENDCASE :: tl -> END :: reformat0 (NL :: ENDCASE :: tl)
+| ENDCASE :: SEMI :: ELSE :: tl -> ENDCASE :: reformat0 ( NL :: ELSE :: tl )
+| END :: NL :: SEMI :: ELSE :: tl -> END :: reformat0 ( NL :: ELSE :: tl )
+| SEMI :: NL :: SEMI :: NL :: END :: tl -> SEMI :: NL :: reformat0 ( END :: tl )
+| oth :: tl -> oth :: reformat0 tl
+
 let rec reformat1 = function
 | [] -> []
 | prior :: (BEGIN|END|ELSE as tok) :: tl when prior <> NL -> prior :: NL :: tok :: reformat1 (NL :: tl)
@@ -639,15 +647,18 @@ let rec reformat2 = function
 | END :: NL :: SEMI :: NL :: tl -> END :: reformat2 (SEMI :: NL :: tl)
 | ELSE :: NL :: IFF :: tl -> ELSE :: SP :: IFF :: reformat2 tl
 | END :: NL :: NL :: ELSE :: tl -> END :: reformat2 (NL :: ELSE :: tl)
+
 | oth :: tl -> oth :: reformat2 tl
+
+let eiter lst =
+    List.flatten (List.map (fun itm -> COMMA :: expr itm) lst)
 
 let reviter lst =
     let delim = ref COLON in
     List.rev (List.flatten (List.map (fun itm -> let lst' = !delim :: expr itm in delim := COMMA; lst') lst))
 
-let rec iter2 dly tok lst =
-    let delim = ref [tok] in
-    List.flatten (List.map (fun itm -> let lst' = !delim @ cstmt dly itm in delim := [SEMI;NL]; lst') lst)
+let rec iter2 dly lst =
+    List.flatten (List.map (fun itm -> cstmt dly itm @ [SEMI;NL]) lst)
 
 and csitm dly = function
     | CSITM (cexp :: (BGN _ as st) :: []) -> expr cexp @ COLON :: BEGIN :: cstmt dly st @ END :: NL :: []
@@ -665,7 +676,7 @@ and ifcond = function
     
 and cstmt dly = function
 | JMPG [] -> []
-| BGN(str1, rw_lst) -> iter2 dly BEGIN rw_lst @ [SEMI;NL;END;NL]
+| BGN(str1, rw_lst) -> BEGIN :: iter2 dly rw_lst @ [END;NL]
 | IF(cnd :: then_stmt :: []) -> ifcond (expr cnd) @ (SP :: cstmt dly then_stmt)
 | IF(cnd :: (BGN _ as then_stmt) :: else_stmt :: []) ->
     ifcond (expr cnd) @ (SP :: cstmt dly then_stmt) @ [ELSE] @ cstmt dly else_stmt
@@ -676,14 +687,14 @@ and cstmt dly = function
 | CS (sel :: lst) -> CASE :: LPAREN :: expr sel @ (RPAREN :: NL :: List.flatten (List.map (csitm dly) lst)) @ [NL;ENDCASE]
 | CA(rght::lft::[]) -> ASSIGN :: SP :: expr lft @ stmtdly dly @ expr rght
 | VAR (id, _, kind) -> EXPR kind :: EXPR id :: []
-| WHL (cnd :: stmts) -> WHILE :: LPAREN :: expr cnd @ iter2 dly RPAREN stmts
-| DSPLY (SFMT (fmt, arglst) :: []) -> EXPR "$display" :: LPAREN :: DQUOTE :: EXPR fmt :: DQUOTE :: COMMA :: reviter arglst @ [RPAREN]
+| WHL (cnd :: stmts) -> WHILE :: LPAREN :: expr cnd @ RPAREN :: iter2 dly stmts
+| DSPLY (SFMT (fmt, arglst) :: []) -> EXPR "$display" :: LPAREN :: DQUOTE :: EXPR fmt :: DQUOTE :: eiter arglst @ [RPAREN]
 | DSPLY (SFMT (fmt, arglst) :: expr1 :: []) ->
     EXPR "$fdisplay" :: LPAREN :: expr expr1 @ (COMMA :: EXPR fmt :: COMMA :: reviter arglst) @ [RPAREN]
-| SYS (fn, arglst) -> EXPR ("$"^fn) :: LPAREN :: EXPR fn :: COMMA :: reviter arglst @ [RPAREN]
+| SYS (fn, arglst) -> EXPR ("$"^fn) :: LPAREN :: EXPR fn :: eiter arglst @ [RPAREN]
 | CNST(cexpr, _, []) -> EXPR cexpr :: []
-| TASK ("taskref", nam, arglst) -> EXPR nam :: LPAREN :: reviter arglst @ [RPAREN]
-| JMPL(rw_lst) -> iter2 dly BEGIN rw_lst @ [NL;END;NL]
+| TASK ("taskref", nam, arglst) -> EXPR nam :: LPAREN :: eiter arglst @ [RPAREN]
+| JMPL(rw_lst) -> BEGIN :: iter2 dly rw_lst @ [NL;END;NL]
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
 
 let flatten1 dly = function
@@ -910,32 +921,34 @@ let dump f (source, line, modul) =
     delim := [COMMA];
     append lst
     ) (List.rev !(modul.io));
-  append [RPAREN];
-  List.iter (fun (id, (idx, kind', n)) -> append (SEMI :: NL :: varlst (ref []) idx id);
+  append [RPAREN;SEMI;NL];
+  List.iter (fun (id, (idx, kind', n)) -> append (varlst (ref []) idx id @ SEMI :: NL :: []);
                  ) (List.rev !(modul.v));
   List.iter (fun (nam, idx, lst) ->
 		 let lst = (varlst (ref (SEMI :: NL :: FUNCTION :: SP :: [])) idx nam) @
 		 List.flatten (List.map (fnstmt false nam (ref [LPAREN])) (List.tl lst)) @ [ENDFUNCTION] in
 		 append lst;
                  ) (List.rev !(modul.func));
-  List.iter (fun (nam, lst) ->
+(*
+ List.iter (fun (nam, lst) ->
 		 let lst = List.flatten (List.map (fnstmt false nam (ref [TASK])) (List.tl lst)) @ [ENDTASK] in
 		 append lst;
                  ) (List.rev !(modul.task));
-  List.iter (fun (dst, src) ->
-                 append (SEMI :: NL :: ASSIGN :: SP :: expr dst @ (SP :: ASSIGNMENT :: SP:: expr src));
+		   *)
+List.iter (fun (dst, src) ->
+                 append (ASSIGN :: SP :: expr dst @ (SP :: ASSIGNMENT :: SP:: expr src @ SEMI :: NL :: []));
                  ) (List.rev !(modul.ca));
   List.iter (function
     | (COMB, lst) ->
-      append (SEMI :: NL :: ALWAYS :: AT :: STAR :: flatten1 false lst);
+      append (NL :: ALWAYS :: AT :: STAR :: flatten1 false lst);
     | (POSNEG (ck, rst), lst) ->
-      append (SEMI :: NL :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: EXPR ck :: COMMA :: NEGEDGE :: SP :: EXPR rst :: RPAREN :: flatten1 true lst);
+      append (NL :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: EXPR ck :: COMMA :: NEGEDGE :: SP :: EXPR rst :: RPAREN :: flatten1 true lst);
     | (NEGNEG (ck, rst), lst) ->
-      append (SEMI :: NL :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: EXPR ck :: COMMA :: NEGEDGE :: SP :: EXPR rst :: RPAREN :: flatten1 true lst);
+      append (NL :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: EXPR ck :: COMMA :: NEGEDGE :: SP :: EXPR rst :: RPAREN :: flatten1 true lst);
     | (POSEDGE (ck), lst) ->
-      append (SEMI :: NL :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: EXPR ck :: RPAREN :: flatten1 true lst);
+      append (NL :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: EXPR ck :: RPAREN :: flatten1 true lst);
     | (NEGEDGE (ck), lst) ->
-      append (SEMI :: NL :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: EXPR ck :: RPAREN :: flatten1 true lst);
+      append (NL :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: EXPR ck :: RPAREN :: flatten1 true lst);
     | (_, lst) -> failwith "not implemented";
     ) (List.rev !(modul.alwys));
   List.iter (fun (inst, (kind, lst)) ->
@@ -944,7 +957,7 @@ let dump f (source, line, modul) =
                  append (NL :: NL :: EXPR kind :: SP :: EXPR inst :: LPAREN :: lst @ [NL;RPAREN;SEMI]);
                  ) !(modul.inst);
   append [NL;ENDMODULE;NL;NL];
-  reformat2 (reformat1 (List.flatten (List.rev !appendlst)))
+  List.flatten (List.rev !appendlst)
 
 let rec iterate f (source, line, modul) =
     let newitms = copy_itms modul in
@@ -1028,15 +1041,17 @@ let translate errlst xmlf =
     let top_opt = top^"_opt" in
     dumpform top_opt topsrc;
     let mods = ref [] in
-    Hashtbl.iter (fun k x -> mods := dump k x :: !mods) modules_opt;
+    let mods' = ref [] in
+    Hashtbl.iter (fun k x -> let d = reformat0 (dump k x) in mods := reformat2 (reformat1 d) :: !mods; mods' := d :: !mods') modules_opt;
     let mods = List.flatten (List.sort compare !mods) in
+    let mods' = List.flatten (List.sort compare !mods') in
     let fd = open_out (outnam top_opt) in
     fprintf fd "`default_nettype none\n";
     let indent = ref 0 in
     List.iter (tokenout fd indent) mods;
     close_out fd;
     let fd = open_out (outtok top_opt) in
-    List.iter (tokendump fd) mods;
+    List.iter (tokendump fd) mods';
     close_out fd;
     (line,range,rwxml,xml)
     
