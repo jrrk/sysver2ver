@@ -193,4 +193,4 @@ val interfaces : (string, string * int * itms * rw list) Hashtbl.t
 val top : (string * string) list ref
 
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml
-val dump : out_channel -> bool -> string -> string * int * itms -> unit
+val dump : out_channel -> string -> string * int * itms -> unit
