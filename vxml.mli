@@ -158,7 +158,7 @@ type itms = {
   v: (string*(int*string*int)) list ref;
   iv: (string*(int*rw list*int)) list ref;
   ir: (string*int) list ref;
-  ca: (string*string) list ref;
+  ca: (rw*rw) list ref;
   typ: string list ref;
   alwys: (rw*rw list) list ref;
   init: (rw*rw list) list ref;
