@@ -423,6 +423,7 @@ let typothlst = ref []
 let memothlst = ref []
 let mapothlst = ref []
 let subothlst = ref []
+let tskothlst = ref []
 
 let unaryopv = function
 | Unknown -> "???"
@@ -568,8 +569,8 @@ let tokenout fd indent = function
 | LOGIC -> output_string fd "logic"
 | FUNCTION -> output_string fd "function"; incr indent
 | ENDFUNCTION -> output_string fd "endfunction"; decr indent
-| TASK -> output_string fd "function"; incr indent
-| ENDTASK -> output_string fd "endfunction"; decr indent
+| TASK -> output_string fd "task"; incr indent
+| ENDTASK -> output_string fd "endtask"; decr indent
 | MODULE -> output_string fd "module"; incr indent
 | ENDMODULE -> output_string fd "endmodule"; decr indent
 
@@ -873,10 +874,6 @@ let rec fnstmt dly nam delim = function
   if !delim <> SEMI :: [] then delim := RPAREN :: SEMI :: [];
     let lst = varlst delim idx id in
     delim := SEMI :: []; lst
-(*
-| ASGN (expr1 :: VRF (nam', []) :: []) when nam = nam' ->
-    !delim @ (NL :: RETURN :: SP :: expr expr1) @ [SEMI]
-*)
 | JMPL(BGN _ :: tl as rw_lst) -> let dlm = !delim in delim := []; dlm @ (List.flatten (List.map (fnstmt dly nam delim) rw_lst))
 | JMPL(rw_lst) -> let dlm = !delim in delim := [BEGIN]; dlm @ (List.flatten (List.map (fnstmt dly nam delim) rw_lst)) @ [SEMI;END]
 | JMPG [] -> []
@@ -884,6 +881,11 @@ let rec fnstmt dly nam delim = function
   let lst = !delim @ cstmt dly itm in
   delim := SEMI :: NL :: [];
   lst
+
+let rec taskstmt dly nam = function
+| BGN(_,rw_lst) -> List.flatten (List.map (taskstmt dly nam) rw_lst)
+| itm -> cstmt dly itm @ SEMI :: NL :: []
+| oth -> tskothlst := oth :: !tskothlst; failwith "taskstmt"
 
 let outnam f = f^"_translate.v"
 let outtok f = f^"_tokens.txt"
@@ -929,12 +931,10 @@ let dump f (source, line, modul) =
 		 List.flatten (List.map (fnstmt false nam (ref [LPAREN])) (List.tl lst)) @ [ENDFUNCTION] in
 		 append lst;
                  ) (List.rev !(modul.func));
-(*
  List.iter (fun (nam, lst) ->
-		 let lst = List.flatten (List.map (fnstmt false nam (ref [TASK])) (List.tl lst)) @ [ENDTASK] in
-		 append lst;
+		 let lst = List.flatten (List.map (taskstmt false nam) lst) in
+		 append (TASK :: SP :: EXPR nam :: SEMI :: NL :: lst @ ENDTASK :: NL :: []);
                  ) (List.rev !(modul.task));
-		   *)
 List.iter (fun (dst, src) ->
                  append (ASSIGN :: SP :: expr dst @ (SP :: ASSIGNMENT :: SP:: expr src @ SEMI :: NL :: []));
                  ) (List.rev !(modul.ca));

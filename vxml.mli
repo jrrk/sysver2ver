@@ -233,6 +233,7 @@ val typothlst : (string * string * typmap * typmap list) list ref
 val memothlst : typmap list ref
 val subothlst : rw list ref
 val mapothlst : (string * string) list list ref
+val tskothlst : rw list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val modules_opt : (string, string * int * itms) Hashtbl.t
