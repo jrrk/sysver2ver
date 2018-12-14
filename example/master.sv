@@ -148,7 +148,7 @@ module master #(
 
 
     axi_adapter #(
-        .DATA_WIDTH            ( 64                        )
+        .DATA_WIDTH            ( 128                       )
     ) i_axi_master (
         .clk_i                 ( clk_i                     ),
         .rst_ni                ( rst_ni                    ),

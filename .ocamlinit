@@ -14,17 +14,17 @@ let xmlf = "obj_dir/Vonehot16.xml";;
 let xmlf = "obj_dir/Vinterface_test.xml";;
 let xmlf = "obj_dir/Vsimple.xml";;
 let xmlf = "obj_dir/Vmaster.xml";;
+let xmlf = "obj_dir/Vchip.xml";;
 *)
 
-let xmlf = "obj_dir/Vchip.xml";;
-let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/work-xml/Variane_testharness.xml";;
+let xmlf = "obj_dir/Vmaster_opt.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;
 
 let f k = Hashtbl.find Vxml.modules_opt k;;
 let p k = Hashtbl.find Vxml.packages k;;
-let d f = Vxml.dump stdout true f (Hashtbl.find Vxml.modules f)
+let d f = Vxml.dump f (Hashtbl.find Vxml.modules f)
 let h k = Hashtbl.find Vxml.hierarchy k;;
 
 let othcnt = (
@@ -41,3 +41,6 @@ List.length !posneglst,
 List.length !typothlst,
 List.length !memothlst
 );;
+
+let mods = ref [];;
+Hashtbl.iter (fun k x -> print_endline k) modules;;

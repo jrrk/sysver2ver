@@ -1,3 +1,4 @@
+rm -rf obj_dir
 verilator \
 --xml-only -Wno-fatal \
 +define+FPGA_TARGET_XILINX \
@@ -9,7 +10,8 @@ verilator \
 ../ariane-vcs-regression/ariane/include/std_cache_pkg.sv \
 ../ariane-vcs-regression/ariane/src/axi_mem_if/src/axi2mem.sv \
 ../ariane-vcs-regression/ariane/src/axi_adapter.sv \
-example/master.sv \
---top-module master
+example/master.sv --top-module master
+make
 ./vxmlmain obj_dir/Vmaster.xml
-emacs --batch master_opt_translate.v -f verilog-batch-indent
+verilator --xml-only -Wno-fatal master_opt_translate.v --top-module master_opt
+./vxmlmain obj_dir/Vmaster_opt.xml

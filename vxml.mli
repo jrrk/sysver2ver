@@ -113,7 +113,7 @@ type rw =
 | CPS of rw list
 | CND of rw list
 | REPL of string * rw list
-| MODUL of string * string * (string*string) list * rw list
+| MODUL of string * string * string * rw list
 | BGN of string * rw list
 | RNG of rw list
 | ALWYS of rw list
@@ -135,7 +135,7 @@ type rw =
 | FIL of string * string
 | NL of rw list
 | CELLS of rw list
-| CELL of string * string * string * string *rw list
+| CELL of string * string * string * string * rw list
 | POSPOS of string*string
 | POSNEG of string*string
 | NEGNEG of string*string
@@ -152,8 +152,48 @@ type typmap =
 | TYPMEMBER of int*string*int
 | TYPENUM of string * int * string
 
+type token =
+| SP
+| SEMI
+| COLON
+| COMMA
+| AT
+| DOT
+| QUERY
+| PLUS
+| STAR
+| NL
+| EXPR of string
+| NUM of int
+| DIR of dirop
+| BEGIN
+| END
+| DEFAULT
+| LPAREN
+| RPAREN
+| LBRACK
+| RBRACK
+| LCURLY
+| RCURLY
+| IFF
+| ELSE
+| ASSIGN
+| ASSIGNMENT
+| ASSIGNDLY
+| CASE
+| ENDCASE
+| WHILE
+| ALWAYS
+| POSEDGE
+| NEGEDGE
+| RETURN
+| LOGIC
+| FUNCTION
+| ENDFUNCTION
+| MODULE
+| ENDMODULE
+
 type itms = { 
-  top: bool;
   io: (string*int*dirop*string*string list) list ref;
   v: (string*(int*string*int)) list ref;
   iv: (string*(int*rw list*int)) list ref;
@@ -193,4 +233,4 @@ val interfaces : (string, string * int * itms * rw list) Hashtbl.t
 val top : (string * string) list ref
 
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml
-val dump : out_channel -> string -> string * int * itms -> unit
+val dump : string -> string * int * itms -> token list
