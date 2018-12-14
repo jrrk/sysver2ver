@@ -188,6 +188,10 @@ type token =
 | NEGEDGE
 | RETURN
 | LOGIC
+| FUNCTION
+| ENDFUNCTION
+| MODULE
+| ENDMODULE
 
 let constnet = function
 | "1'h1" -> "supply1"
@@ -537,6 +541,10 @@ let rec tokenout fd indent = function
 | NEGEDGE -> output_string fd "negedge "
 | RETURN -> output_string fd "return "
 | LOGIC -> output_string fd "logic "
+| FUNCTION -> output_string fd "function "
+| ENDFUNCTION -> output_string fd "endfunction "
+| MODULE -> output_string fd "module "
+| ENDMODULE -> output_string fd "endmodule "
 
 let reviter lst =
     let delim = ref COLON in
@@ -625,7 +633,6 @@ let find_source origin =
     for i = String.length origin - 1 downto 0 do
         match origin.[i] with '0'..'9' -> last := i | _ -> ();
     done;
-    if false then printf "%s: %d\n" origin !last;
     let k = String.sub origin 0 !last in
     let source = if Hashtbl.mem files k then Hashtbl.find files k else "origin_unknown" in
     let line = String.sub origin !last (String.length origin - !last) in
@@ -789,31 +796,24 @@ let dumpform f source =
 let dump fd formality f (source, line, modul) =
   let indent = ref 0 in
   if true then print_endline ("f \""^f^"\";; /* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl f ^" */");
-  fprintf fd "module %s(" f;
-  let delim = ref "" in List.iter (fun (io, idx, dir, kind', lst) -> let wid = findmembers idx and dir = diropv dir in
-    let lst = EXPR !delim :: NL :: EXPR dir :: SP :: LOGIC ::
-    (if wid > 1 then LBRACK :: EXPR (string_of_int (wid-1)) :: COLON :: EXPR "0" :: RBRACK :: [] else []) @ [SP; EXPR io] in
-    delim := ","; List.iter (tokenout fd indent) lst
-                 ) (List.rev !(modul.io));
-  fprintf fd "\n);\n\n";
-  List.iter (fun (id, (idx, kind', n)) -> 
-                 let wid = findmembers idx in
-                 if wid > 1 then
-                   fprintf fd "\tlogic [%d:0]\t%s;\n" (wid-1) id
-                 else fprintf fd "\tlogic\t%s;\n" id;
+  let delim = ref [MODULE; EXPR f; LPAREN] in List.iter (fun (io, idx, dir, kind', lst) -> 
+    let lst = iolst delim dir idx io in
+    delim := [COMMA];
+    List.iter (tokenout fd indent) lst
+    ) (List.rev !(modul.io));
+  List.iter (tokenout fd indent) [NL;RPAREN;SEMI;NL;NL];
+  List.iter (fun (id, (idx, kind', n)) -> List.iter (tokenout fd indent) (varlst (ref []) idx id @ [SEMI;NL]);
                  ) (List.rev !(modul.v));
-  fprintf fd "\n";
-  List.iter (fun (nam, idx, lst) -> let wid = findmembers idx in
-                 fprintf fd "function logic";
-                 if wid > 1 then fprintf fd " [%d:0]" (wid-1);
-                 fprintf fd " %s " nam;
-		 let delim = ref [LPAREN] in List.iter (tokenout fd indent) (List.flatten (List.map (fnstmt false fd nam delim) (List.tl lst)));
-		 fprintf fd "\nendfunction\n\n";
+  List.iter (tokenout fd indent) [NL];
+  List.iter (fun (nam, idx, lst) ->
+		 let lst = (varlst (ref [FUNCTION]) idx nam) @
+		 List.flatten (List.map (fnstmt false fd nam (ref [LPAREN])) (List.tl lst)) @ [ENDFUNCTION] in
+		 List.iter (tokenout fd indent) lst;
                  ) (List.rev !(modul.func));
   List.iter (fun (dst, src) ->
                  List.iter (tokenout fd indent) (ASSIGN :: expr dst @ (ASSIGNMENT :: expr src) @ [SEMI;NL]);
                  ) (List.rev !(modul.ca));
-  fprintf fd "\n";
+  List.iter (tokenout fd indent) [NL];
   List.iter (function
     | (COMB, lst) ->
       List.iter (tokenout fd indent) (ALWAYS :: AT :: STAR :: flatten1 false lst);
@@ -823,19 +823,16 @@ let dump fd formality f (source, line, modul) =
       List.iter (tokenout fd indent) (ALWAYS :: AT :: LPAREN :: NEGEDGE :: EXPR ck :: COMMA :: NEGEDGE :: EXPR rst :: RPAREN :: flatten1 true lst);
     | (POSEDGE (ck), lst) ->
       List.iter (tokenout fd indent) (ALWAYS :: AT :: LPAREN :: POSEDGE :: EXPR ck :: RPAREN :: flatten1 true lst);
-    | (_, lst) -> fprintf fd "\t// not implemented\n";
+    | (_, lst) -> failwith "not implemented";
     ) (List.rev !(modul.alwys));
-  fprintf fd "\n";
-  fprintf fd "\n";
+  List.iter (tokenout fd indent) [NL;NL];
   List.iter (fun (inst, (kind, lst)) ->
-                 fprintf fd "\t%s %s (" kind inst;
-                 let delim = ref "" in
-                 let lst = List.flatten (List.map (fun term -> let lst = EXPR !delim :: portconn term in delim := ","; lst) (List.rev lst)) in
-                 List.iter (tokenout fd indent) lst;
-                 fprintf fd "\n\t);\n\n";
+                 let delim = ref SP in
+                 let lst = List.flatten (List.map (fun term -> let lst = !delim :: NL :: portconn term in delim := COMMA; lst) (List.rev lst)) in
+                 List.iter (tokenout fd indent) (SP :: EXPR kind :: SP :: EXPR inst :: LPAREN :: lst @ [NL;RPAREN;SEMI;NL;NL]);
                  ) (List.rev !(modul.inst));
-  fprintf fd "\nendmodule\n\n"
-
+  List.iter (tokenout fd indent) [ENDMODULE;NL;NL]
+;;
 let rec iterate f (source, line, modul) =
     let newitms = copy_itms modul in
     newitms.ir := [];
@@ -894,7 +891,6 @@ let rec iterate f (source, line, modul) =
 	   let kind_opt = kind^"_opt" in
            if not (Hashtbl.mem modules_opt kind_opt) then
                begin
-               printf "%d:%d\n" (List.length newinnerlst) (List.length previolst);
                let newinneritms = copy_itms itms in
                newinneritms.io := newinnerlst;
                let newhash = (src, lin, newinneritms) in
