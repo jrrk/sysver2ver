@@ -31,6 +31,7 @@ open Printf
 type unaryop =
 | Unknown
 | Unot
+| Ulognot
 | Unegate
 | Uextend
 
@@ -96,6 +97,8 @@ type rw =
 | INST of string * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * rw list
+| TPLSRGS of string * int * rw list
+| VPLSRGS of int * rw list
 | PORT of string * dirop * int * rw list
 | CA of rw list
 | UNRY of unaryop * rw list
@@ -111,10 +114,10 @@ type rw =
 | XRF of string * string * string * rw list
 | PKG of string * string * rw list
 | CAT of rw list
-| EXT of rw list
+| EXT of int * rw list
 | CPS of rw list
 | CND of rw list
-| REPL of string * rw list
+| REPL of int * rw list
 | MODUL of string * string * string * rw list
 | BGN of string * rw list
 | RNG of rw list
@@ -142,6 +145,7 @@ type rw =
 | POSNEG of string*string
 | NEGNEG of string*string
 | POSEDGE of string
+| NEGEDGE of string
 | COMB
 | INITIAL
 | FINAL
@@ -162,6 +166,8 @@ type token =
 | AT
 | DOT
 | QUERY
+| QUOTE
+| DQUOTE
 | PLUS
 | STAR
 | NL
@@ -177,6 +183,8 @@ type token =
 | RBRACK
 | LCURLY
 | RCURLY
+| LSHIFT
+| RSHIFT
 | IFF
 | ELSE
 | ASSIGN
@@ -192,6 +200,8 @@ type token =
 | LOGIC
 | FUNCTION
 | ENDFUNCTION
+| TASK
+| ENDTASK
 | MODULE
 | ENDMODULE
 
@@ -212,6 +222,7 @@ let unaryop = function
 |"not" -> Unot
 |"negate" -> Unegate
 |"extend" -> Uextend
+|"lognot" -> Ulognot
 | _ -> Unknown
 
 let cmpop = function
@@ -280,7 +291,7 @@ let rec rw' errlst = function
                              IVAR (nam, int_of_string tid, List.map (rw' errlst) initlst, int_of_string cid)
 | Xml.Element ("const", [("fl", _); ("name", value); ("dtype_id", tid)], xlst) -> CNST (value, int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("contassign", [("fl", _); ("dtype_id", tid)], xlst) -> CA (List.map (rw' errlst) xlst)
-| Xml.Element ("not"|"negate"|"extend" as op, [("fl", _); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' errlst) xlst)
+| Xml.Element ("not"|"negate"|"extend"|"lognot" as op, [("fl", _); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' errlst) xlst)
 | Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (snd (chkvif nam), List.map (rw' errlst) xlst)
 | Xml.Element ("instance", [("fl", _); ("name", nam); ("defName", dnam); ("origName", nam')], xlst) ->
                INST (nam, (dnam, List.map (rw' errlst) xlst))
@@ -322,7 +333,9 @@ let rec rw' errlst = function
 | Xml.Element ("varxref", [("fl", _); ("name", nam); ("dtype_id", tid); ("dotted", dotted)], xlst) ->
     XRF (nam, tid, dotted, List.map (rw' errlst) xlst)
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' errlst) xlst)
-| Xml.Element ("replicate"|"initarray"|"streaml"|"extends"|"powsu" as op, [("fl", _); ("dtype_id", tid)], xlst) -> REPL (op, List.map (rw' errlst) xlst)
+| Xml.Element ("initarray"|"streaml"|"powsu" as op, [("fl", _); ("dtype_id", tid)], xlst) -> SYS (op, List.map (rw' errlst) xlst)
+| Xml.Element ("replicate", [("fl", _); ("dtype_id", tid)], xlst) -> REPL (int_of_string tid, List.map (rw' errlst) xlst)
+| Xml.Element ("extends", [("fl", _); ("dtype_id", tid)], xlst) -> EXT (int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("iface", [("fl", src); ("name", bus); ("origName", bus')], xlst) -> IFC (src, bus, List.map (rw' errlst) xlst)
 | Xml.Element ("ifacerefdtype" as ifr, [("fl", _); ("id", num); ("modportname", nam)], xlst) -> DT (ifr, num, nam, [], List.map (rw' errlst) xlst)
 | Xml.Element ("modport", [("fl", _); ("name", port)], xlst) -> IMP (port, List.map (rw' errlst) xlst)
@@ -337,8 +350,10 @@ let rec rw' errlst = function
 | Xml.Element ("cell", [("fl", origin); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
     CELL(origin, nam, subnam, hier, List.map (rw' errlst) xlst)
 | Xml.Element ("display", [("fl", _)], xlst) -> DSPLY (List.map (rw' errlst) xlst)
-| Xml.Element (("fopen"|"fclose"|"readmem"|"typetable" as sys), [("fl", _)], xlst) -> SYS (sys, List.map (rw' errlst) xlst)
+| Xml.Element (("fopen"|"fclose"|"readmem"|"typetable"|"finish"|"stop" as sys), [("fl", _)], xlst) -> SYS (sys, List.map (rw' errlst) xlst)
 | Xml.Element (("task"|"taskref") as tsk, [("fl", _); ("name", nam)], xlst) -> TASK(tsk, nam, List.map (rw' errlst) xlst)
+| Xml.Element ("valueplusargs", [("fl", _); ("dtype_id", tid)], xlst) -> VPLSRGS(int_of_string tid, List.map (rw' errlst) xlst)
+| Xml.Element ("testplusargs", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> TPLSRGS(nam, int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("modportftaskref", [("fl", _); ("name", nam)], []) -> MODPORTFTR nam
 | (Xml.Element (str, _, _) | Xml.PCData str) as err -> errlst := err :: !errlst; failwith str
 
@@ -412,6 +427,7 @@ let subothlst = ref []
 let unaryopv = function
 | Unknown -> "???"
 | Unot -> " ~ "
+| Ulognot -> " ! "
 | Unegate -> " - "
 | Uextend -> "???"
 
@@ -481,15 +497,19 @@ let rec expr = function
     EXPR expr1 :: (if wid' = 1 then LBRACK :: expr expr2 @ [RBRACK]
     else LBRACK :: expr expr2 @ [PLUS;COLON] @ (NUM wid' :: RBRACK :: []))
 | SEL (expr1 :: CNST ("32'h0", _, []) :: (CNST _ as wid) :: []) -> expr expr1
+| SEL (expr1 :: CNST (lo, _, []) :: (CNST _ as wid) :: []) ->
+    let (szlo,lo') = cexp lo in LPAREN :: expr expr1 @ (RPAREN :: RSHIFT :: NUM lo' :: [])
 | ASEL (VRF (lval, []) :: expr1 :: []) -> EXPR lval :: LBRACK :: expr expr1 @ [RBRACK]
 | CND (expr1 :: lft :: rght :: []) -> expr expr1 @ [QUERY] @ expr lft @ [COLON] @ expr rght
 | CAT (expr1 :: expr2 :: []) -> LCURLY :: expr expr1 @ [COMMA] @ expr expr2 @ [RCURLY]
 | FRF (fref, arglst) -> let delim = ref LPAREN in
     EXPR fref :: List.flatten (List.map (function ARG (arg :: []) -> let lst = !delim :: expr arg in delim := COMMA; lst| _ -> [QUERY]) arglst) @ [RPAREN];
-| REPL (kind, arglst) -> EXPR kind :: LPAREN :: List.flatten (List.map (fun itm -> COMMA :: expr itm) arglst) @ [RPAREN]
+| REPL (tid, arg :: CNST (n,_,_) :: []) -> let (sz,n') = cexp n in LCURLY :: NUM n' :: LCURLY :: expr arg @ [RCURLY;RCURLY]
+| EXT (tid, arg :: []) -> LPAREN :: expr arg @ [RPAREN]
 | IRNG (expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
 | XRF (id, tid, dotted, []) -> EXPR (dotted^"_"^id) :: []
-| oth -> exprothlst := oth :: !exprothlst; [] (* failwith "exprothlst" *)
+| TPLSRGS (id, tid, []) -> EXPR ("$test$plusargs()") :: []
+| oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 
 let rec portconn = function
 | VRF (id, []) -> DOT :: EXPR id :: EXPR (" /* */") :: []
@@ -517,12 +537,16 @@ let tokenout fd indent = function
 | RBRACK -> output_string fd "]"
 | LCURLY -> output_string fd "{"
 | RCURLY -> output_string fd "}"
+| LSHIFT -> output_string fd "<<"
+| RSHIFT -> output_string fd ">>"
 | AT -> output_string fd "@"
 | DOT -> output_string fd "."
 | PLUS -> output_string fd "+"
 | STAR -> output_string fd "*"
 | QUERY -> output_string fd "?"
-| NL -> output_string fd ("\n"^String.make (!indent*4) ' ')
+| QUOTE -> output_string fd "'"
+| DQUOTE -> output_string fd "\""
+| NL -> output_string fd ("\n"^if !indent > 0 then String.make (!indent*4) ' ' else "")
 | DEFAULT -> output_string fd "default:"
 | EXPR str -> output_string fd str
 | NUM n -> output_string fd (string_of_int n)
@@ -532,8 +556,8 @@ let tokenout fd indent = function
 | IFF -> output_string fd "if"
 | ELSE -> output_string fd "else"
 | ASSIGN -> output_string fd "assign"
-| ASSIGNMENT  -> output_string fd "="
-| ASSIGNDLY  -> output_string fd "<="
+| ASSIGNMENT -> output_string fd "="
+| ASSIGNDLY -> output_string fd "<="
 | CASE -> output_string fd "case"; incr indent
 | ENDCASE -> output_string fd "endcase"; decr indent
 | WHILE -> output_string fd "while"
@@ -544,6 +568,8 @@ let tokenout fd indent = function
 | LOGIC -> output_string fd "logic"
 | FUNCTION -> output_string fd "function"; incr indent
 | ENDFUNCTION -> output_string fd "endfunction"; decr indent
+| TASK -> output_string fd "function"; incr indent
+| ENDTASK -> output_string fd "endfunction"; decr indent
 | MODULE -> output_string fd "module"; incr indent
 | ENDMODULE -> output_string fd "endmodule"; decr indent
 
@@ -558,11 +584,15 @@ let tokendump fd = function
 | RBRACK -> output_string fd "RBRACK\n"
 | LCURLY -> output_string fd "LCURLY\n"
 | RCURLY -> output_string fd "RCURLY\n"
+| LSHIFT -> output_string fd "LSHIFT\n"
+| RSHIFT -> output_string fd "RSHIFT\n"
 | AT -> output_string fd "AT\n"
 | DOT -> output_string fd "DOT\n"
 | PLUS -> output_string fd "PLUS\n"
 | STAR -> output_string fd "STAR\n"
 | QUERY -> output_string fd "QUERY\n"
+| QUOTE -> output_string fd "QUOTE\n"
+| DQUOTE -> output_string fd "DQUOTE\n"
 | NL -> output_string fd "NL\n"
 | DEFAULT -> output_string fd "DEFAULT\n"
 | EXPR str -> output_string fd ("EXPR "^str^"\n")
@@ -573,8 +603,8 @@ let tokendump fd = function
 | IFF -> output_string fd "IFF\n"
 | ELSE -> output_string fd "ELSE\n"
 | ASSIGN -> output_string fd "ASSIGN\n"
-| ASSIGNMENT  -> output_string fd "ASSIGNMENT\n"
-| ASSIGNDLY  -> output_string fd "ASSIGNDLY\n"
+| ASSIGNMENT -> output_string fd "ASSIGNMENT\n"
+| ASSIGNDLY -> output_string fd "ASSIGNDLY\n"
 | CASE -> output_string fd "CASE\n"
 | ENDCASE -> output_string fd "ENDCASE\n"
 | WHILE -> output_string fd "WHILE\n"
@@ -585,6 +615,8 @@ let tokendump fd = function
 | LOGIC -> output_string fd "LOGIC\n"
 | FUNCTION -> output_string fd "FUNCTION\n"
 | ENDFUNCTION -> output_string fd "ENDFUNCTION\n"
+| TASK -> output_string fd "TASK\n"
+| ENDTASK -> output_string fd "ENDTASK\n"
 | MODULE -> output_string fd "MODULE\n"
 | ENDMODULE -> output_string fd "ENDMODULE\n"
 
@@ -618,12 +650,12 @@ let rec iter2 dly tok lst =
     List.flatten (List.map (fun itm -> let lst' = !delim @ cstmt dly itm in delim := [SEMI;NL]; lst') lst)
 
 and csitm dly = function
-    | CSITM (cexp :: (BGN _ as st) :: []) -> expr cexp @ [COLON] @ cstmt dly st @ [NL]
-    | CSITM (cexp :: st :: []) -> expr cexp @ [COLON] @ cstmt dly st @ [SEMI;NL]
-    | CSITM (st :: []) -> DEFAULT :: cstmt dly st @ [SEMI]
+    | CSITM (cexp :: (BGN _ as st) :: []) -> expr cexp @ COLON :: BEGIN :: cstmt dly st @ END :: NL :: []
+    | CSITM (cexp :: st :: []) -> expr cexp @ COLON :: BEGIN :: cstmt dly st @ SEMI :: END :: NL :: []
+    | CSITM (st :: []) -> DEFAULT :: cstmt dly st @ SEMI :: []
     | CSITM (cexplst) -> (match List.rev cexplst with
-			| ((BGN _ as hd)::tl) -> reviter tl @ cstmt dly hd @ [NL]
-			| (hd::tl) -> reviter tl @ cstmt dly hd @ [SEMI; NL]
+			| ((BGN _ as hd)::tl) -> reviter tl @ BEGIN :: cstmt dly hd @ [SEMI;END;NL]
+			| (hd::tl) -> reviter tl @ BEGIN :: cstmt dly hd @ [SEMI;END;NL]
                         | [] -> [])
     | oth -> csothlst := oth :: !csothlst; failwith "csothlst"
 
@@ -645,18 +677,18 @@ and cstmt dly = function
 | CA(rght::lft::[]) -> ASSIGN :: SP :: expr lft @ stmtdly dly @ expr rght
 | VAR (id, _, kind) -> EXPR kind :: EXPR id :: []
 | WHL (cnd :: stmts) -> WHILE :: LPAREN :: expr cnd @ iter2 dly RPAREN stmts
-| DSPLY (SFMT (fmt, arglst) :: []) -> EXPR "$display" :: LPAREN :: EXPR fmt :: COMMA :: reviter arglst @ [LPAREN]
+| DSPLY (SFMT (fmt, arglst) :: []) -> EXPR "$display" :: LPAREN :: DQUOTE :: EXPR fmt :: DQUOTE :: COMMA :: reviter arglst @ [RPAREN]
 | DSPLY (SFMT (fmt, arglst) :: expr1 :: []) ->
-    EXPR "$fdisplay" :: LPAREN :: expr expr1 @ (COMMA :: EXPR fmt :: COMMA :: reviter arglst) @ [LPAREN]
-| SYS (fn, arglst) -> EXPR ("$"^fn) :: LPAREN :: EXPR fn :: COMMA :: reviter arglst @ [LPAREN]
+    EXPR "$fdisplay" :: LPAREN :: expr expr1 @ (COMMA :: EXPR fmt :: COMMA :: reviter arglst) @ [RPAREN]
+| SYS (fn, arglst) -> EXPR ("$"^fn) :: LPAREN :: EXPR fn :: COMMA :: reviter arglst @ [RPAREN]
 | CNST(cexpr, _, []) -> EXPR cexpr :: []
-| TASK ("taskref", nam, arglst) -> EXPR nam :: LPAREN :: reviter arglst @ [LPAREN]
+| TASK ("taskref", nam, arglst) -> EXPR nam :: LPAREN :: reviter arglst @ [RPAREN]
 | JMPL(rw_lst) -> iter2 dly BEGIN rw_lst @ [NL;END;NL]
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
 
 let flatten1 dly = function
-| BGN _ :: tl as lst -> List.flatten (List.map (cstmt dly) lst)
-| lst -> BEGIN :: List.flatten (List.map (cstmt dly) lst) @ [END;NL;NL]
+| BGN _ :: tl as lst -> let delim = ref SP in List.flatten (List.map (fun itm -> let lst' = !delim :: cstmt dly itm in delim := COMMA; lst') lst)
+| lst -> let delim = ref BEGIN in List.flatten (List.map (fun itm -> let lst' = !delim :: cstmt dly itm in delim := COMMA; lst') lst) @ [SEMI;END;NL;NL]
 
 let rec catitm pth itms = function
 | IO(str1, int1, Dunknown, "ifaceref", []) ->
@@ -674,6 +706,8 @@ let rec catitm pth itms = function
     itms.alwys := (POSPOS(ck,rst), rw_lst) :: !(itms.alwys)    
 | ALWYS(SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
     itms.alwys := (POSEDGE(ck), rw_lst) :: !(itms.alwys)
+| ALWYS(SNTRE(SNITM ("NEG", [VRF (ck, [])]) :: []) :: rw_lst) ->
+    itms.alwys := (NEGEDGE(ck), rw_lst) :: !(itms.alwys)
 | ALWYS(SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, [])]) :: SNITM ("NEG", [VRF (rst, [])]) :: []) :: rw_lst) ->
     let rw_lst' = (function
        | BGN(lbl, (IF(VRF(rst',[]) :: thn :: els :: []) :: [])) :: [] ->
@@ -750,7 +784,7 @@ let rec categorise itms = function
 | FRF(str1, rw_lst) -> catlst itms rw_lst
 | XRF(str1, str2, str3, rw_lst) -> catlst itms rw_lst
 | CAT(rw_lst) -> catlst itms rw_lst
-| EXT(rw_lst) -> catlst itms rw_lst
+| EXT(tid, rw_lst) -> catlst itms rw_lst
 | CPS(rw_lst) -> catlst itms rw_lst
 | CND(rw_lst) -> catlst itms rw_lst
 | REPL(str1, rw_lst) -> catlst itms rw_lst
@@ -884,6 +918,10 @@ let dump f (source, line, modul) =
 		 List.flatten (List.map (fnstmt false nam (ref [LPAREN])) (List.tl lst)) @ [ENDFUNCTION] in
 		 append lst;
                  ) (List.rev !(modul.func));
+  List.iter (fun (nam, lst) ->
+		 let lst = List.flatten (List.map (fnstmt false nam (ref [TASK])) (List.tl lst)) @ [ENDTASK] in
+		 append lst;
+                 ) (List.rev !(modul.task));
   List.iter (fun (dst, src) ->
                  append (SEMI :: NL :: ASSIGN :: SP :: expr dst @ (SP :: ASSIGNMENT :: SP:: expr src));
                  ) (List.rev !(modul.ca));
@@ -896,6 +934,8 @@ let dump f (source, line, modul) =
       append (SEMI :: NL :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: EXPR ck :: COMMA :: NEGEDGE :: SP :: EXPR rst :: RPAREN :: flatten1 true lst);
     | (POSEDGE (ck), lst) ->
       append (SEMI :: NL :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: EXPR ck :: RPAREN :: flatten1 true lst);
+    | (NEGEDGE (ck), lst) ->
+      append (SEMI :: NL :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: EXPR ck :: RPAREN :: flatten1 true lst);
     | (_, lst) -> failwith "not implemented";
     ) (List.rev !(modul.alwys));
   List.iter (fun (inst, (kind, lst)) ->

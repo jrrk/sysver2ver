@@ -29,6 +29,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 type unaryop =
 | Unknown
 | Unot
+| Ulognot
 | Unegate
 | Uextend
 
@@ -94,6 +95,8 @@ type rw =
 | INST of string * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * rw list
+| TPLSRGS of string * int * rw list
+| VPLSRGS of int * rw list
 | PORT of string * dirop * int * rw list
 | CA of rw list
 | UNRY of unaryop * rw list
@@ -109,10 +112,10 @@ type rw =
 | XRF of string * string * string * rw list
 | PKG of string * string * rw list
 | CAT of rw list
-| EXT of rw list
+| EXT of int * rw list
 | CPS of rw list
 | CND of rw list
-| REPL of string * rw list
+| REPL of int * rw list
 | MODUL of string * string * string * rw list
 | BGN of string * rw list
 | RNG of rw list
@@ -140,6 +143,7 @@ type rw =
 | POSNEG of string*string
 | NEGNEG of string*string
 | POSEDGE of string
+| NEGEDGE of string
 | COMB
 | INITIAL
 | FINAL
@@ -160,6 +164,8 @@ type token =
 | AT
 | DOT
 | QUERY
+| QUOTE
+| DQUOTE
 | PLUS
 | STAR
 | NL
@@ -175,6 +181,8 @@ type token =
 | RBRACK
 | LCURLY
 | RCURLY
+| LSHIFT
+| RSHIFT
 | IFF
 | ELSE
 | ASSIGN
@@ -190,6 +198,8 @@ type token =
 | LOGIC
 | FUNCTION
 | ENDFUNCTION
+| TASK
+| ENDTASK
 | MODULE
 | ENDMODULE
 
