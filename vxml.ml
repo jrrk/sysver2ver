@@ -111,7 +111,7 @@ type rw =
 | LOGIC of logop * rw list
 | CMP of cmpop * rw list
 | FRF of string * rw list
-| XRF of string * string * string * rw list
+| XRF of string * string * string * dirop ref
 | PKG of string * string * rw list
 | CAT of rw list
 | EXT of int * rw list
@@ -138,7 +138,7 @@ type rw =
 | DSPLY of rw list
 | FILS of string * rw list
 | FIL of string * string
-| NL of rw list
+| NTL of rw list
 | CELLS of rw list
 | CELL of string * string * string * string * rw list
 | POSPOS of string*string
@@ -272,7 +272,7 @@ let rec rw' errlst = function
 | Xml.Element ("verilator_xml", [], xlst) -> XML (List.map (rw' errlst) xlst)
 | Xml.Element ("files"|"module_files" as fils, [], xlst) -> FILS (fils, List.map (rw' errlst) xlst)
 | Xml.Element ("file", [("id", encoding); ("filename", nam); ("language", "1800-2017")], []) -> FIL (encoding, nam)
-| Xml.Element ("netlist", [], xlst) -> NL (List.rev(List.map (rw' errlst) xlst))
+| Xml.Element ("netlist", [], xlst) -> NTL (List.rev(List.map (rw' errlst) xlst))
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("dir", dir); ("vartype", typ); ("origName", nam')], xlst) ->
                IO (nam, int_of_string tid, dirop dir, typ, List.map (rw' errlst) xlst)
 | Xml.Element ("var", [("fl", _); ("name", nam); ("dtype_id", tid); ("vartype", ("ifaceref" as typ)); ("origName", nam')], []) ->
@@ -330,8 +330,8 @@ let rec rw' errlst = function
 | Xml.Element ("while", [("fl", _)], xlst) -> WHL (List.map (rw' errlst) xlst)
 | Xml.Element ("insiderange", [("fl", _); ("dtype_id", tid)], xlst) -> IRNG (List.map (rw' errlst) xlst)
 | Xml.Element ("funcref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> FRF (nam, List.map (rw' errlst) xlst)
-| Xml.Element ("varxref", [("fl", _); ("name", nam); ("dtype_id", tid); ("dotted", dotted)], xlst) ->
-    XRF (nam, tid, dotted, List.map (rw' errlst) xlst)
+| Xml.Element ("varxref", [("fl", _); ("name", nam); ("dtype_id", tid); ("dotted", dotted)], []) ->
+    XRF (nam, tid, dotted, ref Dunknown)
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' errlst) xlst)
 | Xml.Element ("initarray"|"streaml"|"powsu" as op, [("fl", _); ("dtype_id", tid)], xlst) -> SYS (op, List.map (rw' errlst) xlst)
 | Xml.Element ("replicate", [("fl", _); ("dtype_id", tid)], xlst) -> REPL (int_of_string tid, List.map (rw' errlst) xlst)
@@ -498,8 +498,8 @@ let rec expr = function
     let (szw,wid') = cexp wid in
     EXPR expr1 :: (if wid' = 1 then LBRACK :: expr expr2 @ [RBRACK]
     else LBRACK :: expr expr2 @ [PLUS;COLON] @ (NUM wid' :: RBRACK :: []))
-| SEL (expr1 :: CNST ("32'h0", _, []) :: (CNST _ as wid) :: []) -> expr expr1
-| SEL (expr1 :: CNST (lo, _, []) :: (CNST _ as wid) :: []) ->
+| SEL (expr1 :: CNST ("32'h0", _, []) :: (CNST _) :: []) -> expr expr1
+| SEL (expr1 :: CNST (lo, _, []) :: (CNST _) :: []) ->
     let (szlo,lo') = cexp lo in LPAREN :: expr expr1 @ (RPAREN :: RSHIFT :: NUM lo' :: [])
 | ASEL (VRF (lval, []) :: expr1 :: []) -> EXPR lval :: LBRACK :: expr expr1 @ [RBRACK]
 | CND (expr1 :: lft :: rght :: []) -> expr expr1 @ [QUERY] @ expr lft @ [COLON] @ expr rght
@@ -509,7 +509,7 @@ let rec expr = function
 | REPL (tid, arg :: CNST (n,_,_) :: []) -> let (sz,n') = cexp n in LCURLY :: NUM n' :: LCURLY :: expr arg @ [RCURLY;RCURLY]
 | EXT (tid, arg :: []) -> LPAREN :: expr arg @ [RPAREN]
 | IRNG (expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
-| XRF (id, tid, dotted, []) as xrf -> xrflst := xrf :: !xrflst; EXPR (dotted^"_"^id) :: []
+| XRF (id, tid, dotted, dirop) as xrf -> xrflst := xrf :: !xrflst; EXPR (dotted^(match !dirop with Dinam _ -> "_" | _ -> ".")^id) :: []
 | TPLSRGS (id, tid, []) -> EXPR "$test$plusargs" :: LPAREN :: DQUOTE :: EXPR id :: DQUOTE :: RPAREN :: []
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 
@@ -695,7 +695,7 @@ and cstmt dly = function
     []) ::
  []) -> let (szlo,lo') = cexp lo and (szw,wid') = cexp wid in 
     EXPR lval :: LBRACK :: expr expr1 @ RBRACK :: LBRACK :: NUM (lo'+wid'-1) :: COLON :: NUM lo' :: RBRACK :: stmtdly dly @ expr src
-| ASGNDLY(src :: dst :: []) as asgn -> expr dst @ stmtdly dly @ expr src
+| ASGNDLY(src :: dst :: []) -> expr dst @ stmtdly dly @ expr src
 | ASGN (src :: dst :: []) -> expr dst @ stmtdly dly @ expr src
 | CS (sel :: lst) -> CASE :: LPAREN :: expr sel @ (RPAREN :: NL :: List.flatten (List.map (csitm dly) lst)) @ [NL;ENDCASE]
 | CA(rght::lft::[]) -> ASSIGN :: SP :: expr lft @ stmtdly dly @ expr rght
@@ -713,6 +713,35 @@ and cstmt dly = function
 let flatten1 dly = function
 | BGN _ :: tl as lst -> let delim = ref SP in List.flatten (List.map (fun itm -> let lst' = !delim :: cstmt dly itm in delim := COMMA; lst') lst)
 | lst -> let delim = ref BEGIN in List.flatten (List.map (fun itm -> let lst' = !delim :: cstmt dly itm in delim := COMMA; lst') lst) @ [SEMI;END;NL;NL]
+
+let rec typmap = function
+| [] -> TYPNONE
+| [("left", lft); ("right", rght)] -> TYPRNG(int_of_string lft, int_of_string rght)
+| oth -> mapothlst := oth :: !mapothlst; failwith "mapothlst"
+
+let rec subtypmap = function
+| RNG [CNST (cexp1, _, []); CNST (cexp2, _, [])] -> let (b,n) = cexp cexp1 and (b',n') = cexp cexp2 in TYPRNG(n,n')
+| EITM ("enumitem", itm, "", n, [CNST (cexp, _, [])]) -> TYPENUM(itm, n, cexp)
+| RDT ("memberdtype", idx1, id, idx2, []) -> TYPMEMBER(idx1, id, idx2)
+| oth -> subothlst := oth :: !subothlst; failwith "subothlst"
+
+let find_source origin =
+    let last = ref 0 in
+    for i = String.length origin - 1 downto 0 do
+        match origin.[i] with '0'..'9' -> last := i | _ -> ();
+    done;
+    let k = String.sub origin 0 !last in
+    let source = if Hashtbl.mem files k then Hashtbl.find files k else "origin_unknown" in
+    let line = String.sub origin !last (String.length origin - !last) in
+    (source, int_of_string line)
+
+let rec cell_hier = function
+| CELL (_, nam, subnam, hier, rw_lst) ->
+   let hier_lst = List.flatten (List.map cell_hier rw_lst) in
+   print_endline ("Cell: "^subnam);
+   Hashtbl.replace hierarchy subnam hier_lst;
+   (nam,subnam) :: hier_lst
+| oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
 
 let rec catitm pth itms = function
 | IO(str1, int1, Dunknown, "ifaceref", []) ->
@@ -740,85 +769,85 @@ let rec catitm pth itms = function
            BGN("", (IF(UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
        | oth -> posneglst := oth :: !posneglst; oth) rw_lst in
     itms.alwys := ((match edg with "POS" -> POSNEG(ck,rst) | "NEG" -> NEGNEG(ck,rst) | _ -> UNKNOWN), rw_lst') :: !(itms.alwys)
-| ALWYS(rw_lst) -> itms.alwys := (COMB, rw_lst) :: !(itms.alwys)
-| INIT ("initial", rw_lst) -> itms.init := (INITIAL, rw_lst) :: !(itms.init)
-| INIT ("final", rw_lst) -> itms.init := (FINAL, rw_lst) :: !(itms.init)
+| ALWYS(rw_lst) ->
+    List.iter (catitm pth itms) rw_lst;
+    itms.alwys := (COMB, rw_lst) :: !(itms.alwys)
+| INIT ("initial", rw_lst) ->
+    List.iter (catitm pth itms) rw_lst;
+    itms.init := (INITIAL, rw_lst) :: !(itms.init)
+| INIT ("final", rw_lst) ->
+    List.iter (catitm pth itms) rw_lst;
+    itms.init := (FINAL, rw_lst) :: !(itms.init)
 | BGN(str1, rw_lst) -> let pth' = String.map (function ('A'..'Z' | 'a'..'z' | '0'..'9') as ch -> ch | _ -> '_') str1 in
     List.iter (catitm (pth^"_"^pth') itms) rw_lst
-| FNC(str1, idx1, rw_lst) -> itms.func := (str1, idx1, rw_lst) :: !(itms.func)
-| IF(rw_lst) -> itms.gen := rw_lst :: !(itms.gen)
-| IMP(str1, rw_lst) -> itms.imp := (List.map (function
+| FNC(str1, idx1, rw_lst) ->
+    List.iter (catitm pth itms) rw_lst;
+    itms.func := (str1, idx1, rw_lst) :: !(itms.func)
+| IF(rw_lst) ->
+    List.iter (catitm pth itms) rw_lst;
+    itms.gen := rw_lst :: !(itms.gen)
+| IMP(str1, rw_lst) ->
+    itms.imp := (List.map (function
     | IMRF(str1, str2, []) -> (str1,str2)
     | MODPORTFTR str1 -> (str1,str1)
     | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst") rw_lst) :: !(itms.imp)
-| TASK ("task", str1, rw_lst) -> itms.task := (str1, rw_lst) :: !(itms.task)
-| oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
-
-let find_source origin =
-    let last = ref 0 in
-    for i = String.length origin - 1 downto 0 do
-        match origin.[i] with '0'..'9' -> last := i | _ -> ();
-    done;
-    let k = String.sub origin 0 !last in
-    let source = if Hashtbl.mem files k then Hashtbl.find files k else "origin_unknown" in
-    let line = String.sub origin !last (String.length origin - !last) in
-    (source, int_of_string line)
-
-let rec cell_hier = function
-| CELL (_, nam, subnam, hier, rw_lst) ->
-   let hier_lst = List.flatten (List.map cell_hier rw_lst) in
-   print_endline ("Cell: "^subnam);
-   Hashtbl.replace hierarchy subnam hier_lst;
-   (nam,subnam) :: hier_lst
-| oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
-
-let rec typmap = function
-| [] -> TYPNONE
-| [("left", lft); ("right", rght)] -> TYPRNG(int_of_string lft, int_of_string rght)
-| oth -> mapothlst := oth :: !mapothlst; failwith "mapothlst"
-
-let rec subtypmap = function
-| RNG [CNST (cexp1, _, []); CNST (cexp2, _, [])] -> let (b,n) = cexp cexp1 and (b',n') = cexp cexp2 in TYPRNG(n,n')
-| EITM ("enumitem", itm, "", n, [CNST (cexp, _, [])]) -> TYPENUM(itm, n, cexp)
-| RDT ("memberdtype", idx1, id, idx2, []) -> TYPMEMBER(idx1, id, idx2)
-| oth -> subothlst := oth :: !subothlst; failwith "subothlst"
-
-let rec categorise itms = function
-| XML(rw_lst) -> catlst itms rw_lst
+| IMRF(str1, str2, []) -> ()
+| TASK ("task", str1, rw_lst) ->
+    List.iter (catitm pth itms) rw_lst;
+    itms.task := (str1, rw_lst) :: !(itms.task)
+| NTL(rw_lst)
+| RNG(rw_lst)
+| SNTRE(rw_lst)
+| IRNG(rw_lst)
+| JMPL(rw_lst)
+| JMPG(rw_lst)
+| CS(rw_lst)
+| CSITM(rw_lst)
+| WHL(rw_lst)
+| ARG(rw_lst)
+| FILS(_, rw_lst)
+| XML(rw_lst)
+| EITM(_, _, _, _, rw_lst)
+| CNST(_, _, rw_lst)
+| VRF(_, rw_lst)
+| TASK(_, _, rw_lst)
+| SFMT(_, rw_lst)
+| SYS(_, rw_lst)
+| PORT(_, _, _, rw_lst)
+| UNRY(_, rw_lst)
+| SEL(rw_lst)
+| ASEL(rw_lst)
+| SNITM(_, rw_lst)
+| ASGN(rw_lst)
+| ASGNDLY(rw_lst)
+| ARITH(_, rw_lst)
+| LOGIC(_, rw_lst)
+| CMP(_, rw_lst)
+| FRF(_, rw_lst)
+| CAT(rw_lst)
+| EXT(_, rw_lst)
+| CPS(rw_lst)
+| CND(rw_lst)
+| DSPLY(rw_lst)
+| VPLSRGS(_, rw_lst)
+| REPL(_, rw_lst) -> List.iter (catitm pth itms) rw_lst
 | DT(dtyp, num, nam, attr_list, rw_lst) ->
+    List.iter (catitm pth itms) rw_lst;
     Hashtbl.add typetable (int_of_string num) (dtyp,nam,typmap attr_list,List.map subtypmap rw_lst)
 | RDT(dtyp, int1, nam, int2, rw_lst) ->
+    List.iter (catitm pth itms) rw_lst;
     Hashtbl.add typetable int1 (dtyp,nam,SUBTYP int2,List.map subtypmap rw_lst)
-| EITM(str1, str2, str3, str4, rw_lst) -> catlst itms rw_lst
-| CNST(str1, tid, rw_lst) -> catlst itms rw_lst
-| VRF(str1, rw_lst) -> catlst itms rw_lst
-| FNC(str1, idx1, rw_lst) -> catlst itms rw_lst
-| TASK(str1, str2, rw_lst) -> catlst itms rw_lst
-| SFMT(str1, rw_lst) -> catlst itms rw_lst
-| SYS(str1, rw_lst) -> catlst itms rw_lst
-| PORT(str1, str2, str3, rw_lst) -> catlst itms rw_lst
-| UNRY(str1, rw_lst) -> catlst itms rw_lst
-| SEL(rw_lst) -> catlst itms rw_lst
-| ASEL(rw_lst) -> catlst itms rw_lst
-| SNITM(str1, rw_lst) -> catlst itms rw_lst
-| ASGN(rw_lst) -> catlst itms rw_lst
-| ARITH(str1, rw_lst) -> catlst itms rw_lst
-| LOGIC(str1, rw_lst) -> catlst itms rw_lst
-| CMP(str1, rw_lst) -> catlst itms rw_lst
-| FRF(str1, rw_lst) -> catlst itms rw_lst
-| XRF(str1, str2, str3, rw_lst) ->
+| XRF(str1, str2, str3, dirop) ->
     if List.mem_assoc str3 !(itms.io) then
-    print_endline (str3^" is io")
+        begin
+        match List.assoc str3 !(itms.io) with
+         | (int1, dir, logic, _) -> dirop := dir
+        end
     else
     print_endline (str3^" is not io");
-    catlst itms rw_lst
-| CAT(rw_lst) -> catlst itms rw_lst
-| EXT(tid, rw_lst) -> catlst itms rw_lst
-| CPS(rw_lst) -> catlst itms rw_lst
-| CND(rw_lst) -> catlst itms rw_lst
-| REPL(str1, rw_lst) -> catlst itms rw_lst
 | MODUL(origin, str1, str2, rw_lst) ->
     let (source, line) = find_source origin in
+    print_endline (str1^":"^source);
     let itms = empty_itms () in
     List.iter (catitm "" itms) rw_lst;
     if Hashtbl.mem hierarchy str1 then Hashtbl.add modules str1 (source, line, itms)
@@ -834,23 +863,12 @@ let rec categorise itms = function
     let itms = empty_itms () in
     List.iter (catitm str1 itms) rw_lst;
     Hashtbl.add interfaces str1 (source, line, itms, rw_lst)
-| RNG(rw_lst) -> catlst itms rw_lst
-| SNTRE(rw_lst) -> catlst itms rw_lst
-| IRNG(rw_lst) -> catlst itms rw_lst
-| JMPL(rw_lst) -> catlst itms rw_lst
-| JMPG(rw_lst) -> catlst itms rw_lst
-| CS(rw_lst) -> catlst itms rw_lst
-| CSITM(rw_lst) -> catlst itms rw_lst
-| WHL(rw_lst) -> catlst itms rw_lst
-| ARG(rw_lst) -> catlst itms rw_lst
-| FILS(str1, rw_lst) -> catlst itms rw_lst
-| FIL(enc, fil) -> Hashtbl.add files enc fil
-| NL(rw_lst) -> catlst itms rw_lst
-| CELLS(rw_lst) -> top := List.flatten(List.map cell_hier rw_lst)
-| TYP(id, []) -> ()
-| VAR(id, n, id_t) -> ()
-| oth -> catothlst := oth :: !catothlst; failwith "catothlst"
-and catlst itms lst = List.iter (categorise itms) lst
+| FIL(enc, fil) ->
+    Hashtbl.add files enc fil
+| CELLS(rw_lst) ->
+    top := List.flatten(List.map cell_hier rw_lst)
+| TPLSRGS (id, tid, []) -> ()
+| oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
 
 let fold1 fn = function
 | [] -> 0 (* should never occur, just to keep type system happy *)
@@ -902,7 +920,6 @@ let rec fnstmt dly nam delim = function
 let rec taskstmt dly nam = function
 | BGN(_,rw_lst) -> List.flatten (List.map (taskstmt dly nam) rw_lst)
 | itm -> cstmt dly itm @ SEMI :: NL :: []
-| oth -> tskothlst := oth :: !tskothlst; failwith "taskstmt"
 
 let outnam f = f^"_translate.v"
 let outtok f = f^"_tokens.txt"
@@ -1050,7 +1067,7 @@ let translate errlst xmlf =
     let xml = try Xml.parse_file xmlf with Xml.Error err -> xmlerr := Some err; Xml.PCData "Xml.Error" in
     let (line,range) = match !xmlerr with Some (_, errpos) -> (Xml.line errpos, Xml.range errpos) | None -> (0, (0,0)) in
     let rwxml = rw' errlst xml in
-    categorise (empty_itms ()) rwxml;
+    catitm "" (empty_itms ()) rwxml;
     let top = snd(List.hd !top) in
     print_endline ("toplevel is "^top);
     let (topsrc, topline, topmodul) as tophash = Hashtbl.find modules top in

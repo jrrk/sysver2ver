@@ -109,7 +109,7 @@ type rw =
 | LOGIC of logop * rw list
 | CMP of cmpop * rw list
 | FRF of string * rw list
-| XRF of string * string * string * rw list
+| XRF of string * string * string * dirop ref
 | PKG of string * string * rw list
 | CAT of rw list
 | EXT of int * rw list
@@ -136,7 +136,7 @@ type rw =
 | DSPLY of rw list
 | FILS of string * rw list
 | FIL of string * string
-| NL of rw list
+| NTL of rw list
 | CELLS of rw list
 | CELL of string * string * string * string * rw list
 | POSPOS of string*string

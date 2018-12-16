@@ -1,6 +1,6 @@
 #directory "/home/jrrk2/.opam/system/lib/xml-light";;
 #print_depth 10000;;
-#print_length 10000;;
+#print_length 100000;;
 
 open Vxml
 
@@ -16,10 +16,10 @@ let xmlf = "obj_dir/Vsimple.xml";;
 let xmlf = "obj_dir/Vchip.xml";;
 let xmlf = "obj_dir/Vmaster_opt.xml";;
 let xmlf = "obj_dir/Varray2d.xml";;
+let xmlf = "obj_dir/Vmaster.xml";;
 *)
 
 let xmlf = "../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml";;
-let xmlf = "obj_dir/Vmaster.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;
