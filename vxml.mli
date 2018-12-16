@@ -204,7 +204,7 @@ type token =
 | ENDMODULE
 
 type itms = { 
-  io: (string*int*dirop*string*string list) list ref;
+  io: (string*(int*dirop*string*string list)) list ref;
   v: (string*(int*string*int)) list ref;
   iv: (string*(int*rw list*int)) list ref;
   ir: (string*int) list ref;
@@ -234,6 +234,7 @@ val memothlst : typmap list ref
 val subothlst : rw list ref
 val mapothlst : (string * string) list list ref
 val tskothlst : rw list ref
+val xrflst : rw list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val modules_opt : (string, string * int * itms) Hashtbl.t

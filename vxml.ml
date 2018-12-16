@@ -358,7 +358,7 @@ let rec rw' errlst = function
 | (Xml.Element (str, _, _) | Xml.PCData str) as err -> errlst := err :: !errlst; failwith str
 
 type itms = { 
-  io: (string*int*dirop*string*string list) list ref;
+  io: (string*(int*dirop*string*string list)) list ref;
   v: (string*(int*string*int)) list ref;
   iv: (string*(int*rw list*int)) list ref;
   ir: (string*int) list ref;
@@ -424,6 +424,7 @@ let memothlst = ref []
 let mapothlst = ref []
 let subothlst = ref []
 let tskothlst = ref []
+let xrflst = ref []
 
 let unaryopv = function
 | Unknown -> "???"
@@ -508,7 +509,7 @@ let rec expr = function
 | REPL (tid, arg :: CNST (n,_,_) :: []) -> let (sz,n') = cexp n in LCURLY :: NUM n' :: LCURLY :: expr arg @ [RCURLY;RCURLY]
 | EXT (tid, arg :: []) -> LPAREN :: expr arg @ [RPAREN]
 | IRNG (expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
-| XRF (id, tid, dotted, []) -> EXPR (dotted^"_"^id) :: []
+| XRF (id, tid, dotted, []) as xrf -> xrflst := xrf :: !xrflst; EXPR (dotted^"_"^id) :: []
 | TPLSRGS (id, tid, []) -> EXPR "$test$plusargs" :: LPAREN :: DQUOTE :: EXPR id :: DQUOTE :: RPAREN :: []
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 
@@ -683,7 +684,18 @@ and cstmt dly = function
     ifcond (expr cnd) @ (SP :: cstmt dly then_stmt) @ [ELSE] @ cstmt dly else_stmt
 | IF(cnd :: then_stmt :: else_stmt :: []) ->
     ifcond (expr cnd) @ (SP :: cstmt dly then_stmt) @ [SEMI;ELSE] @ cstmt dly else_stmt
-| ASGNDLY(src :: dst :: []) -> expr dst @ stmtdly dly @ expr src
+| ASGNDLY (
+    src ::
+    SEL (
+        ASEL (VRF (lval, []) ::
+        expr1 ::
+        []) ::
+    CNST (lo, _, []) ::
+    CNST (wid, _, []) ::
+    []) ::
+ []) -> let (szlo,lo') = cexp lo and (szw,wid') = cexp wid in 
+    EXPR lval :: LBRACK :: expr expr1 @ RBRACK :: LBRACK :: NUM (lo'+wid'-1) :: COLON :: NUM lo' :: RBRACK :: stmtdly dly @ expr src
+| ASGNDLY(src :: dst :: []) as asgn -> expr dst @ stmtdly dly @ expr src
 | ASGN (src :: dst :: []) -> expr dst @ stmtdly dly @ expr src
 | CS (sel :: lst) -> CASE :: LPAREN :: expr sel @ (RPAREN :: NL :: List.flatten (List.map (csitm dly) lst)) @ [NL;ENDCASE]
 | CA(rght::lft::[]) -> ASSIGN :: SP :: expr lft @ stmtdly dly @ expr rght
@@ -705,8 +717,8 @@ let flatten1 dly = function
 let rec catitm pth itms = function
 | IO(str1, int1, Dunknown, "ifaceref", []) ->
     let (dtype, dir, _, _) = Hashtbl.find typetable int1 in
-    itms.io := (str1, int1, Dinam dir, "logic", []) :: !(itms.io)
-| IO(str1, int1, dir, str3, clst) -> itms.io := (str1, int1, dir, str3, List.map ioconn clst) :: !(itms.io)
+    itms.io := (str1, (int1, Dinam dir, "logic", [])) :: !(itms.io)
+| IO(str1, int1, dir, str3, clst) -> itms.io := (str1, (int1, dir, str3, List.map ioconn clst)) :: !(itms.io)
 | VAR(str1, int1, "ifaceref") -> itms.ir := (str1, int1) :: !(itms.ir)
 | VAR(str1, int1, str2) -> itms.v := (str1, (int1, str2, -1)) :: !(itms.v)
 | IVAR(str1, int1, rwlst, int2) -> itms.iv := (str1, (int1, rwlst, int2)) :: !(itms.iv)
@@ -794,7 +806,12 @@ let rec categorise itms = function
 | LOGIC(str1, rw_lst) -> catlst itms rw_lst
 | CMP(str1, rw_lst) -> catlst itms rw_lst
 | FRF(str1, rw_lst) -> catlst itms rw_lst
-| XRF(str1, str2, str3, rw_lst) -> catlst itms rw_lst
+| XRF(str1, str2, str3, rw_lst) ->
+    if List.mem_assoc str3 !(itms.io) then
+    print_endline (str3^" is io")
+    else
+    print_endline (str3^" is not io");
+    catlst itms rw_lst
 | CAT(rw_lst) -> catlst itms rw_lst
 | EXT(tid, rw_lst) -> catlst itms rw_lst
 | CPS(rw_lst) -> catlst itms rw_lst
@@ -918,7 +935,7 @@ let dump f (source, line, modul) =
   let appendlst = ref [] in
   let append lst = appendlst := lst :: !appendlst in
   if true then print_endline ("f \""^f^"\";; /* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl f ^" */");
-  let delim = ref [NL; MODULE; SP; EXPR f; LPAREN] in List.iter (fun (io, idx, dir, kind', lst) -> 
+  let delim = ref [NL; MODULE; SP; EXPR f; LPAREN] in List.iter (fun (io, (idx, dir, kind', lst)) -> 
     let lst = iolst delim dir idx io in
     delim := [COMMA];
     append lst
@@ -931,11 +948,11 @@ let dump f (source, line, modul) =
 		 List.flatten (List.map (fnstmt false nam (ref [LPAREN])) (List.tl lst)) @ [ENDFUNCTION] in
 		 append lst;
                  ) (List.rev !(modul.func));
- List.iter (fun (nam, lst) ->
+  List.iter (fun (nam, lst) ->
 		 let lst = List.flatten (List.map (taskstmt false nam) lst) in
 		 append (TASK :: SP :: EXPR nam :: SEMI :: NL :: lst @ ENDTASK :: NL :: []);
                  ) (List.rev !(modul.task));
-List.iter (fun (dst, src) ->
+  List.iter (fun (dst, src) ->
                  append (ASSIGN :: SP :: expr dst @ (SP :: ASSIGNMENT :: SP:: expr src @ SEMI :: NL :: []));
                  ) (List.rev !(modul.ca));
   List.iter (function
@@ -978,7 +995,7 @@ let rec iterate f (source, line, modul) =
            let newiolst = ref [] in
            let newinnerlst = ref [] in
 	   let previolst = !(itms.io) in
-           List.iter2 (fun ((_, ix, idir, typ, ilst) as inr) -> function
+           List.iter2 (fun ((_, (ix, idir, typ, ilst)) as inr) -> function
 		       | VRF (id, []) ->
                            newiolst := PORT(id, idir, ix, [VRF(id, [])]) :: !newiolst;
                            newinnerlst := inr :: !newinnerlst;
@@ -995,7 +1012,7 @@ let rec iterate f (source, line, modul) =
                                         (* print_endline (inam^":"^iport^":"^nam^":"^id_i); *)
                                         let (idx, kind, _) = List.assoc nam !(intf.v) in
 					newiolst := PORT(id_i^"_"^nam, dirop dir, idx, [VRF(id^"_"^nam, [])]) :: !newiolst;
-				        newinnerlst := (id_i^"_"^nam, idx, dirop dir, typ, ilst) :: !newinnerlst;
+				        newinnerlst := (id_i^"_"^nam, (idx, dirop dir, typ, ilst)) :: !newinnerlst;
 				       | _ -> ()) (List.assoc iport imp'')
 				  end
                                | _ -> newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst)
