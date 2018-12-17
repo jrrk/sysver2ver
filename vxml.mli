@@ -96,7 +96,7 @@ type rw =
 | IVAR of string * int * rw list * int
 | CNST of (int*int) * int * rw list
 | VRF of string * rw list
-| TYP of string * rw list
+| TYP of string * string * int * rw list
 | FNC of string * int * rw list
 | TASK of string * string * rw list
 | INST of string * (string * rw list)
@@ -213,7 +213,7 @@ type itms = {
   iv: (string*(int*rw list*int)) list ref;
   ir: (string*int) list ref;
   ca: (rw*rw) list ref;
-  typ: string list ref;
+  typ: (string*string*int) list ref;
   alwys: (rw*rw list) list ref;
   init: (rw*rw list) list ref;
   func: (string*int*rw list*itms) list ref;

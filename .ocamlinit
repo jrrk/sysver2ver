@@ -21,6 +21,7 @@ let xmlf = "obj_dir/Vmaster.xml";;
 *)
 
 let xmlf = "obj_dir/Vpicorv32_ref.xml";;
+let xmlf = "obj_dir/Vmaster.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;

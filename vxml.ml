@@ -96,7 +96,7 @@ type rw =
 | IVAR of string * int * rw list * int
 | CNST of (int * int) * int * rw list
 | VRF of string * rw list
-| TYP of string * rw list
+| TYP of string * string * int * rw list
 | FNC of string * int * rw list
 | TASK of string * string * rw list
 | INST of string * (string * rw list)
@@ -162,7 +162,7 @@ type itms = {
   iv: (string*(int*rw list*int)) list ref;
   ir: (string*int) list ref;
   ca: (rw*rw) list ref;
-  typ: string list ref;
+  typ: (string*string*int) list ref;
   alwys: (rw*rw list) list ref;
   init: (rw*rw list) list ref;
   func: (string*int*rw list*itms) list ref;
@@ -323,6 +323,7 @@ let rec typmap = function
 let rec subtypmap = function
 | RNG [CNST ((b,n), _, []); CNST ((b',n'), _, [])] -> TYPRNG(n,n')
 | EITM ("enumitem", itm, "", n, [CNST (cexp, _, [])]) -> TYPENUM(itm, n, cexp)
+| TYP ("memberdtype", nam, idx, []) -> TYPMEMBER(idx, nam, int_of_string nam)
 | oth -> subothlst := oth :: !subothlst; failwith "subothlst"
 
 let rec rw' errlst = function
@@ -375,7 +376,7 @@ let rec rw' errlst = function
 | Xml.Element ("initial"|"final" as action, [("fl", _)], xlst) -> INIT (action, List.map (rw' errlst) xlst)
 | Xml.Element ("assign", [("fl", _); ("dtype_id", tid)], xlst) -> ASGN (List.map (rw' errlst) xlst)
 | Xml.Element ("package", [("fl", orig); ("name", nam); ("origName", nam')], xlst) -> PKG (orig, nam, List.map (rw' errlst) xlst)
-| Xml.Element ("typedef", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> TYP (nam, List.map (rw' errlst) xlst)
+| Xml.Element ("typedef" as dtyp, [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> TYP (dtyp, nam, int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("func", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> FNC (nam, int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("jumplabel", [("fl", _)], xlst) -> JMPL (List.map (rw' errlst) xlst)
 | Xml.Element ("jumpgo", [("fl", _)], xlst) -> JMPG (List.map (rw' errlst) xlst)
@@ -397,27 +398,27 @@ let rec rw' errlst = function
 | Xml.Element ("extends", [("fl", _); ("dtype_id", tid)], xlst) -> EXT (int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("iface", [("fl", src); ("name", bus); ("origName", bus')], xlst) -> IFC (src, bus, List.map (rw' errlst) xlst)
 | Xml.Element ("ifacerefdtype" as ifr, [("fl", _); ("id", num); ("modportname", nam)], xlst) ->
-    let xlst' = List.map (rw' errlst) xlst in
-    Hashtbl.add typetable (int_of_string num) (ifr, nam, TYPNONE, List.map subtypmap xlst'); SYS (ifr, xlst')
+    let xlst' = List.map (rw' errlst) xlst and idx = int_of_string num in
+    Hashtbl.add typetable idx (ifr, nam, TYPNONE, List.map subtypmap xlst'); TYP (ifr, nam, idx, xlst')
 | Xml.Element ("modport", [("fl", _); ("name", port)], xlst) -> IMP (port, List.map (rw' errlst) xlst)
 | Xml.Element ("modportvarref", [("fl", _); ("name", member); ("direction", dir)], xlst) -> IMRF (member, dir, List.map (rw' errlst) xlst)
 | Xml.Element ("basicdtype"|"structdtype"|"uniondtype" as dtyp, ("fl", _) :: ("id", num) :: rnglst, xlst) ->
-    let xlst' = List.map (rw' errlst) xlst in
+    let xlst' = List.map (rw' errlst) xlst and idx = int_of_string num in
     (match rnglst with
       | ("name", nam) :: tl ->
-          Hashtbl.add typetable (int_of_string num) (dtyp,nam,typmap tl,List.map subtypmap xlst')
+          Hashtbl.add typetable idx (dtyp,nam,typmap tl,List.map subtypmap xlst')
       | _ ->
-      Hashtbl.add typetable (int_of_string num) (dtyp,"",typmap rnglst,List.map subtypmap xlst'));
-    SYS(dtyp, xlst')
-    | Xml.Element ("refdtype"|"enumdtype"|"memberdtype"|"paramtypedtype" as dtyp, [("fl", _); ("id", num); ("name", nam); ("sub_dtype_id", subtype)], xlst) ->
-    let xlst' = List.map (rw' errlst) xlst in
-    Hashtbl.add typetable (int_of_string num) (dtyp,nam,SUBTYP (int_of_string subtype),List.map subtypmap xlst');
-    SYS(dtyp, xlst')
+      Hashtbl.add typetable idx (dtyp,"",typmap rnglst,List.map subtypmap xlst'));
+    TYP(dtyp, "", idx, xlst')
+| Xml.Element ("refdtype"|"enumdtype"|"memberdtype"|"paramtypedtype" as dtyp, [("fl", _); ("id", num); ("name", nam); ("sub_dtype_id", subtype)], xlst) ->
+    let xlst' = List.map (rw' errlst) xlst and idx = int_of_string num in
+    Hashtbl.add typetable idx (dtyp,nam,SUBTYP (int_of_string subtype),List.map subtypmap xlst');
+    TYP(dtyp, subtype, idx, xlst')
 | Xml.Element ("packarraydtype"|"unpackarraydtype"|"constdtype" as dtyp, [("fl", _); ("id", num); ("sub_dtype_id", subtype)], xlst) ->
-    let xlst' = List.map (rw' errlst) xlst in
+    let xlst' = List.map (rw' errlst) xlst and idx = int_of_string num in
 
-    Hashtbl.add typetable (int_of_string num) (dtyp,"",SUBTYP (int_of_string subtype),List.map subtypmap xlst');
-    SYS(dtyp, xlst')
+    Hashtbl.add typetable idx (dtyp,"",SUBTYP (int_of_string subtype),List.map subtypmap xlst');
+    TYP(dtyp, subtype, idx, xlst')
 | Xml.Element ("enumitem" as dtyp, [("fl", _); ("name", nam); ("dtype_id", num)], xlst) -> EITM (dtyp, nam, "", int_of_string num, List.map (rw' errlst) xlst)
 | Xml.Element ("cells", [], xlst) -> CELLS(List.map (rw' errlst) xlst)
 | Xml.Element ("cell", [("fl", origin); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
@@ -536,17 +537,17 @@ let rec expr = function
 | FRF (fref, arglst) -> let delim = ref LPAREN in
     IDENT fref :: List.flatten (List.map (function ARG (arg :: []) -> let lst = !delim :: expr arg in delim := COMMA; lst| _ -> [QUERY]) arglst) @ [RPAREN];
 | REPL (tid, arg :: CNST ((sz,n'),_,_) :: []) -> LCURLY :: NUM n' :: LCURLY :: expr arg @ [RCURLY;RCURLY]
-| EXT (tid, arg :: []) -> LPAREN :: expr arg @ [RPAREN]
+| EXT (tid, arg :: []) -> IDENT "$signed" :: LPAREN :: expr arg @ [RPAREN]
 | IRNG (expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
 | XRF (id, tid, dotted, dirop) as xrf -> xrflst := xrf :: !xrflst; IDENT (dotted^(match !dirop with Dinam _ -> "_" | _ -> ".")^id) :: []
 | TPLSRGS (id, tid, []) -> IDENT "$test$plusargs" :: LPAREN :: DQUOTE :: IDENT id :: DQUOTE :: RPAREN :: []
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 
 let rec portconn = function
-| VRF (id, []) -> DOT :: IDENT id :: LCOMMENT :: SP :: RCOMMENT :: []
-| PORT (id_o, dir, idx, []) -> DOT :: IDENT id_o :: LPAREN :: RPAREN :: LCOMMENT :: DIR dir :: COMMA :: NUM idx :: RCOMMENT :: []
+| VRF (id, []) -> DOT :: IDENT id :: []
+| PORT (id_o, dir, idx, []) -> DOT :: IDENT id_o :: LPAREN :: RPAREN :: []
 | PORT (id_i, dir, idx, expr1 :: []) -> DOT :: IDENT id_i :: LPAREN :: expr expr1 @ [RPAREN]
-| RNG [CNST ((_,lft), _, []); CNST ((_,rght), _, [])] -> LCOMMENT :: LBRACK :: NUM lft :: COLON :: NUM rght :: RBRACK :: RCOMMENT :: []
+| RNG [CNST ((_,lft), _, []); CNST ((_,rght), _, [])] -> LCOMMENT :: NUM lft :: COLON :: NUM rght :: RCOMMENT :: []
 | oth -> portothlst := oth :: !portothlst; failwith "portothlst"
 
 let rec ioconn = function
@@ -780,7 +781,7 @@ let rec catitm pth itms = function
 | VAR(str1, int1, str2) -> itms.v := (str1, (int1, str2, -1)) :: !(itms.v)
 | IVAR(str1, int1, rwlst, int2) -> itms.iv := (str1, (int1, rwlst, int2)) :: !(itms.iv)
 | CA(rght::lft::[]) -> itms.ca := (lft, rght) :: !(itms.ca)
-| TYP(str1, []) -> itms.typ := str1 :: !(itms.typ)
+| TYP(str1, str2, int1, []) -> itms.typ := (str1,str2,int1) :: !(itms.typ)
 | INST(str1, (str2, port_lst)) -> let pth = if String.length pth > 0 then pth^"_"^str1 else str1 in
     itms.inst := (pth, (str2, List.rev port_lst)) :: !(itms.inst)
 | ALWYS(SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("POS", [VRF (rst, [])]) :: []) :: rw_lst) ->
@@ -892,6 +893,7 @@ let rec catitm pth itms = function
 | CELLS(rw_lst) ->
     top := List.flatten(List.map cell_hier rw_lst)
 | TPLSRGS (id, tid, []) -> ()
+| TYP (dtyp, subtype, idx, lst) -> ()
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
 
 let fold1 fn = function
@@ -904,8 +906,9 @@ let rec cntbasic = function
 | ("basicdtype", ("logic"|"integer"|"int"|"bit"), TYPRNG(hi, lo), []) -> hi - lo + 1 :: []
 | ("basicdtype", ("logic"|"bit"), TYPNONE, []) -> 1 :: []
 | ("ifacerefdtype", _, TYPNONE, []) -> 0 :: []
-| ("packarraydtype", "", SUBTYP subtyp, [TYPRNG(n,n')]) -> (n - n' + 1) :: findmembers subtyp 
+| ("packarraydtype", "", SUBTYP subtyp, [TYPRNG(n,n')]) -> List.map (fun itm -> itm * (n - n' + 1)) (findmembers subtyp)
 | ("unpackarraydtype", "", SUBTYP subtyp, [TYPRNG (n,n')]) -> (n - n' + 1) :: findmembers subtyp
+| ("memberdtype", id, SUBTYP subtyp, []) -> 1 :: []
 | oth -> typothlst := oth :: !typothlst; failwith "typothlst"
 
 and cntmembers = function
