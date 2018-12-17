@@ -83,7 +83,7 @@ type typmap =
 | SUBTYP of int
 | TYPRNG of int*int
 | TYPMEMBER of int*string*int
-| TYPENUM of string * int * string
+| TYPENUM of string * int * (int*int)
 
 type typetable_t = string*string*typmap*typmap list
 
@@ -94,7 +94,7 @@ type rw =
 | IO of string * int * dirop * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * rw list * int
-| CNST of string * int * rw list
+| CNST of (int*int) * int * rw list
 | VRF of string * rw list
 | TYP of string * rw list
 | FNC of string * int * rw list
@@ -170,8 +170,9 @@ type token =
 | MINUS
 | STAR
 | NL
-| EXPR of string
+| IDENT of string
 | NUM of int
+| SIZED of (int * int)
 | DIR of dirop
 | BEGIN
 | END
@@ -182,6 +183,8 @@ type token =
 | RBRACK
 | LCURLY
 | RCURLY
+| LCOMMENT
+| RCOMMENT
 | LSHIFT
 | RSHIFT
 | IFF
@@ -205,7 +208,7 @@ type token =
 | ENDMODULE
 
 type itms = { 
-  io: (string*(int*dirop*string*string list)) list ref;
+  io: (string*(int*dirop*string*(int*int) list)) list ref;
   v: (string*(int*string*int)) list ref;
   iv: (string*(int*rw list*int)) list ref;
   ir: (string*int) list ref;
@@ -236,7 +239,6 @@ val subothlst : rw list ref
 val mapothlst : (string * string) list list ref
 val tskothlst : rw list ref
 val xrflst : rw list ref
-val iter2lst : (string * (string * (int * dirop * string * string list)) list * rw list) list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val modules_opt : (string, string * int * itms) Hashtbl.t

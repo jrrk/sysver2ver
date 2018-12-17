@@ -5,6 +5,7 @@
 open Vxml
 
 (*
+let xmlf = "../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml";;
 let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/obj_dir/Vdmi_jtag.xml";;
 let xmlf = "/local/scratch/jrrk2/ariane-vcs-regression/ariane/work-xml/Variane_testharness.xml";;
 let xmlf = "obj_dir/Vjtag_xilinx_fixed.xml";;
@@ -19,8 +20,7 @@ let xmlf = "obj_dir/Varray2d.xml";;
 let xmlf = "obj_dir/Vmaster.xml";;
 *)
 
-let xmlf = "obj_dir/Vmaster.xml";;
-let xmlf = "../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml";;
+let xmlf = "obj_dir/Vpicorv32_ref.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;
