@@ -212,8 +212,8 @@ type itms = {
   typ: string list ref;
   alwys: (rw*rw list) list ref;
   init: (rw*rw list) list ref;
-  func: (string*int*rw list) list ref;
-  task: (string*rw list) list ref;
+  func: (string*int*rw list*itms) list ref;
+  task: (string*rw list*itms) list ref;
   gen : rw list list ref;
   imp : (string*string) list list ref;
   inst: (string*(string*rw list)) list ref;
@@ -235,6 +235,7 @@ val subothlst : rw list ref
 val mapothlst : (string * string) list list ref
 val tskothlst : rw list ref
 val xrflst : rw list ref
+val iter2lst : (string * (string * (int * dirop * string * string list)) list * rw list) list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val modules_opt : (string, string * int * itms) Hashtbl.t

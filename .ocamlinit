@@ -19,6 +19,7 @@ let xmlf = "obj_dir/Varray2d.xml";;
 let xmlf = "obj_dir/Vmaster.xml";;
 *)
 
+let xmlf = "obj_dir/Vmaster.xml";;
 let xmlf = "../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml";;
 
 let errlst = ref [];;

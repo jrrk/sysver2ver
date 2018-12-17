@@ -366,8 +366,8 @@ type itms = {
   typ: string list ref;
   alwys: (rw*rw list) list ref;
   init: (rw*rw list) list ref;
-  func: (string*int*rw list) list ref;
-  task: (string*rw list) list ref;
+  func: (string*int*rw list*itms) list ref;
+  task: (string*rw list*itms) list ref;
   gen: (rw list) list ref;
   imp : (string*string) list list ref;
   inst: (string*(string*rw list)) list ref;
@@ -425,6 +425,7 @@ let mapothlst = ref []
 let subothlst = ref []
 let tskothlst = ref []
 let xrflst = ref []
+let iter2lst = ref []
 
 let unaryopv = function
 | Unknown -> "???"
@@ -781,8 +782,9 @@ let rec catitm pth itms = function
 | BGN(str1, rw_lst) -> let pth' = String.map (function ('A'..'Z' | 'a'..'z' | '0'..'9') as ch -> ch | _ -> '_') str1 in
     List.iter (catitm (pth^"_"^pth') itms) rw_lst
 | FNC(str1, idx1, rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
-    itms.func := (str1, idx1, rw_lst) :: !(itms.func)
+    let itms' = empty_itms () in
+    List.iter (catitm pth itms') rw_lst;
+    itms.func := (str1, idx1, rw_lst, itms') :: !(itms.func)
 | IF(rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     itms.gen := rw_lst :: !(itms.gen)
@@ -793,8 +795,9 @@ let rec catitm pth itms = function
     | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst") rw_lst) :: !(itms.imp)
 | IMRF(str1, str2, []) -> ()
 | TASK ("task", str1, rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
-    itms.task := (str1, rw_lst) :: !(itms.task)
+    let itms' = empty_itms () in
+    List.iter (catitm pth itms') rw_lst;
+    itms.task := (str1, rw_lst, itms') :: !(itms.task)
 | NTL(rw_lst)
 | RNG(rw_lst)
 | SNTRE(rw_lst)
@@ -960,12 +963,12 @@ let dump f (source, line, modul) =
   append [RPAREN;SEMI;NL];
   List.iter (fun (id, (idx, kind', n)) -> append (varlst (ref []) idx id @ SEMI :: NL :: []);
                  ) (List.rev !(modul.v));
-  List.iter (fun (nam, idx, lst) ->
+  List.iter (fun (nam, idx, lst, itms') ->
 		 let lst = (varlst (ref (SEMI :: NL :: FUNCTION :: SP :: [])) idx nam) @
 		 List.flatten (List.map (fnstmt false nam (ref [LPAREN])) (List.tl lst)) @ [ENDFUNCTION] in
 		 append lst;
                  ) (List.rev !(modul.func));
-  List.iter (fun (nam, lst) ->
+  List.iter (fun (nam, lst, itms') ->
 		 let lst = List.flatten (List.map (taskstmt false nam) lst) in
 		 append (TASK :: SP :: EXPR nam :: SEMI :: NL :: lst @ ENDTASK :: NL :: []);
                  ) (List.rev !(modul.task));
@@ -1012,6 +1015,7 @@ let rec iterate f (source, line, modul) =
            let newiolst = ref [] in
            let newinnerlst = ref [] in
 	   let previolst = !(itms.io) in
+           iter2lst := ( kind, previolst, iolst ) :: !iter2lst;
            List.iter2 (fun ((_, (ix, idir, typ, ilst)) as inr) -> function
 		       | VRF (id, []) ->
                            newiolst := PORT(id, idir, ix, [VRF(id, [])]) :: !newiolst;
