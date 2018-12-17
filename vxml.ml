@@ -185,6 +185,7 @@ type token =
 | QUOTE
 | DQUOTE
 | PLUS
+| MINUS
 | STAR
 | NL
 | EXPR of string
@@ -571,6 +572,7 @@ let tokenout fd indent = function
 | AT -> output_string fd "@"
 | DOT -> output_string fd "."
 | PLUS -> output_string fd "+"
+| MINUS -> output_string fd "-"
 | STAR -> output_string fd "*"
 | QUERY -> output_string fd "?"
 | QUOTE -> output_string fd "'"
@@ -618,6 +620,7 @@ let tokendump fd = function
 | AT -> output_string fd "AT\n"
 | DOT -> output_string fd "DOT\n"
 | PLUS -> output_string fd "PLUS\n"
+| MINUS -> output_string fd "MINUS\n"
 | STAR -> output_string fd "STAR\n"
 | QUERY -> output_string fd "QUERY\n"
 | QUOTE -> output_string fd "QUOTE\n"
@@ -887,13 +890,13 @@ let fold1 fn = function
 | (hd::tl) -> List.fold_left fn hd tl
 
 let rec cntbasic = function
-| ("structdtype",_,typmap,rw_lst) -> fold1 (+) (List.map cntmembers rw_lst)
-| ("uniondtype",_,typmap,rw_lst) -> fold1 (max) (List.map cntmembers rw_lst)
-| ("basicdtype", ("logic"|"integer"|"int"|"bit"), TYPRNG(hi, lo), []) -> hi - lo + 1
-| ("basicdtype", ("logic"|"bit"), TYPNONE, []) -> 1
-| ("ifacerefdtype", _, TYPNONE, []) -> 0
-| ("packarraydtype", "", SUBTYP subtyp, [TYPRNG(n,n')]) -> let subw = findmembers subtyp in subw * (n - n' + 1)
-| ("unpackarraydtype", "", SUBTYP subtyp, [TYPRNG (n,n')]) -> let subw = findmembers subtyp in subw * (n - n' + 1)
+| ("structdtype",_,typmap,rw_lst) -> fold1 (+) (List.flatten (List.map cntmembers rw_lst)) :: []
+| ("uniondtype",_,typmap,rw_lst) -> fold1 (max) (List.flatten (List.map cntmembers rw_lst)) :: []
+| ("basicdtype", ("logic"|"integer"|"int"|"bit"), TYPRNG(hi, lo), []) -> hi - lo + 1 :: []
+| ("basicdtype", ("logic"|"bit"), TYPNONE, []) -> 1 :: []
+| ("ifacerefdtype", _, TYPNONE, []) -> 0 :: []
+| ("packarraydtype", "", SUBTYP subtyp, [TYPRNG(n,n')]) -> (n - n' + 1) :: findmembers subtyp 
+| ("unpackarraydtype", "", SUBTYP subtyp, [TYPRNG (n,n')]) -> (n - n' + 1) :: findmembers subtyp
 | oth -> typothlst := oth :: !typothlst; failwith "typothlst"
 
 and cntmembers = function
@@ -901,18 +904,23 @@ and cntmembers = function
 | oth -> memothlst := oth :: !memothlst; failwith "memothlst"
 
 and findmembers idx = if Hashtbl.mem typetable idx then
-    let wid' = cntbasic (Hashtbl.find typetable idx) in
-    wid' else 1
+    cntbasic (Hashtbl.find typetable idx) else []
 
 let iolst delim dir idx io =
-    let wid = findmembers idx in
+    let wid = fold1 ( * ) (findmembers idx) in
     !delim @ (DIR dir :: SP :: LOGIC ::
 	     (if wid > 1 then LBRACK :: NUM (wid-1) :: COLON :: EXPR "0" :: RBRACK :: [] else []) @ [SP; EXPR io])
 
 let varlst delim idx id =
-    let wid = findmembers idx in
-    !delim @ (LOGIC ::
-    (if wid > 1 then LBRACK :: NUM (wid-1) :: COLON :: EXPR "0" :: RBRACK :: [] else [])) @ [SP; EXPR id]
+    let widlst = findmembers idx in
+    let expand delim = fun w -> let lst = !delim :: NUM w :: [] in delim := STAR; lst in
+    !delim @ LOGIC :: SP :: match widlst with
+                | [] -> EXPR id :: []
+                | 1 :: [] -> EXPR id :: []
+                | n :: [] -> LBRACK :: NUM (n-1) :: COLON :: NUM 0 :: RBRACK :: SP :: EXPR id :: []
+                | n :: m :: [] -> LBRACK :: NUM (m-1) :: COLON :: NUM 0 :: RBRACK :: SP :: EXPR id :: SP :: LBRACK :: NUM (n-1) :: COLON :: NUM 0 :: RBRACK :: []
+                | oth -> let delim = ref LBRACK in
+    List.flatten (List.map (expand delim) widlst) @ MINUS :: NUM 1 :: COLON :: EXPR "0" :: RBRACK :: SP :: EXPR id :: []
 	     
 let rec fnstmt dly nam delim = function
 | IO (io, idx, dir, kind', lst) ->

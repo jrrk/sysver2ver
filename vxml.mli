@@ -167,6 +167,7 @@ type token =
 | QUOTE
 | DQUOTE
 | PLUS
+| MINUS
 | STAR
 | NL
 | EXPR of string
