@@ -78,11 +78,18 @@ type dirop =
 | Dinam of string 
 | Dport of (string * int * dirop * string * string list)
 
+type typmap =
+| TYPNONE
+| SUBTYP of int
+| TYPRNG of int*int
+| TYPMEMBER of int*string*int
+| TYPENUM of string * int * string
+
+type typetable_t = string*string*typmap*typmap list
+
 type rw =
 | UNKNOWN
 | XML of rw list
-| DT of string * string * string * (string*string) list * rw list
-| RDT of string * int * string * int * rw list
 | EITM of string * string * string * int * rw list
 | IO of string * int * dirop * string * rw list
 | VAR of string * int * string
@@ -148,13 +155,6 @@ type rw =
 | INITIAL
 | FINAL
 | MODPORTFTR of string
-
-type typmap =
-| TYPNONE
-| SUBTYP of int
-| TYPRNG of int*int
-| TYPMEMBER of int*string*int
-| TYPENUM of string * int * string
 
 type token =
 | SP
@@ -241,7 +241,7 @@ val modules : (string, string * int * itms) Hashtbl.t
 val modules_opt : (string, string * int * itms) Hashtbl.t
 val packages : (string, string * int * itms) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
-val typetable : (int, string*string*typmap*typmap list) Hashtbl.t
+val typetable : (int, typetable_t) Hashtbl.t
 val interfaces : (string, string * int * itms * rw list) Hashtbl.t
 val top : (string * string) list ref
 
