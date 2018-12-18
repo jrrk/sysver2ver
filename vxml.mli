@@ -152,8 +152,6 @@ type rw =
 | POSEDGE of string
 | NEGEDGE of string
 | COMB
-| INITIAL
-| FINAL
 | MODPORTFTR of string
 
 type token =
@@ -206,6 +204,8 @@ type token =
 | ENDTASK
 | MODULE
 | ENDMODULE
+| INITIAL
+| FINAL
 
 type itms = { 
   io: (string*(int*dirop*string*(int*int) list)) list ref;
@@ -215,7 +215,7 @@ type itms = {
   ca: (rw*rw) list ref;
   typ: (string*string*int) list ref;
   alwys: (rw*rw list) list ref;
-  init: (rw*rw list) list ref;
+  init: (token*rw list) list ref;
   func: (string*int*rw list*itms) list ref;
   task: (string*rw list*itms) list ref;
   gen : rw list list ref;

@@ -13,3 +13,11 @@ header_check:
 vxmlmain: vxml.mli vxml.ml main.ml
 	ocamlc -g -I `ocamlfind query xml-light` unix.cma xml-light.cma vxml.mli vxml.ml main.ml -o $@
 
+testbench:
+	verilator --cc --exe -Wno-width -Wno-multidriven -Wno-caseincomplete -trace picorv32_wrapper_opt_translate.v example/testbench.cc
+
+testbench.vvp:
+	iverilog -g2005-sv -o $@ picorv32_wrapper_opt_translate.v
+
+combined.v:
+	cat axi4_memory_opt_translate.v picorv32__pi2_opt_translate.v picorv32_axi__pi1_opt_translate.v  picorv32_axi_adapter_opt_translate.v picorv32_pcpi_div_opt_translate.v picorv32_pcpi_mul_opt_translate.v picorv32_wrapper_opt_translate.v > $@

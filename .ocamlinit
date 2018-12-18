@@ -18,10 +18,10 @@ let xmlf = "obj_dir/Vchip.xml";;
 let xmlf = "obj_dir/Vmaster_opt.xml";;
 let xmlf = "obj_dir/Varray2d.xml";;
 let xmlf = "obj_dir/Vmaster.xml";;
+let xmlf = "obj_dir/Vpicorv32_ref.xml";;
 *)
 
-let xmlf = "obj_dir/Vpicorv32_ref.xml";;
-let xmlf = "obj_dir/Vmaster.xml";;
+let xmlf = "../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;
