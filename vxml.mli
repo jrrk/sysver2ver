@@ -87,6 +87,13 @@ type typmap =
 
 type typetable_t = string*string*typmap*typmap list
 
+type cexp =
+| ERR
+| BIN of char
+| HEX of int
+| SHEX of int
+| STRING of string
+
 type rw =
 | UNKNOWN
 | XML of rw list
@@ -94,7 +101,7 @@ type rw =
 | IO of string * int * dirop * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * rw list * int
-| CNST of (int*int) * int * rw list
+| CNST of (int*cexp) * int * rw list
 | VRF of string * rw list
 | TYP of string * string * int * rw list
 | FNC of string * int * rw list
@@ -169,8 +176,8 @@ type token =
 | STAR
 | NL
 | IDENT of string
-| NUM of int
-| SIZED of (int * int)
+| NUM of cexp
+| SIZED of (int * cexp)
 | DIR of dirop
 | BEGIN
 | END
@@ -208,7 +215,7 @@ type token =
 | FINAL
 
 type itms = { 
-  io: (string*(int*dirop*string*(int*int) list)) list ref;
+  io: (string*(int*dirop*string*(int*cexp) list)) list ref;
   v: (string*(int*string*int)) list ref;
   iv: (string*(int*rw list*int)) list ref;
   ir: (string*int) list ref;
@@ -248,5 +255,9 @@ val typetable : (int, typetable_t) Hashtbl.t
 val interfaces : (string, string * int * itms * rw list) Hashtbl.t
 val top : (string * string) list ref
 
+val decode : string -> cexp
+val cadd : cexp list -> cexp
+val cexp : string -> int * cexp
+val expr : rw -> token list
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml
 val dump : string -> string * int * itms -> token list
