@@ -133,7 +133,7 @@ type rw =
 | MODUL of string * string * string * rw list
 | BGN of string * rw list
 | RNG of rw list
-| ALWYS of rw list
+| ALWYS of string * rw list
 | SNTRE of rw list
 | IF of rw list
 | INIT of string * rw list
@@ -146,6 +146,7 @@ type rw =
 | CS of rw list
 | CSITM of rw list
 | WHL of rw list
+| FORSTMT of (cmpop * string * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
 | ARG of rw list
 | DSPLY of rw list
 | FILS of string * rw list
@@ -175,6 +176,7 @@ type token =
 | MINUS
 | STAR
 | NL
+| SRC of (string*int)
 | IDENT of string
 | NUM of cexp
 | SIZED of (int * cexp)
@@ -197,9 +199,11 @@ type token =
 | ASSIGN
 | ASSIGNMENT
 | ASSIGNDLY
+| CMPOP of cmpop
 | CASE
 | ENDCASE
 | WHILE
+| FOR
 | ALWAYS
 | POSEDGE
 | NEGEDGE
@@ -221,7 +225,7 @@ type itms = {
   ir: (string*int) list ref;
   ca: (rw*rw) list ref;
   typ: (string*string*int) list ref;
-  alwys: (rw*rw list) list ref;
+  alwys: (string*rw*rw list) list ref;
   init: (token*rw list) list ref;
   func: (string*int*rw list*itms) list ref;
   task: (string*rw list*itms) list ref;
@@ -254,6 +258,7 @@ let mapothlst = ref []
 let subothlst = ref []
 let tskothlst = ref []
 let xrflst = ref []
+let forlst = ref []
 
 let constnet = function
 | "1'h1" -> "supply1"
@@ -348,6 +353,14 @@ let rec subtypmap = function
 | TYP ("memberdtype", nam, idx, []) -> TYPMEMBER(idx, nam, int_of_string nam)
 | oth -> subothlst := oth :: !subothlst; failwith "subothlst"
 
+let fortailmatch ix' = function
+| ASGN (ARITH (Aadd, CNST (inc, 9, []) :: VRF (ix'', []) :: []) :: VRF (ix''', []) :: []) :: tl -> (ix'=ix'') && (ix''=ix''')
+| _ -> false
+
+let forinc = function
+| ASGN (ARITH (Aadd, CNST (inc, 9, []) :: VRF (ix'', []) :: []) :: VRF (ix''', []) :: []) :: tl -> (inc,List.rev tl)
+| tl -> ((0,ERR),List.rev tl)
+
 let rec rw' errlst = function
 | Xml.Element ("verilator_xml", [], xlst) -> XML (List.map (rw' errlst) xlst)
 | Xml.Element ("files"|"module_files" as fils, [], xlst) -> FILS (fils, List.map (rw' errlst) xlst)
@@ -384,11 +397,19 @@ let rec rw' errlst = function
                PORT (sub, Dvif, int_of_string idx, List.map (rw' errlst) xlst)
 | Xml.Element ("sel", [("fl", _); ("dtype_id", tid)], xlst) -> SEL (List.map (rw' errlst) xlst)
 | Xml.Element ("arraysel", [("fl", _); ("dtype_id", tid)], xlst) -> ASEL (List.map (rw' errlst) xlst)
-| Xml.Element ("always", [("fl", _)], xlst) -> ALWYS (List.map (rw' errlst) xlst)
+| Xml.Element ("always", [("fl", src)], xlst) -> ALWYS (src, List.map (rw' errlst) xlst)
 | Xml.Element ("sentree", [("fl", _)], xlst) -> SNTRE (List.map (rw' errlst) xlst)
 | Xml.Element ("senitem", [("fl", _); ("edgeType", etyp)], xlst) -> SNITM (etyp, List.map (rw' errlst) xlst)
 | Xml.Element ("begin", [("fl", _); ("name", namedblk)], xlst) -> BGN (namedblk, List.map (rw' errlst) xlst)
-| Xml.Element ("begin", [("fl", _)], xlst) -> BGN ("", List.map (rw' errlst) xlst)
+| Xml.Element ("begin", [("fl", _)], xlst) -> let xlst' = List.map (rw' errlst) xlst in
+(match xlst' with
+       | ASGN (CNST (strt, 9, []) :: VRF (ix, []) :: []) ::
+            WHL
+             (CMP (cmpop, CNST (stop, 9, []) :: VRF (ix', []) :: []) ::
+              stmtlst) :: [] when (ix=ix') && fortailmatch ix (List.rev stmtlst) ->
+                let (inc,stmts) = forinc (List.rev stmtlst) in FORSTMT (cmpop,ix,strt,stop,inc,stmts)
+       | ASGN a :: WHL (b :: stmtlst) :: [] -> forlst := (a,b,stmtlst) :: !forlst; BGN ("", xlst')
+       | _ -> BGN ("", xlst'))
 | Xml.Element ("assigndly", [("fl", _); ("dtype_id", tid)], xlst) -> ASGNDLY (List.map (rw' errlst) xlst)
 | Xml.Element ("if", [("fl", _)], xlst) -> IF (List.map (rw' errlst) xlst)
 | Xml.Element ("add"|"sub"|"mul"|"muls" as op, [("fl", _); ("dtype_id", tid)], xlst) -> ARITH (arithop op, List.map (rw' errlst) xlst)
@@ -555,7 +576,7 @@ let rec expr = function
 | CNST ((s,n), tid, []) -> SIZED (s,n) :: []
 | UNRY (Uextend, expr1 :: []) -> LCURLY :: SIZED (1, BIN '0') :: COMMA :: expr expr1 @ [RCURLY]
 | UNRY (op, expr1 :: []) -> LPAREN :: IDENT (unaryopv op) :: expr expr1 @ [RPAREN]
-| CMP (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ [IDENT (cmpopv op)] @ expr expr2 @ [RPAREN]
+| CMP (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ CMPOP op :: expr expr2 @ [RPAREN]
 | LOGIC (op, expr1 :: []) -> LPAREN :: IDENT (logopv op) :: expr expr1 @ [RPAREN]
 | LOGIC (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ (IDENT (logopv op) :: expr expr2) @[RPAREN]
 | ARITH (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ (IDENT (arithopv op) :: expr expr2) @[RPAREN]
@@ -620,6 +641,7 @@ let tokenout fd indent = function
 | QUOTE -> output_string fd "'"
 | DQUOTE -> output_string fd "\""
 | NL -> output_string fd ("\n"^if !indent > 0 then String.make (!indent*4) ' ' else "")
+| SRC (str1,int1) -> output_string fd ("\n/* "^str1^":"^string_of_int int1^" */\n")
 | DEFAULT -> output_string fd "default"
 | IDENT str -> output_string fd str
 | NUM (BIN n) -> output_string fd (String.make 1 n)
@@ -643,7 +665,9 @@ let tokenout fd indent = function
 | ASSIGNDLY -> output_string fd "<="
 | CASE -> output_string fd "case"; incr indent
 | ENDCASE -> output_string fd "endcase"; decr indent
+| CMPOP op -> output_string fd (cmpopv op)
 | WHILE -> output_string fd "while"
+| FOR -> output_string fd "for"
 | ALWAYS -> output_string fd "always"
 | POSEDGE -> output_string fd "posedge"
 | NEGEDGE -> output_string fd "negedge"
@@ -682,6 +706,7 @@ let tokendump fd = function
 | QUOTE -> output_string fd "QUOTE\n"
 | DQUOTE -> output_string fd "DQUOTE\n"
 | NL -> output_string fd "NL\n"
+| SRC _ -> output_string fd "SRC\n"
 | DEFAULT -> output_string fd "DEFAULT\n"
 | IDENT str -> output_string fd ("IDENT "^str^"\n")
 | NUM n -> output_string fd ("NUM\n")
@@ -695,8 +720,10 @@ let tokendump fd = function
 | ASSIGNMENT -> output_string fd "ASSIGNMENT\n"
 | ASSIGNDLY -> output_string fd "ASSIGNDLY\n"
 | CASE -> output_string fd "CASE\n"
+| CMPOP _ -> output_string fd "CMPOP\n"
 | ENDCASE -> output_string fd "ENDCASE\n"
 | WHILE -> output_string fd "WHILE\n"
+| FOR -> output_string fd "FOR\n"
 | ALWAYS -> output_string fd "ALWAYS\n"
 | POSEDGE -> output_string fd "POSEDGE\n"
 | NEGEDGE -> output_string fd "NEGEDGE\n"
@@ -790,7 +817,11 @@ and cstmt dly = function
 | CS (sel :: lst) -> CASE :: LPAREN :: expr sel @ (RPAREN :: NL :: List.flatten (List.map (csitm dly) lst)) @ [NL;ENDCASE]
 | CA(rght::lft::[]) -> ASSIGN :: SP :: expr lft @ stmtdly dly @ expr rght
 | VAR (id, _, kind) -> IDENT kind :: IDENT id :: []
-| WHL (cnd :: stmts) -> WHILE :: LPAREN :: expr cnd @ RPAREN :: iter2 dly stmts
+| FORSTMT (cnd,ix,strt,stop,inc,stmts) ->
+    FOR :: LPAREN :: IDENT ix :: ASSIGNMENT :: SIZED strt :: SEMI ::
+    SIZED stop :: CMPOP cnd :: IDENT ix :: SEMI ::
+    IDENT ix :: ASSIGNMENT :: IDENT ix :: PLUS :: SIZED inc :: RPAREN ::
+    BEGIN :: iter2 dly stmts @ [END]
 | DSPLY (SFMT (fmt, arglst) :: []) -> IDENT "$display" :: LPAREN :: DQUOTE :: IDENT fmt :: DQUOTE :: eiter COMMA arglst @ [RPAREN]
 | DSPLY (SFMT (fmt, arglst) :: expr1 :: []) ->
     IDENT "$fdisplay" :: LPAREN :: expr expr1 @ (COMMA :: IDENT fmt :: COMMA :: reviter arglst) @ [RPAREN]
@@ -834,23 +865,23 @@ let rec catitm pth itms = function
 | TYP(str1, str2, int1, []) -> itms.typ := (str1,str2,int1) :: !(itms.typ)
 | INST(str1, (str2, port_lst)) -> let pth = if String.length pth > 0 then pth^"_"^str1 else str1 in
     itms.inst := (pth, (str2, List.rev port_lst)) :: !(itms.inst)
-| ALWYS(SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("POS", [VRF (rst, [])]) :: []) :: rw_lst) ->
-    itms.alwys := (POSPOS(ck,rst), rw_lst) :: !(itms.alwys)    
-| ALWYS(SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
-    itms.alwys := (POSEDGE(ck), rw_lst) :: !(itms.alwys)
-| ALWYS(SNTRE(SNITM ("NEG", [VRF (ck, [])]) :: []) :: rw_lst) ->
-    itms.alwys := (NEGEDGE(ck), rw_lst) :: !(itms.alwys)
-| ALWYS(SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, [])]) :: SNITM ("NEG", [VRF (rst, [])]) :: []) :: rw_lst) ->
+| ALWYS(src, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("POS", [VRF (rst, [])]) :: []) :: rw_lst) ->
+    itms.alwys := (src, POSPOS(ck,rst), rw_lst) :: !(itms.alwys)    
+| ALWYS(src, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
+    itms.alwys := (src, POSEDGE(ck), rw_lst) :: !(itms.alwys)
+| ALWYS(src, SNTRE(SNITM ("NEG", [VRF (ck, [])]) :: []) :: rw_lst) ->
+    itms.alwys := (src, NEGEDGE(ck), rw_lst) :: !(itms.alwys)
+| ALWYS(src, SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, [])]) :: SNITM ("NEG", [VRF (rst, [])]) :: []) :: rw_lst) ->
     let rw_lst' = (function
        | BGN(lbl, (IF(VRF(rst',[]) :: thn :: els :: []) :: [])) :: [] ->
            BGN("", (IF(UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
        | IF(VRF(rst',[]) :: thn :: els :: []) :: [] ->
            BGN("", (IF(UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
        | oth -> posneglst := oth :: !posneglst; oth) rw_lst in
-    itms.alwys := ((match edg with "POS" -> POSNEG(ck,rst) | "NEG" -> NEGNEG(ck,rst) | _ -> UNKNOWN), rw_lst') :: !(itms.alwys)
-| ALWYS(rw_lst) ->
+    itms.alwys := (src, (match edg with "POS" -> POSNEG(ck,rst) | "NEG" -> NEGNEG(ck,rst) | _ -> UNKNOWN), rw_lst') :: !(itms.alwys)
+| ALWYS(src, rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
-    itms.alwys := (COMB, rw_lst) :: !(itms.alwys)
+    itms.alwys := (src, COMB, rw_lst) :: !(itms.alwys)
 | INIT ("initial", rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     itms.init := (INITIAL, rw_lst) :: !(itms.init)
@@ -885,6 +916,7 @@ let rec catitm pth itms = function
 | CS(rw_lst)
 | CSITM(rw_lst)
 | WHL(rw_lst)
+| FORSTMT(_,_,_,_,_,rw_lst)
 | ARG(rw_lst)
 | FILS(_, rw_lst)
 | XML(rw_lst)
@@ -1034,18 +1066,18 @@ let dump f (source, line, modul) =
                  append (ASSIGN :: SP :: expr dst @ (SP :: ASSIGNMENT :: SP:: expr src @ SEMI :: NL :: []));
                  ) (List.rev !(modul.ca));
   List.iter (function
-    | (COMB, lst) ->
-      append (NL :: ALWAYS :: AT :: STAR :: flatten1 false lst);
-    | (POSNEG (ck, rst), lst) ->
-      append (NL :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
-    | (NEGNEG (ck, rst), lst) ->
-      append (NL :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
-    | (POSEDGE (ck), lst) ->
-      append (NL :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
-    | (NEGEDGE (ck), lst) ->
-      append (NL :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
-    | (_, lst) -> failwith "not implemented";
-    ) (List.rev !(modul.alwys));
+    | (src, COMB, lst) ->
+      append (SRC src :: ALWAYS :: AT :: STAR :: flatten1 false lst);
+    | (src, POSNEG (ck, rst), lst) ->
+      append (SRC src :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
+    | (src, NEGNEG (ck, rst), lst) ->
+      append (SRC src :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
+    | (src, POSEDGE (ck), lst) ->
+      append (SRC src :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
+    | (src, NEGEDGE (ck), lst) ->
+      append (SRC src :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
+    | (src, _, lst) -> failwith "not implemented";
+    ) (List.rev (List.map (fun (src,edg,lst) -> (find_source src, edg, lst)) !(modul.alwys)));
   List.iter (fun (inst, (kind, lst)) ->
                  let delim = ref SP in
                  let lst = List.flatten (List.map (fun term -> let lst = !delim :: portconn term in delim := COMMA; lst) lst) in

@@ -133,7 +133,7 @@ type rw =
 | MODUL of string * string * string * rw list
 | BGN of string * rw list
 | RNG of rw list
-| ALWYS of rw list
+| ALWYS of string * rw list
 | SNTRE of rw list
 | IF of rw list
 | INIT of string * rw list
@@ -146,6 +146,7 @@ type rw =
 | CS of rw list
 | CSITM of rw list
 | WHL of rw list
+| FORSTMT of (cmpop * string * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
 | ARG of rw list
 | DSPLY of rw list
 | FILS of string * rw list
@@ -175,6 +176,7 @@ type token =
 | MINUS
 | STAR
 | NL
+| SRC of (string*int)
 | IDENT of string
 | NUM of cexp
 | SIZED of (int * cexp)
@@ -197,9 +199,11 @@ type token =
 | ASSIGN
 | ASSIGNMENT
 | ASSIGNDLY
+| CMPOP of cmpop
 | CASE
 | ENDCASE
 | WHILE
+| FOR
 | ALWAYS
 | POSEDGE
 | NEGEDGE
@@ -221,7 +225,7 @@ type itms = {
   ir: (string*int) list ref;
   ca: (rw*rw) list ref;
   typ: (string*string*int) list ref;
-  alwys: (rw*rw list) list ref;
+  alwys: (string*rw*rw list) list ref;
   init: (token*rw list) list ref;
   func: (string*int*rw list*itms) list ref;
   task: (string*rw list*itms) list ref;
@@ -246,6 +250,7 @@ val subothlst : rw list ref
 val mapothlst : (string * string) list list ref
 val tskothlst : rw list ref
 val xrflst : rw list ref
+val forlst : (rw list * rw * rw list) list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val modules_opt : (string, string * int * itms) Hashtbl.t
@@ -259,5 +264,6 @@ val decode : string -> cexp
 val cadd : cexp list -> cexp
 val cexp : string -> int * cexp
 val expr : rw -> token list
+val fortailmatch : string -> rw list -> bool
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml
 val dump : string -> string * int * itms -> token list

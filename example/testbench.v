@@ -14,7 +14,7 @@ module testbench #(
 );
 	reg clk = 1;
 	reg resetn = 0;
-	wire trap;
+	wire trap, trap_opt;
 
 	always #5 clk = ~clk;
 
@@ -34,7 +34,9 @@ module testbench #(
 	end
 
 	wire trace_valid;
+	wire trace_valid_opt;
 	wire [35:0] trace_data;
+	wire [35:0] trace_data_opt;
 	integer trace_file;
 
 	initial begin
@@ -61,5 +63,14 @@ module testbench #(
 		.trace_valid(trace_valid),
 		.trace_data(trace_data)
 	);
+
+	picorv32_wrapper_mixed top_opt (
+		.clk(clk),
+		.resetn(resetn),
+		.trap(trap_opt),
+		.trace_valid(trace_valid_opt),
+		.trace_data(trace_data_opt)
+	);
+
 endmodule
 `endif

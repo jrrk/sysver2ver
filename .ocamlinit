@@ -22,6 +22,7 @@ let xmlf = "obj_dir/Vpicorv32_ref.xml";;
 *)
 
 let xmlf = "../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml";;
+let xmlf = "obj_dir/Vpicorv32_pcpi_mul.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;
