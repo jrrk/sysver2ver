@@ -5,7 +5,7 @@ vxmlmain
 *.cmi
 *.cmo
 *.tcl
-*.v
+*.txt
 *.mr
 fm_shell_command*.log
 obj_dir

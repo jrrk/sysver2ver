@@ -330,7 +330,7 @@ let decode str =
         h := !h * 16 + (int_of_char ch - int_of_char 'a' + 10);
         if ix land 1 = 1 then begin Bytes.set str' (ix/2) (char_of_int !h); h := 0; dbg ix ch !h; end
     | _ -> h := -1) str;
-  STRING str'
+  STRING (Bytes.to_string str')
 
 let cexp exp = try Scanf.sscanf exp "%d'h%x" (fun b n -> (b, HEX n)) with err ->
     try Scanf.sscanf exp "%d'sh%x" (fun b n -> (b, SHEX n)) with err ->
