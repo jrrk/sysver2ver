@@ -323,7 +323,7 @@ let chkvif nam =
        let vif = l > lm && String.sub nam (l-lm) lm = m in
        (vif, if vif then String.sub nam 0 (l-lm) else nam)
 
-let dbg i ch h = print_endline (string_of_int i^":"^String.make 1 ch^":"^string_of_int h)
+let dbg i ch h = if false then print_endline (string_of_int i^":"^String.make 1 ch^":"^string_of_int h)
        
 let decode str =
   let h = ref 0 and str' = Bytes.make (String.length str / 2) ' ' in
@@ -354,11 +354,11 @@ let rec subtypmap = function
 | oth -> subothlst := oth :: !subothlst; failwith "subothlst"
 
 let fortailmatch ix' = function
-| ASGN (ARITH (Aadd, CNST (inc, 9, []) :: VRF (ix'', []) :: []) :: VRF (ix''', []) :: []) :: tl -> (ix'=ix'') && (ix''=ix''')
+| ASGN (ARITH (Aadd, CNST (inc, _, []) :: VRF (ix'', []) :: []) :: VRF (ix''', []) :: []) :: tl -> (ix'=ix'') && (ix''=ix''')
 | _ -> false
 
 let forinc = function
-| ASGN (ARITH (Aadd, CNST (inc, 9, []) :: VRF (ix'', []) :: []) :: VRF (ix''', []) :: []) :: tl -> (inc,List.rev tl)
+| ASGN (ARITH (Aadd, CNST (inc, _, []) :: VRF (ix'', []) :: []) :: VRF (ix''', []) :: []) :: tl -> (inc,List.rev tl)
 | tl -> ((0,ERR),List.rev tl)
 
 let rec rw' errlst = function
@@ -403,9 +403,9 @@ let rec rw' errlst = function
 | Xml.Element ("begin", [("fl", _); ("name", namedblk)], xlst) -> BGN (namedblk, List.map (rw' errlst) xlst)
 | Xml.Element ("begin", [("fl", _)], xlst) -> let xlst' = List.map (rw' errlst) xlst in
 (match xlst' with
-       | ASGN (CNST (strt, 9, []) :: VRF (ix, []) :: []) ::
+       | ASGN (CNST (strt, _, []) :: VRF (ix, []) :: []) ::
             WHL
-             (CMP (cmpop, CNST (stop, 9, []) :: VRF (ix', []) :: []) ::
+             (CMP (cmpop, CNST (stop, _, []) :: VRF (ix', []) :: []) ::
               stmtlst) :: [] when (ix=ix') && fortailmatch ix (List.rev stmtlst) ->
                 let (inc,stmts) = forinc (List.rev stmtlst) in FORSTMT (cmpop,ix,strt,stop,inc,stmts)
        | ASGN a :: WHL (b :: stmtlst) :: [] -> forlst := (a,b,stmtlst) :: !forlst; BGN ("", xlst')
