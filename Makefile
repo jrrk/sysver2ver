@@ -28,7 +28,7 @@ mixed.vvp: $S $M
 	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA $S $M
 
 mixed.vcs: $S $M
-	vcs -full64 -sverilog -gui -debug_access+all -o $@ -DCOMPRESSED_ISA $S $M
+	vcs -full64 -sverilog -debug_access+all +lint=TFIPC-L -o $@ -DCOMPRESSED_ISA $S $M
 
 split.vvp: $S $R
 	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA $S $R

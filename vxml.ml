@@ -32,6 +32,7 @@ type unaryop =
 | Ulognot
 | Unegate
 | Uextend
+| Uextends
 
 type cmpop =
 | Cunknown
@@ -126,7 +127,6 @@ type rw =
 | XRF of string * string * string * dirop ref
 | PKG of string * string * rw list
 | CAT of rw list
-| EXT of int * rw list
 | CPS of rw list
 | CND of rw list
 | REPL of int * rw list
@@ -277,6 +277,7 @@ let unaryop = function
 |"not" -> Unot
 |"negate" -> Unegate
 |"extend" -> Uextend
+|"extends" -> Uextends
 |"lognot" -> Ulognot
 | _ -> Unknown
 
@@ -386,7 +387,7 @@ let rec rw' errlst = function
                
                CNST (cexp value, int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("contassign", [("fl", _); ("dtype_id", tid)], xlst) -> CA (List.map (rw' errlst) xlst)
-| Xml.Element ("not"|"negate"|"extend"|"lognot" as op, [("fl", _); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' errlst) xlst)
+| Xml.Element ("not"|"negate"|"extend"|"extends"|"lognot" as op, [("fl", _); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' errlst) xlst)
 | Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (snd (chkvif nam), List.map (rw' errlst) xlst)
 | Xml.Element ("instance", [("fl", _); ("name", nam); ("defName", dnam); ("origName", nam')], xlst) ->
                INST (nam, (dnam, List.map (rw' errlst) xlst))
@@ -438,7 +439,6 @@ let rec rw' errlst = function
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' errlst) xlst)
 | Xml.Element ("initarray"|"streaml"|"powsu" as op, [("fl", _); ("dtype_id", tid)], xlst) -> SYS (op, List.map (rw' errlst) xlst)
 | Xml.Element ("replicate", [("fl", _); ("dtype_id", tid)], xlst) -> REPL (int_of_string tid, List.map (rw' errlst) xlst)
-| Xml.Element ("extends", [("fl", _); ("dtype_id", tid)], xlst) -> EXT (int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("iface", [("fl", src); ("name", bus); ("origName", bus')], xlst) -> IFC (src, bus, List.map (rw' errlst) xlst)
 | Xml.Element ("ifacerefdtype" as ifr, [("fl", _); ("id", num); ("modportname", nam)], xlst) ->
     let xlst' = List.map (rw' errlst) xlst and idx = int_of_string num in
@@ -510,7 +510,8 @@ let unaryopv = function
 | Unot -> " ! "
 | Ulognot -> " ~ "
 | Unegate -> " - "
-| Uextend -> "???"
+| Uextend -> "$unsigned"
+| Uextends -> "$signed"
 
 let cmpopv = function
 | Cunknown -> "???"
@@ -574,7 +575,7 @@ let rec cadd = function
 let rec expr = function
 | VRF (id, []) -> IDENT id :: []
 | CNST ((s,n), tid, []) -> SIZED (s,n) :: []
-| UNRY (Uextend, expr1 :: []) -> LCURLY :: SIZED (1, BIN '0') :: COMMA :: expr expr1 @ [RCURLY]
+| UNRY ((Uextend|Uextends) as op, expr1 :: []) -> IDENT (unaryopv op) :: LPAREN :: expr expr1 @ [RPAREN]
 | UNRY (op, expr1 :: []) -> LPAREN :: IDENT (unaryopv op) :: expr expr1 @ [RPAREN]
 | CMP (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ CMPOP op :: expr expr2 @ [RPAREN]
 | LOGIC (op, expr1 :: []) -> LPAREN :: IDENT (logopv op) :: expr expr1 @ [RPAREN]
@@ -595,7 +596,6 @@ let rec expr = function
 | FRF (fref, arglst) -> let delim = ref LPAREN in
     IDENT fref :: List.flatten (List.map (function ARG (arg :: []) -> let lst = !delim :: expr arg in delim := COMMA; lst| _ -> [QUERY]) arglst) @ [RPAREN];
 | REPL (tid, arg :: CNST ((sz,n'),_,_) :: []) -> LCURLY :: NUM n' :: LCURLY :: expr arg @ [RCURLY;RCURLY]
-| EXT (tid, arg :: []) -> IDENT "$signed" :: LPAREN :: expr arg @ [RPAREN]
 | IRNG (expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
 | XRF (id, tid, dotted, dirop) as xrf -> xrflst := xrf :: !xrflst; IDENT (dotted^(match !dirop with Dinam _ -> "_" | _ -> ".")^id) :: []
 | TPLSRGS (id, tid, []) -> IDENT "$test$plusargs" :: LPAREN :: DQUOTE :: IDENT id :: DQUOTE :: RPAREN :: []
@@ -938,7 +938,6 @@ let rec catitm pth itms = function
 | CMP(_, rw_lst)
 | FRF(_, rw_lst)
 | CAT(rw_lst)
-| EXT(_, rw_lst)
 | CPS(rw_lst)
 | CND(rw_lst)
 | DSPLY(rw_lst)
@@ -1159,8 +1158,8 @@ let rec iterate f (source, line, modul) =
     Hashtbl.replace modules_opt (f^"_opt") (source, line, newitms);
     print_endline (f^" done")
 
-let dumpform f source = 
-    let fd = open_out (outtcl f) in
+let dumpform f f' source = 
+    let fd = open_out (outtcl f') in
     let srcpath = try Sys.getenv "XMLSRCPATH" with err -> "." in
     Printf.fprintf fd "#!/opt/synopsys/fm_vO-2018.06-SP3/bin/fm_shell -f\n";
     Printf.fprintf fd "read_sverilog -container r -libname WORK -12 { \\\n";
@@ -1172,15 +1171,15 @@ let dumpform f source =
     Printf.fprintf fd "}\n";
     Printf.fprintf fd "set_top r:/WORK/%s\n" f;
     Printf.fprintf fd "read_sverilog -container i -libname WORK -12 { \\\n";
-    let hlst' = List.sort_uniq compare (f :: iflst) in
+    let hlst' = List.sort_uniq compare (f' :: iflst) in
     List.iter (fun nam -> Printf.fprintf fd "%s \\\n" (outnam nam)) hlst';
     Printf.fprintf fd "}\n";
-    Printf.fprintf fd "set_top i:/WORK/%s\n" f;
+    Printf.fprintf fd "set_top i:/WORK/%s\n" f';
     Printf.fprintf fd "match\n";
     Printf.fprintf fd "verify\n";
     Printf.fprintf fd "quit\n";
     close_out fd;
-    Unix.chmod (outtcl f) 0o740
+    Unix.chmod (outtcl f') 0o740
     
 let translate errlst xmlf =
     let xmlerr = ref None in
@@ -1193,7 +1192,7 @@ let translate errlst xmlf =
     let (topsrc, topline, topmodul) as tophash = Hashtbl.find modules top in
     iterate top tophash;
     let top_opt = top^"_opt" in
-    dumpform top_opt topsrc;
+    dumpform top top_opt topsrc;
     let mods = ref [] in
     Hashtbl.iter (fun k x -> let d = reformat0 (dump k x) in mods := reformat2 (reformat1 d) :: !mods) modules_opt;
     let mods = List.sort compare !mods in

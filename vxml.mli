@@ -32,6 +32,7 @@ type unaryop =
 | Ulognot
 | Unegate
 | Uextend
+| Uextends
 
 type cmpop =
 | Cunknown
@@ -126,7 +127,6 @@ type rw =
 | XRF of string * string * string * dirop ref
 | PKG of string * string * rw list
 | CAT of rw list
-| EXT of int * rw list
 | CPS of rw list
 | CND of rw list
 | REPL of int * rw list
