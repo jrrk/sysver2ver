@@ -599,9 +599,9 @@ let rec expr = function
     | _ -> LBRACK :: expr expr2 @ [PLUS;COLON] @ (NUM wid' :: RBRACK :: []))
 | SEL (expr1 :: CNST ((32,SHEX 0), _, []) :: (CNST _) :: []) -> expr expr1
 | SEL (expr1 :: CNST ((szlo,lo'), _, []) :: (CNST _) :: []) ->
-    LPAREN :: expr expr1 @ (RPAREN :: RSHIFT :: NUM lo' :: [])
+    LPAREN :: expr expr1 @ (RSHIFT :: NUM lo' :: RPAREN :: [])
 | ASEL (VRF (lval, []) :: expr1 :: []) -> IDENT lval :: LBRACK :: expr expr1 @ [RBRACK]
-| CND (expr1 :: lft :: rght :: []) -> expr expr1 @ [QUERY] @ expr lft @ [COLON] @ expr rght
+| CND (expr1 :: lft :: rght :: []) -> LPAREN :: expr expr1 @ [QUERY] @ expr lft @ [COLON] @ expr rght @ [RPAREN]
 | CAT (expr1 :: expr2 :: []) -> LCURLY :: expr expr1 @ [COMMA] @ expr expr2 @ [RCURLY]
 | FRF (fref, arglst) -> let delim = ref LPAREN in
     IDENT fref :: List.flatten (List.map (function ARG (arg :: []) -> let lst = !delim :: expr arg in delim := COMMA; lst| _ -> [QUERY]) arglst) @ [RPAREN];
