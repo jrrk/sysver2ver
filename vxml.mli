@@ -102,6 +102,7 @@ type rw =
 | IO of string * int * dirop * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * rw list * int
+| TMPVAR of string * int * rw * rw
 | CNST of (int*cexp) * int * rw list
 | VRF of string * rw list
 | TYP of string * string * int * rw list

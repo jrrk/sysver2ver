@@ -102,6 +102,7 @@ type rw =
 | IO of string * int * dirop * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * rw list * int
+| TMPVAR of string * int * rw * rw
 | CNST of (int * cexp) * int * rw list
 | VRF of string * rw list
 | TYP of string * string * int * rw list
@@ -421,6 +422,17 @@ let rec rw' errlst = function
        | CND (cnd :: lft :: rght :: []) :: dst :: [] ->
     ternlst := (cnd,lft,rght,dst) :: !ternlst;
     IF(cnd :: ASGNDLY (lft :: dst :: []) :: ASGNDLY (rght :: dst :: []) :: [])
+       | (SEL ((UNRY (Uextends, expr1 :: []) as ext) ::
+    (CNST ((_,HEX lo'), _, []) as lo) :: (CNST ((_,HEX wid'), _, []) as wid) :: []) ::
+    (SEL (VRF _ :: CNST _ :: CNST _ :: []) as dst) :: []) ->
+        begin
+        decr matchcnt;
+        let idx = !matchcnt in
+        let t = "__tmp"^string_of_int (-idx) in
+        let tmp = VRF (t, []) in
+        Hashtbl.add typetable idx ("basicdtype", "logic", TYPRNG(lo'+wid'-1,0), []); 
+        TMPVAR(t, idx, ASGN (ext :: tmp :: []), ASGNDLY (SEL (tmp :: lo :: wid :: []) :: dst :: []))
+        end    
        | _ -> ternothlst := xlst' :: !ternothlst; ASGNDLY xlst')
 | Xml.Element ("if", [("fl", _)], xlst) -> IF (List.map (rw' errlst) xlst)
 | Xml.Element ("add"|"sub"|"mul"|"muls" as op, [("fl", _); ("dtype_id", tid)], xlst) -> ARITH (arithop op, List.map (rw' errlst) xlst)
@@ -771,6 +783,7 @@ and cstmt dly = function
     ifcond (expr cnd) @ (SP :: cstmt dly then_stmt) @ [ELSE] @ cstmt dly else_stmt
 | IF(cnd :: then_stmt :: else_stmt :: []) ->
     ifcond (expr cnd) @ (SP :: cstmt dly then_stmt) @ [SEMI;ELSE] @ cstmt dly else_stmt
+(*
 | ASGNDLY ((SEL ((UNRY (Uextends, expr1 :: []) as ext) ::
     (CNST ((_,HEX lo'), _, []) as lo) :: (CNST ((_,HEX wid'), _, []) as wid) :: []) as src) ::
     (SEL (VRF _ :: CNST _ :: CNST _ :: []) as dst) :: []) ->
@@ -786,6 +799,7 @@ and cstmt dly = function
         let blkdcl = BEGIN :: COLON :: IDENT tmpblock :: NL :: LOGIC :: LBRACK :: num (lo'+wid'-1) :: COLON :: num 0 :: RBRACK :: IDENT t :: SEMI :: NL :: [] in
         blkdcl @ cstmt true (ASGN(ext :: tmp :: [])) @ SEMI :: expr dst @ stmtdly true @ expr (SEL (tmp :: lo :: wid :: [])) @ [SEMI;END]
         end
+*)
 | ASGNDLY (
     src ::
     SEL (
@@ -814,6 +828,7 @@ and cstmt dly = function
 | CNST((s,n), _, []) -> SIZED (s,n) :: []
 | TASK ("taskref", nam, arglst) -> IDENT nam :: (if arglst <> [] then eiter LPAREN arglst @ [RPAREN] else [])
 | JMPL(rw_lst) -> BEGIN :: iter2 dly rw_lst @ [NL;END;NL]
+| TMPVAR (nam, wid, stmt1, stmt2) -> []
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
 
 let flatten1 dly = function
@@ -838,6 +853,16 @@ let rec cell_hier = function
    (nam,subnam) :: hier_lst
 | oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
 
+let rec optitm' = function
+| [] -> []
+| TMPVAR (a,b,c,d) :: tl -> c :: d :: optitm' tl
+| hd :: tl -> hd :: optitm' tl
+
+let rec optitm = function
+| [] -> []
+| BGN ("", tl) :: tl' -> let opt = optitm' tl in BGN ("", opt) :: optitm tl'
+| hd :: tl -> hd :: optitm tl
+                                                         
 let rec catitm pth itms = function
 | IO(str1, int1, Dunknown, "ifaceref", []) ->
     let (dtype, dir, _, _) = Hashtbl.find typetable int1 in
@@ -846,24 +871,29 @@ let rec catitm pth itms = function
 | VAR(str1, int1, "ifaceref") -> itms.ir := (str1, int1) :: !(itms.ir)
 | VAR(str1, int1, str2) -> itms.v := (str1, (int1, str2, -1)) :: !(itms.v)
 | IVAR(str1, int1, rwlst, int2) -> itms.iv := (str1, (int1, rwlst, int2)) :: !(itms.iv)
+| TMPVAR(str1, int1, stmt1, stmt2) -> List.iter (catitm pth itms) [stmt1;stmt2]; itms.v := (str1, (int1, str1, -1)) :: !(itms.v)
 | CA(rght::lft::[]) -> itms.ca := (lft, rght) :: !(itms.ca)
 | TYP(str1, str2, int1, []) -> itms.typ := (str1,str2,int1) :: !(itms.typ)
 | INST(str1, (str2, port_lst)) -> let pth = if String.length pth > 0 then pth^"_"^str1 else str1 in
     itms.inst := (pth, (str2, List.rev port_lst)) :: !(itms.inst)
 | ALWYS(src, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("POS", [VRF (rst, [])]) :: []) :: rw_lst) ->
-    itms.alwys := (src, POSPOS(ck,rst), rw_lst) :: !(itms.alwys)    
+    List.iter (catitm pth itms) rw_lst;
+    itms.alwys := (src, POSPOS(ck,rst), optitm rw_lst) :: !(itms.alwys)    
 | ALWYS(src, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
-    itms.alwys := (src, POSEDGE(ck), rw_lst) :: !(itms.alwys)
+    List.iter (catitm pth itms) rw_lst;
+    itms.alwys := (src, POSEDGE(ck), optitm rw_lst) :: !(itms.alwys)
 | ALWYS(src, SNTRE(SNITM ("NEG", [VRF (ck, [])]) :: []) :: rw_lst) ->
-    itms.alwys := (src, NEGEDGE(ck), rw_lst) :: !(itms.alwys)
+    List.iter (catitm pth itms) rw_lst;
+    itms.alwys := (src, NEGEDGE(ck), optitm rw_lst) :: !(itms.alwys)
 | ALWYS(src, SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, [])]) :: SNITM ("NEG", [VRF (rst, [])]) :: []) :: rw_lst) ->
+    List.iter (catitm pth itms) rw_lst;
     let rw_lst' = (function
        | BGN(lbl, (IF(VRF(rst',[]) :: thn :: els :: []) :: [])) :: [] ->
            BGN("", (IF(UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
        | IF(VRF(rst',[]) :: thn :: els :: []) :: [] ->
            BGN("", (IF(UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
        | oth -> posneglst := oth :: !posneglst; oth) rw_lst in
-    itms.alwys := (src, (match edg with "POS" -> POSNEG(ck,rst) | "NEG" -> NEGNEG(ck,rst) | _ -> UNKNOWN), rw_lst') :: !(itms.alwys)
+    itms.alwys := (src, (match edg with "POS" -> POSNEG(ck,rst) | "NEG" -> NEGNEG(ck,rst) | _ -> UNKNOWN), optitm rw_lst') :: !(itms.alwys)
 | ALWYS(src, rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     itms.alwys := (src, COMB, rw_lst) :: !(itms.alwys)
@@ -990,7 +1020,7 @@ let varlst delim idx id =
     let expand delim = fun w -> let lst = !delim :: num w :: [] in delim := STAR; lst in
     !delim @ LOGIC :: SP :: match widlst with
                 | [] -> IDENT id :: []
-                | 1 :: [] -> IDENT id :: []
+                | 1 :: [] when idx >= 0 -> IDENT id :: []
                 | n :: [] -> LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: []
                 | n :: m :: [] -> LBRACK :: num (m-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: SP :: LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: []
                 | oth -> let delim = ref LBRACK in
