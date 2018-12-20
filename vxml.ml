@@ -579,9 +579,12 @@ let rec cadd = function
 | SHEX n :: SHEX m :: tl -> cadd (SHEX (n+m) :: tl)
 | (HEX _ | SHEX _) ::(ERR|BIN _|STRING _):: tl -> ERR
 
+let avoid_dollar_unsigned = true
+
 let rec expr = function
 | VRF (id, []) -> IDENT id :: []
 | CNST ((s,n), tid, []) -> SIZED (s,n) :: []
+| UNRY (Uextend, expr1 :: []) when avoid_dollar_unsigned -> LCURLY :: SIZED (1, BIN '0') :: COMMA :: expr expr1 @ [RCURLY]
 | UNRY ((Uextend|Uextends) as op, expr1 :: []) -> IDENT (unaryopv op) :: LPAREN :: expr expr1 @ [RPAREN]
 | UNRY (op, expr1 :: []) -> LPAREN :: IDENT (unaryopv op) :: expr expr1 @ [RPAREN]
 | CMP (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ CMPOP op :: expr expr2 @ [RPAREN]
