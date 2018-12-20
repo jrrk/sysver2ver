@@ -251,6 +251,8 @@ val mapothlst : (string * string) list list ref
 val tskothlst : rw list ref
 val xrflst : rw list ref
 val forlst : (rw list * rw * rw list) list ref
+val ternlst : (rw * rw * rw * rw) list ref
+val ternothlst : rw list list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val modules_opt : (string, string * int * itms) Hashtbl.t

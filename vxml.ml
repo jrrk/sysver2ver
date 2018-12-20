@@ -259,6 +259,8 @@ let subothlst = ref []
 let tskothlst = ref []
 let xrflst = ref []
 let forlst = ref []
+let ternlst = ref []
+let ternothlst = ref []
 
 let constnet = function
 | "1'h1" -> "supply1"
@@ -411,7 +413,12 @@ let rec rw' errlst = function
                 let (inc,stmts) = forinc (List.rev stmtlst) in FORSTMT (cmpop,ix,strt,stop,inc,stmts)
        | ASGN a :: WHL (b :: stmtlst) :: [] -> forlst := (a,b,stmtlst) :: !forlst; BGN ("", xlst')
        | _ -> BGN ("", xlst'))
-| Xml.Element ("assigndly", [("fl", _); ("dtype_id", tid)], xlst) -> ASGNDLY (List.map (rw' errlst) xlst)
+| Xml.Element ("assigndly", [("fl", _); ("dtype_id", tid)], xlst) -> let xlst' = List.map (rw' errlst) xlst in
+(match xlst' with
+       | CND (cnd :: lft :: rght :: []) :: dst :: [] ->
+    ternlst := (cnd,lft,rght,dst) :: !ternlst;
+    IF(cnd :: ASGNDLY (lft :: dst :: []) :: ASGNDLY (rght :: dst :: []) :: [])
+       | _ -> ternothlst := xlst' :: !ternothlst; ASGNDLY xlst')
 | Xml.Element ("if", [("fl", _)], xlst) -> IF (List.map (rw' errlst) xlst)
 | Xml.Element ("add"|"sub"|"mul"|"muls" as op, [("fl", _); ("dtype_id", tid)], xlst) -> ARITH (arithop op, List.map (rw' errlst) xlst)
 | Xml.Element ("and"|"redand"|"or"|"redor"|"xor"|"redxor"|"xnor"|"redxnor"|"shiftl"|"shiftr"|"shiftrs" as log,
