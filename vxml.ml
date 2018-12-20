@@ -261,6 +261,9 @@ let xrflst = ref []
 let forlst = ref []
 let ternlst = ref []
 let ternothlst = ref []
+let widthlst = ref []
+
+let matchcnt = ref 0
 
 let constnet = function
 | "1'h1" -> "supply1"
@@ -703,7 +706,7 @@ let rec reformat0 = function
 let rec reformat1 = function
 | [] -> []
 | prior :: (BEGIN|END|ELSE as tok) :: tl when prior <> NL -> prior :: NL :: tok :: reformat1 (NL :: tl)
-| (BEGIN|END|ELSE as tok) :: post :: tl when post <> NL -> NL :: tok :: NL :: post :: reformat1 tl
+| (BEGIN|END|ELSE as tok) :: post :: tl when post <> NL && post <> COLON -> NL :: tok :: NL :: post :: reformat1 tl
 | DIR dir :: tl -> NL :: DIR dir :: reformat1 tl
 | DOT :: tl -> NL :: DOT :: reformat1 tl
 | SEMI :: IFF :: tl -> SEMI :: NL :: IFF :: reformat1 tl
@@ -730,6 +733,12 @@ let reviter lst =
     let delim = ref COLON in
     List.rev (List.flatten (List.map (fun itm -> let lst' = !delim :: expr itm in delim := COMMA; lst') lst))
 
+let fold1 fn = function
+| [] -> 0 (* should never occur, just to keep type system happy *)
+| (hd::tl) -> List.fold_left fn hd tl
+
+let num x = NUM (HEX x)
+
 let rec iter2 dly lst =
     List.flatten (List.map (fun itm -> cstmt dly itm @ [SEMI;NL]) lst)
 
@@ -746,7 +755,14 @@ and csitm dly = function
 and ifcond = function
 | LPAREN :: tl -> IFF :: SP :: LPAREN :: tl
 | oth -> IFF :: SP :: LPAREN :: oth @ (RPAREN :: [])
-    
+
+and ewidth = function
+| CAT lst -> fold1 (+) (List.map ewidth lst)
+| SEL (VRF (_, []) :: CNST ((_,_), _, []) :: CNST ((_,HEX wid), _, []) :: []) -> wid
+| SEL (UNRY (Uextends, _) :: CNST ((_,_), _, []) :: CNST ((_,HEX wid), _, []) :: []) -> wid
+| CNST ((n, _), _, []) -> n
+| oth -> widthlst := oth :: !widthlst; failwith "widthlst"
+
 and cstmt dly = function
 | JMPG [] -> []
 | BGN(str1, rw_lst) -> BEGIN :: iter2 dly rw_lst @ [END;NL]
@@ -755,6 +771,21 @@ and cstmt dly = function
     ifcond (expr cnd) @ (SP :: cstmt dly then_stmt) @ [ELSE] @ cstmt dly else_stmt
 | IF(cnd :: then_stmt :: else_stmt :: []) ->
     ifcond (expr cnd) @ (SP :: cstmt dly then_stmt) @ [SEMI;ELSE] @ cstmt dly else_stmt
+| ASGNDLY ((SEL ((UNRY (Uextends, expr1 :: []) as ext) ::
+    (CNST ((_,HEX lo'), _, []) as lo) :: (CNST ((_,HEX wid'), _, []) as wid) :: []) as src) ::
+    (SEL (VRF _ :: CNST _ :: CNST _ :: []) as dst) :: []) ->
+    let wid1 = ewidth expr1 in
+    if wid1 > lo'+wid' then
+        expr dst @ stmtdly true @ expr src
+    else
+        begin
+        incr matchcnt;
+        let t = "__tmp" in
+        let tmpblock = "tmp"^string_of_int !matchcnt in
+        let tmp = VRF (t, []) in
+        let blkdcl = BEGIN :: COLON :: IDENT tmpblock :: NL :: LOGIC :: LBRACK :: num (lo'+wid'-1) :: COLON :: num 0 :: RBRACK :: IDENT t :: SEMI :: NL :: [] in
+        blkdcl @ cstmt true (ASGN(ext :: tmp :: [])) @ SEMI :: expr dst @ stmtdly true @ expr (SEL (tmp :: lo :: wid :: [])) @ [SEMI;END]
+        end
 | ASGNDLY (
     src ::
     SEL (
@@ -764,7 +795,7 @@ and cstmt dly = function
     CNST ((szlo,lo'), _, []) ::
     CNST ((szw,wid'), _, []) ::
     []) ::
- []) ->
+ []) -> 
     IDENT lval :: LBRACK :: expr expr1 @ RBRACK :: LBRACK :: NUM (cadd [lo';wid';SHEX (-1)]) :: COLON :: NUM lo' :: RBRACK :: stmtdly true @ expr src
 | ASGNDLY(src :: dst :: []) -> expr dst @ stmtdly true @ expr src
 | ASGN (src :: dst :: []) -> expr dst @ stmtdly false @ expr src
@@ -931,10 +962,6 @@ let rec catitm pth itms = function
 | TYP (dtyp, subtype, idx, lst) -> ()
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
 
-let fold1 fn = function
-| [] -> 0 (* should never occur, just to keep type system happy *)
-| (hd::tl) -> List.fold_left fn hd tl
-
 let rec cntbasic = function
 | ("structdtype",_,typmap,rw_lst) -> fold1 (+) (List.flatten (List.map cntmembers rw_lst)) :: []
 | ("uniondtype",_,typmap,rw_lst) -> fold1 (max) (List.flatten (List.map cntmembers rw_lst)) :: []
@@ -953,8 +980,6 @@ and cntmembers = function
 and findmembers idx = if Hashtbl.mem typetable idx then
     cntbasic (Hashtbl.find typetable idx) else []
 
-let num x = NUM (HEX x)
-   
 let iolst delim dir idx io =
     let wid = fold1 ( * ) (findmembers idx) in
     !delim @ (DIR dir :: SP :: LOGIC ::
@@ -991,6 +1016,7 @@ let rec taskstmt dly nam = function
 | itm -> cstmt dly itm @ SEMI :: NL :: []
 
 let outnam f = f^"_translate.v"
+let outnamopt f = let l = String.length f in f^(if l < 4 || String.sub f (l-4) 4 <> "_opt" then "_opt" else "")^"_translate.v"
 let outtok f = f^"_tokens.txt"
 let outtcl f = "./"^f^"_fm.tcl"
 
@@ -1116,6 +1142,7 @@ let dumpform f f' source =
     let fd = open_out (outtcl f') in
     let srcpath = try Sys.getenv "XMLSRCPATH" with err -> "." in
     Printf.fprintf fd "#!/opt/synopsys/fm_vO-2018.06-SP3/bin/fm_shell -f\n";
+    Printf.fprintf fd "set hdlin_warn_on_mismatch_message \"FMR_ELAB-115 FMR_ELAB-146 FMR_ELAB-147\"\n";
     Printf.fprintf fd "read_sverilog -container r -libname WORK -12 { \\\n";
     let plst = ref [] in Hashtbl.iter (fun _ (s,_,_) -> plst := s :: !plst) packages;
     let iflst = List.map snd (if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else []) in
@@ -1126,7 +1153,7 @@ let dumpform f f' source =
     Printf.fprintf fd "set_top r:/WORK/%s\n" f;
     Printf.fprintf fd "read_sverilog -container i -libname WORK -12 { \\\n";
     let hlst' = List.sort_uniq compare (f' :: iflst) in
-    List.iter (fun nam -> Printf.fprintf fd "%s \\\n" (outnam nam)) hlst';
+    List.iter (fun nam -> Printf.fprintf fd "%s \\\n" (outnamopt nam)) hlst';
     Printf.fprintf fd "}\n";
     Printf.fprintf fd "set_top i:/WORK/%s\n" f';
     Printf.fprintf fd "match\n";

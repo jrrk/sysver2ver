@@ -39,9 +39,8 @@ patched.vvp: example/testbench.v picorv32_wrapper_opt_translate_patched.v
 reference.vvp: example/testbench.v picorv32_wrapper_opt_translate.v
 	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA ../picorv32/testbench.v ../picorv32/picorv32.v
 
-combined.v:
+$T:
 	env VXML_SEPARATE=1 ./vxmlmain ../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml
-	cat axi4_memory_opt_translate.v picorv32__pi2_opt_translate.v picorv32_axi__pi1_opt_translate.v picorv32_axi_adapter_opt_translate.v picorv32_pcpi_div_opt_translate.v picorv32_pcpi_mul_opt_translate.v picorv32_wrapper_opt_translate.v > $@
 
 picorv32_axi_opt_translate_edited.v: picorv32_axi__pi1_opt_translate.v
 	cp $< $@

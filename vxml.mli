@@ -253,6 +253,7 @@ val xrflst : rw list ref
 val forlst : (rw list * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
 val ternothlst : rw list list ref
+val widthlst : rw list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val modules_opt : (string, string * int * itms) Hashtbl.t
@@ -266,6 +267,8 @@ val decode : string -> cexp
 val cadd : cexp list -> cexp
 val cexp : string -> int * cexp
 val expr : rw -> token list
+val ewidth : rw -> int
+
 val fortailmatch : string -> rw list -> bool
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml
 val dump : string -> string * int * itms -> token list

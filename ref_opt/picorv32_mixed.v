@@ -235,7 +235,7 @@ module picorv32_mixed #(
 	reg        pcpi_int_ready;
 
 	generate if (ENABLE_FAST_MUL) begin
-		picorv32_pcpi_fast_mul_opt pcpi_mul (
+		picorv32_pcpi_fast_mul pcpi_mul (
 			.clk       (clk            ),
 			.resetn    (resetn         ),
 			.pcpi_valid(pcpi_valid     ),
@@ -268,7 +268,7 @@ module picorv32_mixed #(
 	end endgenerate
 
 	generate if (ENABLE_DIV) begin
-		picorv32_pcpi_div_opt pcpi_div (
+		picorv32_pcpi_div pcpi_div (
 			.clk       (clk            ),
 			.resetn    (resetn         ),
 			.pcpi_valid(pcpi_valid     ),
