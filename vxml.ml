@@ -828,7 +828,7 @@ and cstmt dly = function
 | CNST((s,n), _, []) -> SIZED (s,n) :: []
 | TASK ("taskref", nam, arglst) -> IDENT nam :: (if arglst <> [] then eiter LPAREN arglst @ [RPAREN] else [])
 | JMPL(rw_lst) -> BEGIN :: iter2 dly rw_lst @ [NL;END;NL]
-| TMPVAR (nam, wid, stmt1, stmt2) -> []
+| TMPVAR (nam, wid, stmt1, stmt2) -> cstmt dly (BGN ("", stmt1 :: stmt2 :: []))
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
 
 let flatten1 dly = function
@@ -856,11 +856,21 @@ let rec cell_hier = function
 let rec optitm' = function
 | [] -> []
 | TMPVAR (a,b,c,d) :: tl -> c :: d :: optitm' tl
+| ASGNDLY _ as asgn :: tl -> asgn :: optitm' tl
+| ASGN _ as asgn :: tl -> asgn :: optitm' tl
 | hd :: tl -> hd :: optitm' tl
 
 let rec optitm = function
 | [] -> []
-| BGN ("", tl) :: tl' -> let opt = optitm' tl in BGN ("", opt) :: optitm tl'
+| BGN ("", tl) :: BGN ("", tl') :: tl'' -> optitm (BGN ("", tl @ tl') :: tl'')
+| BGN ("", tl) :: tl' -> BGN ("", optitm' tl) :: optitm tl'
+| CS(rw_lst) :: tl -> CS(optitm rw_lst) :: optitm tl
+| CSITM(rw_lst) :: tl -> CSITM(optitm rw_lst) :: optitm tl
+| WHL(rw_lst) :: tl -> WHL(optitm rw_lst) :: optitm tl
+| FORSTMT(cmpop,ix,strt,stop,inc,rw_lst) :: tl -> FORSTMT(cmpop,ix,strt,stop,inc,optitm rw_lst) :: optitm tl
+| TASK(tsk, nam, rw_lst) :: tl -> TASK(tsk, nam, optitm rw_lst) :: optitm tl
+| ASGN(rw_lst) as oth :: tl -> oth :: optitm tl
+| ASGNDLY(rw_lst) as oth :: tl -> oth :: optitm tl
 | hd :: tl -> hd :: optitm tl
                                                          
 let rec catitm pth itms = function

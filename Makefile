@@ -42,11 +42,11 @@ reference.vvp: example/testbench.v picorv32_wrapper_opt_translate.v
 $T:
 	env VXML_SEPARATE=1 ./vxmlmain ../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml
 
-picorv32_axi_opt_translate_edited.v: picorv32_axi__pi1_opt_translate.v
-	cp $< $@
+picorv32_axi_opt_translate.v: picorv32_axi__pi1_opt_translate.v
+	sed -e 's=\(\ picorv32_axi\)__pi1\(_opt\)=\1\2\ =' $< > $@
 
-picorv32_opt_translate_edited.v: picorv32__pi2_opt_translate.v
-	cp $< $@
+picorv32_opt_translate.v: picorv32__pi2_opt_translate.v
+	sed -e 's=\(\ picorv32\)__pi2\(_opt\)=\1\2\ =' $< > $@
 
 ref_opt/picorv32_axi_mixed.v: example/picorv32_axi.v
 	sed -e 's=\(\ picorv32_axi\)\ =\1_mixed\ =' -e 's=\(picorv32\)\ =\1_mixed\ =' $< > $@
