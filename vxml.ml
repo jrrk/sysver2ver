@@ -566,7 +566,7 @@ let logopv = function
 | Lredxnor -> " ~^ "
 | Lshiftl -> " << "
 | Lshiftr -> " >> "
-| Lshiftrs -> " >> "
+| Lshiftrs -> " >>> "
 
 let arithopv = function
 | Aadd -> "+"
