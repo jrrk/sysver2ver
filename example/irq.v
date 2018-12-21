@@ -94,7 +94,6 @@ module irq #(
 	output reg 		       latched_is_lb,
 	output reg [regindex_bits-1:0] latched_rd,
 	output reg [31:0] 	       next_irq_pending,
-   	output reg 		       pcpi_timeout,
 	output reg [31:0] 	       current_pc
 
 );
@@ -145,58 +144,6 @@ module irq #(
 		// avoid empty statement (which are unsupported by plain Verilog syntax).
 		begin end
 	endtask
-
-`ifdef DEBUGREGS
-	wire [31:0] dbg_reg_x0  = 0;
-	wire [31:0] dbg_reg_x1  = cpuregs[1];
-	wire [31:0] dbg_reg_x2  = cpuregs[2];
-	wire [31:0] dbg_reg_x3  = cpuregs[3];
-	wire [31:0] dbg_reg_x4  = cpuregs[4];
-	wire [31:0] dbg_reg_x5  = cpuregs[5];
-	wire [31:0] dbg_reg_x6  = cpuregs[6];
-	wire [31:0] dbg_reg_x7  = cpuregs[7];
-	wire [31:0] dbg_reg_x8  = cpuregs[8];
-	wire [31:0] dbg_reg_x9  = cpuregs[9];
-	wire [31:0] dbg_reg_x10 = cpuregs[10];
-	wire [31:0] dbg_reg_x11 = cpuregs[11];
-	wire [31:0] dbg_reg_x12 = cpuregs[12];
-	wire [31:0] dbg_reg_x13 = cpuregs[13];
-	wire [31:0] dbg_reg_x14 = cpuregs[14];
-	wire [31:0] dbg_reg_x15 = cpuregs[15];
-	wire [31:0] dbg_reg_x16 = cpuregs[16];
-	wire [31:0] dbg_reg_x17 = cpuregs[17];
-	wire [31:0] dbg_reg_x18 = cpuregs[18];
-	wire [31:0] dbg_reg_x19 = cpuregs[19];
-	wire [31:0] dbg_reg_x20 = cpuregs[20];
-	wire [31:0] dbg_reg_x21 = cpuregs[21];
-	wire [31:0] dbg_reg_x22 = cpuregs[22];
-	wire [31:0] dbg_reg_x23 = cpuregs[23];
-	wire [31:0] dbg_reg_x24 = cpuregs[24];
-	wire [31:0] dbg_reg_x25 = cpuregs[25];
-	wire [31:0] dbg_reg_x26 = cpuregs[26];
-	wire [31:0] dbg_reg_x27 = cpuregs[27];
-	wire [31:0] dbg_reg_x28 = cpuregs[28];
-	wire [31:0] dbg_reg_x29 = cpuregs[29];
-	wire [31:0] dbg_reg_x30 = cpuregs[30];
-	wire [31:0] dbg_reg_x31 = cpuregs[31];
-`endif
-
-	// Internal PCPI Cores
-
-	wire        pcpi_mul_wr;
-	wire [31:0] pcpi_mul_rd;
-	wire        pcpi_mul_wait;
-	wire        pcpi_mul_ready;
-
-	wire        pcpi_div_wr;
-	wire [31:0] pcpi_div_rd;
-	wire        pcpi_div_wait;
-	wire        pcpi_div_ready;
-
-	reg        pcpi_int_wr;
-	reg [31:0] pcpi_int_rd;
-	reg        pcpi_int_wait;
-	reg        pcpi_int_ready;
 
 	// Main State Machine
 
