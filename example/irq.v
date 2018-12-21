@@ -64,21 +64,38 @@ module irq #(
 	parameter [31:0] STACKADDR = 32'h ffff_ffff,
 	parameter integer regindex_bits = (ENABLE_REGS_16_31 ? 5 : 4) + ENABLE_IRQ*ENABLE_IRQ_QREGS
 ) (
-	input 		  clk, resetn,
-	output reg 	  trap,
+	input 			       clk, resetn,
+	output reg 		       trap,
 
-	input [31:0] 	  mem_rdata,
+	input [31:0] 		       mem_rdata,
 
 	// IRQ Interface
-	input [31:0] 	  irq,
-	output reg [31:0] eoi,
+	input [31:0] 		       irq,
+	output reg [31:0] 	       eoi,
 
 	// Trace Interface
-   	input 		  decoder_trigger,
-	input 		  do_waitirq,
-	input [31:0] 	  alu_out, alu_out_q,
-   	input [regindex_bits-1:0] decoded_rd, decoded_rs1, decoded_rs2,
-	input [31:0] reg_op1, reg_op2
+   	input 			       decoder_trigger,
+	input 			       do_waitirq,
+	input [31:0] 		       alu_out, alu_out_q,
+   	input [regindex_bits-1:0]      decoded_rd, decoded_rs1, decoded_rs2,
+	input [31:0] 		       reg_op1, reg_op2,
+
+	output reg [31:0] 	       cpuregs_wrdata,
+	output reg [31:0] 	       cpuregs_rs1,
+	output reg [31:0] 	       cpuregs_rs2,
+	output reg [regindex_bits-1:0] decoded_rs,
+	output reg 		       latched_store,
+	output reg 		       latched_stalu,
+	output reg 		       latched_branch,
+	output reg 		       latched_compr,
+	output reg 		       latched_trace,
+	output reg 		       latched_is_lu,
+	output reg 		       latched_is_lh,
+	output reg 		       latched_is_lb,
+	output reg [regindex_bits-1:0] latched_rd,
+	output reg [31:0] 	       next_irq_pending,
+   	output reg 		       pcpi_timeout,
+	output reg [31:0] 	       current_pc
 
 );
 	localparam integer irq_timer = 0;
@@ -196,22 +213,6 @@ module irq #(
 	reg [1:0] irq_state;
 
 	reg cpuregs_write;
-	reg [31:0] cpuregs_wrdata;
-	reg [31:0] cpuregs_rs1;
-	reg [31:0] cpuregs_rs2;
-	reg [regindex_bits-1:0] decoded_rs;
-	reg latched_store;
-	reg latched_stalu;
-	reg latched_branch;
-	reg latched_compr;
-	reg latched_trace;
-	reg latched_is_lu;
-	reg latched_is_lh;
-	reg latched_is_lb;
-	reg [regindex_bits-1:0] latched_rd;
-reg [31:0] next_irq_pending;
-   	reg pcpi_timeout;
-	reg [31:0] current_pc;
 
 	always @* begin
 		cpuregs_write = 0;
