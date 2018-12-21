@@ -104,7 +104,6 @@ module always_test #(
         input mem_done
    );
    
-	reg [31:0] cpuregs [0:regfile_size-1];
 	reg [1:0] mem_state;
 	reg [1:0] mem_wordsize;
 	reg [31:0] mem_rdata_word;
@@ -140,6 +139,7 @@ module always_test #(
 	localparam [35:0] TRACE_ADDR   = {4'b 0010, 32'b 0};
 	localparam [35:0] TRACE_IRQ    = {4'b 1000, 32'b 0};
 
+	reg [31:0] cpuregs [0:regfile_size-1];
 	reg [63:0] count_cycle, count_instr;
 	reg [31:0] reg_pc, reg_next_pc, reg_op1, reg_op2, reg_out;
 	reg [4:0] reg_sh;
