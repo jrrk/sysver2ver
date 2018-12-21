@@ -608,6 +608,8 @@ let rec expr = function
 | UNRY (Uextend, expr1 :: []) when avoid_dollar_unsigned -> LCURLY :: SIZED (1, BIN '0') :: COMMA :: expr expr1 @ [RCURLY]
 | UNRY ((Uextend|Uextends) as op, expr1 :: []) -> IDENT (unaryopv op) :: LPAREN :: expr expr1 @ [RPAREN]
 | UNRY (op, expr1 :: []) -> LPAREN :: IDENT (unaryopv op) :: expr expr1 @ [RPAREN]
+| CMP ((Clts|Cltes|Cgtes|Cgts) as op, expr1 :: expr2 :: []) ->
+    LPAREN :: expr (UNRY (Uextends, expr1 :: [])) @ CMPOP op :: expr (UNRY (Uextends, expr2 :: [])) @ [RPAREN]
 | CMP (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ CMPOP op :: expr expr2 @ [RPAREN]
 | LOGIC (op, expr1 :: []) -> LPAREN :: IDENT (logopv op) :: expr expr1 @ [RPAREN]
 | LOGIC (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ (IDENT (logopv op) :: expr expr2) @[RPAREN]
