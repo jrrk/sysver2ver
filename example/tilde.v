@@ -6,10 +6,10 @@ module tilde
 	output reg 	  zero,lognot
 );
 
-   real arg = 3.14159;
+    reg [1023:0]  arg;
    
    assign wrdata = irq & ~mask;
    assign zero = !mask;
-   assign lognot = ( ! $realtobits(arg));
+   assign lognot = !$value$plusargs("lognot=%d", arg);
 
 endmodule
