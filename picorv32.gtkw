@@ -1,0 +1,91 @@
+[*]
+[*] GTKWave Analyzer v3.3.66 (w)1999-2015 BSI
+[*] Fri Dec 21 12:00:29 2018
+[*]
+[dumpfile] "/local/scratch/jrrk2/sysver2ver/testbench.fst"
+[dumpfile_mtime] "Fri Dec 21 11:55:16 2018"
+[dumpfile_size] 3415839
+[savefile] "/local/scratch/jrrk2/sysver2ver/picorv32.gtkw"
+[timestart] 82677000
+[size] 1703 1330
+[pos] -704 -731
+*-16.471043 82960000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] testbench.
+[treeopen] testbench.top.
+[treeopen] testbench.top.uut.
+[treeopen] testbench.top.uut.picorv32_core.
+[treeopen] testbench.top_opt.
+[treeopen] testbench.top_opt.uut.
+[treeopen] testbench.top_opt.uut.picorv32_core.
+[sst_width] 225
+[signals_width] 206
+[sst_expanded] 1
+[sst_vpaned_height] 417
+@820
+testbench.top.uut.picorv32_core.dbg_ascii_instr[63:0]
+@22
+testbench.top.uut.picorv32_core.dbg_ascii_state[127:0]
+testbench.top.uut.picorv32_core.dbg_insn_addr[31:0]
+testbench.top.uut.picorv32_core.dbg_insn_imm[31:0]
+testbench.top.uut.picorv32_core.dbg_insn_opcode[31:0]
+testbench.top.uut.picorv32_core.dbg_insn_rd[4:0]
+testbench.top.uut.picorv32_core.dbg_insn_rs1[4:0]
+testbench.top.uut.picorv32_core.dbg_insn_rs2[4:0]
+testbench.top.uut.picorv32_core.dbg_mem_addr[31:0]
+@28
+testbench.top.uut.picorv32_core.dbg_mem_instr
+@22
+testbench.top.uut.picorv32_core.dbg_mem_rdata[31:0]
+@28
+testbench.top.uut.picorv32_core.dbg_mem_ready
+testbench.top.uut.picorv32_core.dbg_mem_valid
+@22
+testbench.top.uut.picorv32_core.dbg_mem_wdata[31:0]
+testbench.top.uut.picorv32_core.dbg_mem_wstrb[3:0]
+@28
+testbench.top.uut.picorv32_core.dbg_next
+@22
+testbench.top.uut.picorv32_core.dbg_rs1val[31:0]
+@28
+testbench.top.uut.picorv32_core.dbg_rs1val_valid
+@22
+testbench.top.uut.picorv32_core.dbg_rs2val[31:0]
+@28
+testbench.top.uut.picorv32_core.dbg_rs2val_valid
+testbench.top.uut.picorv32_core.dbg_valid_insn
+@200
+-
+@820
+testbench.top_opt.uut.picorv32_core.dbg_ascii_instr[63:0]
+@22
+testbench.top_opt.uut.picorv32_core.dbg_ascii_state[127:0]
+testbench.top_opt.uut.picorv32_core.dbg_insn_addr[31:0]
+testbench.top_opt.uut.picorv32_core.dbg_insn_imm[31:0]
+testbench.top_opt.uut.picorv32_core.dbg_insn_opcode[31:0]
+testbench.top_opt.uut.picorv32_core.dbg_insn_rd[4:0]
+testbench.top_opt.uut.picorv32_core.dbg_insn_rs1[4:0]
+testbench.top_opt.uut.picorv32_core.dbg_insn_rs2[4:0]
+testbench.top_opt.uut.picorv32_core.dbg_mem_addr[31:0]
+@28
+testbench.top_opt.uut.picorv32_core.dbg_mem_instr
+@22
+testbench.top_opt.uut.picorv32_core.dbg_mem_rdata[31:0]
+@28
+testbench.top_opt.uut.picorv32_core.dbg_mem_ready
+testbench.top_opt.uut.picorv32_core.dbg_mem_valid
+@22
+testbench.top_opt.uut.picorv32_core.dbg_mem_wdata[31:0]
+testbench.top_opt.uut.picorv32_core.dbg_mem_wstrb[3:0]
+@28
+testbench.top_opt.uut.picorv32_core.dbg_next
+@22
+testbench.top_opt.uut.picorv32_core.dbg_rs1val[31:0]
+@28
+testbench.top_opt.uut.picorv32_core.dbg_rs1val_valid
+@22
+testbench.top_opt.uut.picorv32_core.dbg_rs2val[31:0]
+@28
+testbench.top_opt.uut.picorv32_core.dbg_rs2val_valid
+testbench.top_opt.uut.picorv32_core.dbg_valid_insn
+[pattern_trace] 1
+[pattern_trace] 0

@@ -16,5 +16,9 @@ default.svf
 formality.log
 logfile
 junk.mli
+testbench.fst
+testbench.vcd
+trans.vvp
 mixed.vvp
 mixed.vcs
+picorv32_wrapper_mixed.v
