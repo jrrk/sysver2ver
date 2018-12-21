@@ -102,7 +102,7 @@ type rw =
 | IO of string * int * dirop * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * rw list * int
-| TMPVAR of string * int * rw * rw
+| TMPVAR of string * int * rw list
 | CNST of (int * cexp) * int * rw list
 | VRF of string * rw list
 | TYP of string * string * int * rw list
@@ -263,6 +263,7 @@ let xrflst = ref []
 let forlst = ref []
 let ternlst = ref []
 let ternothlst = ref []
+let optitmlst = ref []
 let widthlst = ref []
 
 let matchcnt = ref 0
@@ -427,12 +428,11 @@ let rec rw' errlst = function
     (CNST ((_,HEX lo'), _, []) as lo) :: (CNST ((_,HEX wid'), _, []) as wid) :: []) ::
     (SEL (VRF _ :: CNST _ :: CNST _ :: []) as dst) :: []) ->
         begin
-        decr matchcnt;
-        let idx = !matchcnt in
-        let t = "__tmp"^string_of_int (-idx) in
-        let tmp = VRF (t, []) in
-        Hashtbl.add typetable idx ("basicdtype", "logic", TYPRNG(lo'+wid'-1,0), []); 
-        TMPVAR(t, idx, ASGN (ext :: tmp :: []), ASGNDLY (SEL (tmp :: lo :: wid :: []) :: dst :: []))
+        let idx' = lo'+wid' in
+        let t = "__tmp"^string_of_int idx' in
+        let tmp = VRF (t, []) and idx = -idx' in
+        Hashtbl.replace typetable idx ("basicdtype", "logic", TYPRNG(idx'-1,0), []); 
+        TMPVAR(t, idx, ASGN (ext :: tmp :: []) :: ASGNDLY (SEL (tmp :: lo :: wid :: []) :: dst :: []) :: [])
         end    
        | _ -> ternothlst := xlst' :: !ternothlst; ASGNDLY xlst')
 | Xml.Element ("if", [("fl", _)], xlst) -> IF (List.map (rw' errlst) xlst)
@@ -829,7 +829,7 @@ and cstmt dly = function
 | CNST((s,n), _, []) -> SIZED (s,n) :: []
 | TASK ("taskref", nam, arglst) -> IDENT nam :: (if arglst <> [] then eiter LPAREN arglst @ [RPAREN] else [])
 | JMPL(rw_lst) -> BEGIN :: iter2 dly rw_lst @ [NL;END;NL]
-| TMPVAR (nam, wid, stmt1, stmt2) -> cstmt dly (BGN ("", stmt1 :: stmt2 :: []))
+| TMPVAR (nam, wid, stmtlst) -> cstmt dly (BGN ("", stmtlst))
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
 
 let flatten1 dly = function
@@ -854,10 +854,21 @@ let rec cell_hier = function
    (nam,subnam) :: hier_lst
 | oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
 
+let rec optim2 = function
+| [] -> []
+| ASGN (expr :: tmp1 :: []) :: ASGNDLY (SEL (tmp1' :: lst) :: dst :: []) ::
+  ASGN (expr' :: tmp2 :: []) :: ASGNDLY (SEL (tmp2' :: lst') :: dst' :: []) :: tl when (tmp1=tmp1') && (tmp2=tmp2') && (expr=expr') ->
+    (match optim2 (ASGN (expr :: tmp1 :: []) :: ASGNDLY (SEL (tmp1 :: lst) :: dst :: []) :: tl) with
+        | hd0::hd1::tl -> hd0::hd1::ASGNDLY (SEL (tmp1 :: lst') :: dst' :: []) :: tl
+	| _ -> failwith "optim2")
+| hd :: tl -> hd :: optim2 tl
+
 let rec optitm3 = function
 | [] -> []
 | BGN ("", tl) :: BGN ("", tl') :: tl'' -> optitm3 (BGN ("", tl @ tl') :: tl'')
-| BGN ("", tl) :: tl' -> BGN ("", optitm2 tl) :: optitm3 tl'
+| BGN ("", tl) :: tl' -> BGN ("", optitm3 tl) :: optitm3 tl'
+| TMPVAR (a,b,lst1) :: TMPVAR (a',b',lst2) :: tl when b <= b' -> optitm3 (TMPVAR(a,b,lst1@lst2) :: tl)
+| TMPVAR (a,b,lst) :: tl -> optitmlst := lst :: !optitmlst; optim2 lst @ optitm3 tl
 | CS(rw_lst) :: tl -> CS(optitm3 rw_lst) :: optitm3 tl
 | CSITM(rw_lst) :: tl -> CSITM(optitm3 rw_lst) :: optitm3 tl
 | WHL(rw_lst) :: tl -> WHL(optitm3 rw_lst) :: optitm3 tl
@@ -867,39 +878,23 @@ let rec optitm3 = function
 | ASGNDLY(rw_lst) as oth :: tl -> oth :: optitm3 tl
 | IF(cnd :: then_stmt :: []) :: tl -> IF (cnd :: BGN("", optitm3 [then_stmt]) :: []) :: optitm3 tl
 | IF(cnd :: then_stmt :: else_stmt :: []) :: tl -> IF (cnd :: BGN("", optitm3 [then_stmt]) :: BGN("", optitm3 [else_stmt]) :: []) :: optitm3 tl
-| CS (sel :: lst) :: tl -> CS (sel :: optitm3 lst) :: optitm2 tl
-| CNST _ as cnst :: tl -> cnst :: optitm3 tl
+| (CNST _ | VRF _ | LOGIC _ | SEL _ | DSPLY _ | SYS _) as oth :: tl -> oth :: optitm3 tl
 | oth :: tl -> optothlst := oth :: !optothlst; failwith "optothlst3"
 | hd :: tl -> hd :: optitm3 tl
                                                          
-and optitm2 = function
-| [] -> []
-| TMPVAR (a,b,c,d) :: tl -> c :: d :: optitm2 tl
-| ASGNDLY _ as asgn :: tl -> asgn :: optitm2 tl
-| ASGN _ as asgn :: tl -> asgn :: optitm2 tl
-| IF(cnd :: then_stmt :: []) :: tl -> IF (cnd :: BGN("", optitm3 [then_stmt]) :: []) :: optitm2 tl
-| IF(cnd :: then_stmt :: else_stmt :: []) :: tl -> IF (cnd :: BGN("", optitm3 [then_stmt]) :: BGN("", optitm3 [else_stmt]) :: []) :: optitm2 tl
-| CS (sel :: lst) :: tl -> CS (sel :: optitm3 lst) :: optitm2 tl
-| BGN _ as bgn :: tl -> optitm3 (bgn :: tl)
-| oth :: tl -> optothlst := oth :: !optothlst; failwith "optothlst2"
-| hd :: tl -> hd :: optitm2 tl
-
 let rec optitm4 = function
 | BGN ("", BGN ("", tl) :: []) -> optitm4 (BGN("", tl)) 
 | BGN ("", tl) -> BGN ("", List.map optitm4 tl)
 | IF(cnd :: then_else_stmt_lst) -> IF (cnd :: List.map optitm4 then_else_stmt_lst)
 | CS (sel :: lst) -> CS (sel :: List.map optitm4 lst)
-| CNST _ as oth -> oth
-| ASGN _ as oth -> oth
-| ASGNDLY _ as oth -> oth
 | CSITM(rw_lst) -> CSITM(List.map optitm4 rw_lst)
 | WHL(rw_lst) -> WHL(List.map optitm4 rw_lst)
 | FORSTMT(cmpop,ix,strt,stop,inc,rw_lst) -> FORSTMT(cmpop,ix,strt,stop,inc,List.map optitm4 rw_lst)
 | TASK(tsk, nam, rw_lst) -> TASK(tsk, nam, List.map optitm4 rw_lst)
+| (ASGN _  | ASGNDLY _ | CNST _ | VRF _ | LOGIC _ | SEL _ | DSPLY _ | SYS _) as oth -> oth
 | oth -> optothlst := oth :: !optothlst; failwith "optothlst4"
-| oth -> oth
 
-let optitm lst = let lst' = optitm3 lst in List.map optitm4 lst'
+let optitm lst = let lst' = optitm3 lst in let lst'' = List.map optitm4 lst' in lst''
 
 let rec catitm pth itms = function
 | IO(str1, int1, Dunknown, "ifaceref", []) ->
@@ -909,7 +904,10 @@ let rec catitm pth itms = function
 | VAR(str1, int1, "ifaceref") -> itms.ir := (str1, int1) :: !(itms.ir)
 | VAR(str1, int1, str2) -> itms.v := (str1, (int1, str2, -1)) :: !(itms.v)
 | IVAR(str1, int1, rwlst, int2) -> itms.iv := (str1, (int1, rwlst, int2)) :: !(itms.iv)
-| TMPVAR(str1, int1, stmt1, stmt2) -> List.iter (catitm pth itms) [stmt1;stmt2]; itms.v := (str1, (int1, str1, -1)) :: !(itms.v)
+| TMPVAR(str1, int1, stmtlst) ->
+    List.iter (catitm pth itms) stmtlst;
+    if not (List.mem_assoc str1 !(itms.v)) then
+        itms.v := (str1, (int1, str1, -1)) :: !(itms.v)
 | CA(rght::lft::[]) -> itms.ca := (lft, rght) :: !(itms.ca)
 | TYP(str1, str2, int1, []) -> itms.typ := (str1,str2,int1) :: !(itms.typ)
 | INST(str1, (str2, port_lst)) -> let pth = if String.length pth > 0 then pth^"_"^str1 else str1 in

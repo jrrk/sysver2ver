@@ -102,7 +102,7 @@ type rw =
 | IO of string * int * dirop * string * rw list
 | VAR of string * int * string
 | IVAR of string * int * rw list * int
-| TMPVAR of string * int * rw * rw
+| TMPVAR of string * int * rw list
 | CNST of (int*cexp) * int * rw list
 | VRF of string * rw list
 | TYP of string * string * int * rw list
@@ -256,6 +256,7 @@ val forlst : (rw list * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
 val ternothlst : rw list list ref
 val widthlst : rw list ref
+val optitmlst : rw list list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val modules_opt : (string, string * int * itms) Hashtbl.t

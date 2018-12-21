@@ -24,10 +24,11 @@ let xmlf = "obj_dir/Vreduceor.xml";;
 let xmlf = "obj_dir/Vreset_transform.xml";;
 let xmlf = "obj_dir/Vaccum.xml";;
 let xmlf = "obj_dir/Vdecoder.xml";;
+let xmlf = "obj_dir/Valways_test.xml";;
 *)
 
 let xmlf = "../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml";;
-let xmlf = "obj_dir/Valways_test.xml";;
+let xmlf = "obj_dir/Vdecoder.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;
@@ -53,9 +54,9 @@ List.length !memothlst
 );;
 
 let mods = ref [];;
-Hashtbl.iter (fun k x -> print_endline k) modules;;
+Hashtbl.iter (fun k x -> print_endline k; mods := k :: !mods) modules_opt;;
 
-let (a,b,c) = f "always_test_opt";;
+let (a,b,c) = f (List.hd !mods);;
 let l = List.length !(c.alwys);;
 let (x,y,z) = (List.hd !(c.alwys));;
 let opt = optitm z;;

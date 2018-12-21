@@ -22,7 +22,7 @@ testbench.vvp: example/testbench.v picorv32_wrapper_opt_translate.v
 R = ref_opt/axi4_memory.v ref_opt/picorv32_axi_adapter.v ref_opt/picorv32_axi.v ref_opt/picorv32_pcpi_div.v ref_opt/picorv32_pcpi_mul.v ref_opt/picorv32.v ref_opt/picorv32_wrapper.v
 S = example/testbench.v example/axi4_memory.v example/picorv32_axi_adapter.v example/picorv32_axi.v example/picorv32_pcpi_div.v example/picorv32_pcpi_mul.v example/picorv32.v example/picorv32_wrapper.v
 T = axi4_memory_opt_translate.v picorv32__pi2_opt_translate.v picorv32_axi__pi1_opt_translate.v  picorv32_axi_adapter_opt_translate.v picorv32_pcpi_div_opt_translate.v picorv32_pcpi_mul_opt_translate.v picorv32_wrapper_opt_translate.v
-M = axi4_memory_opt_translate.v picorv32_axi_adapter_opt_translate.v picorv32_axi_opt_translate_edited.v picorv32_pcpi_div_opt_translate.v picorv32_pcpi_mul_opt_translate.v picorv32_opt_translate_edited.v ref_opt/picorv32_axi_mixed.v ref_opt/picorv32_mixed.v ref_opt/picorv32_wrapper_mixed.v # picorv32_wrapper_opt_translate_edited.v
+M = axi4_memory_opt_translate.v picorv32_axi_adapter_opt_translate.v picorv32_axi_opt_translate.v picorv32_pcpi_div_opt_translate.v picorv32_pcpi_mul_opt_translate.v picorv32_opt_translate.v ref_opt/picorv32_axi_mixed.v ref_opt/picorv32_mixed.v ref_opt/picorv32_wrapper_mixed.v # picorv32_wrapper_opt_translate.v
 
 mixed.vvp: $S $M
 	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA $S $M
@@ -43,7 +43,7 @@ $T:
 	env VXML_SEPARATE=1 ./vxmlmain ../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml
 
 picorv32_axi_opt_translate.v: picorv32_axi__pi1_opt_translate.v
-	sed -e 's=\(\ picorv32_axi\)__pi1\(_opt\)=\1\2\ =' $< > $@
+	sed -e 's=\(\ picorv32_axi\)__pi1\(_opt\)=\1\2\ =' -e 's=\(\picorv32\)__pi2\(_opt\)=\1\2=' $< > $@
 
 picorv32_opt_translate.v: picorv32__pi2_opt_translate.v
 	sed -e 's=\(\ picorv32\)__pi2\(_opt\)=\1\2\ =' $< > $@
