@@ -63,56 +63,21 @@ module irq #(
 	parameter [31:0] PROGADDR_IRQ = 32'h 0000_0010,
 	parameter [31:0] STACKADDR = 32'h ffff_ffff
 ) (
-	input clk, resetn,
-	output reg trap,
+	input 		  clk, resetn,
+	output reg 	  trap,
 
-	output reg [31:0] mem_addr,
-	output reg [31:0] mem_wdata,
-	output reg [ 3:0] mem_wstrb,
-	input      [31:0] mem_rdata,
-
-	// Pico Co-Processor Interface (PCPI)
-	output reg        pcpi_valid,
-	output reg [31:0] pcpi_insn,
-	output     [31:0] pcpi_rs1,
-	output     [31:0] pcpi_rs2,
-	input             pcpi_wr,
-	input      [31:0] pcpi_rd,
-	input             pcpi_wait,
-	input             pcpi_ready,
+	input [31:0] 	  mem_rdata,
 
 	// IRQ Interface
-	input      [31:0] irq,
+	input [31:0] 	  irq,
 	output reg [31:0] eoi,
 
-`ifdef RISCV_FORMAL
-	output reg        rvfi_valid,
-	output reg [63:0] rvfi_order,
-	output reg [31:0] rvfi_insn,
-	output reg        rvfi_trap,
-	output reg        rvfi_halt,
-	output reg        rvfi_intr,
-	output reg [ 1:0] rvfi_mode,
-	output reg [ 4:0] rvfi_rs1_addr,
-	output reg [ 4:0] rvfi_rs2_addr,
-	output reg [31:0] rvfi_rs1_rdata,
-	output reg [31:0] rvfi_rs2_rdata,
-	output reg [ 4:0] rvfi_rd_addr,
-	output reg [31:0] rvfi_rd_wdata,
-	output reg [31:0] rvfi_pc_rdata,
-	output reg [31:0] rvfi_pc_wdata,
-	output reg [31:0] rvfi_mem_addr,
-	output reg [ 3:0] rvfi_mem_rmask,
-	output reg [ 3:0] rvfi_mem_wmask,
-	output reg [31:0] rvfi_mem_rdata,
-	output reg [31:0] rvfi_mem_wdata,
-`endif
-
 	// Trace Interface
-	output reg        trace_valid,
-	output reg [35:0] trace_data,
-   	input decoder_trigger,
-	input do_waitirq
+   	input 		  decoder_trigger,
+	input 		  do_waitirq,
+	input [31:0] 	  alu_out, alu_out_q,
+   	input [regindex_bits-1:0] decoded_rd, decoded_rs1, decoded_rs2,
+	input [31:0] reg_op1, reg_op2
 
 );
 	localparam integer irq_timer = 0;
@@ -129,21 +94,14 @@ module irq #(
 	localparam [35:0] TRACE_ADDR   = {4'b 0010, 32'b 0};
 	localparam [35:0] TRACE_IRQ    = {4'b 1000, 32'b 0};
 
+        reg [31:0] 		   reg_pc, reg_next_pc, reg_out;
+   
 	reg [63:0] count_cycle, count_instr;
-	reg [31:0] reg_pc, reg_next_pc, reg_op1, reg_op2, reg_out;
 	reg [4:0] reg_sh;
 
 	reg [31:0] next_insn_opcode;
 	reg [31:0] dbg_insn_opcode;
 	reg [31:0] dbg_insn_addr;
-
-	wire [31:0] dbg_mem_addr  = mem_addr;
-	wire [31:0] dbg_mem_wdata = mem_wdata;
-	wire [ 3:0] dbg_mem_wstrb = mem_wstrb;
-	wire [31:0] dbg_mem_rdata = mem_rdata;
-
-	assign pcpi_rs1 = reg_op1;
-	assign pcpi_rs2 = reg_op2;
 
 	wire [31:0] next_pc;
 
@@ -251,7 +209,6 @@ module irq #(
 	reg latched_is_lh;
 	reg latched_is_lb;
 	reg [regindex_bits-1:0] latched_rd;
-reg [31:0] alu_out, alu_out_q;
 reg [31:0] next_irq_pending;
    	reg pcpi_timeout;
 	reg [31:0] current_pc;
@@ -283,7 +240,6 @@ reg [31:0] next_irq_pending;
 		end
 	end
 
-   	reg [regindex_bits-1:0] decoded_rd, decoded_rs1, decoded_rs2;
 	reg [31:0] decoded_imm, decoded_imm_uj;
 	reg decoder_trigger_q;
 	reg mem_do_prefetch;
@@ -364,8 +320,6 @@ reg [31:0] next_irq_pending;
 			latched_is_lu <= 0;
 			latched_is_lh <= 0;
 			latched_is_lb <= 0;
-			pcpi_valid <= 0;
-			pcpi_timeout <= 0;
 			irq_active <= 0;
 			irq_delay <= 0;
 			irq_mask <= ~0;
