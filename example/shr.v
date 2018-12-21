@@ -70,24 +70,8 @@ module shr #(
 	output reg 	  alu_eq, alu_ltu, alu_lts,
 	input [31:0] 	  reg_pc, reg_op1, reg_op2, reg_out,
 	input [4:0] 	  reg_sh,
-        input instr_sub, instr_sra, instr_srai,
-	// Trace Interface
-	output reg 	  trace_valid,
-	output reg [35:0] trace_data
+        input instr_sub, instr_sra, instr_srai
 );
-	localparam integer irq_timer = 0;
-	localparam integer irq_ebreak = 1;
-	localparam integer irq_buserror = 2;
-
-	localparam integer irqregs_offset = ENABLE_REGS_16_31 ? 32 : 16;
-	localparam integer regfile_size = (ENABLE_REGS_16_31 ? 32 : 16) + 4*ENABLE_IRQ*ENABLE_IRQ_QREGS;
-	localparam integer regindex_bits = (ENABLE_REGS_16_31 ? 5 : 4) + ENABLE_IRQ*ENABLE_IRQ_QREGS;
-
-	localparam WITH_PCPI = ENABLE_PCPI || ENABLE_MUL || ENABLE_FAST_MUL || ENABLE_DIV;
-
-	localparam [35:0] TRACE_BRANCH = {4'b 0001, 32'b 0};
-	localparam [35:0] TRACE_ADDR   = {4'b 0010, 32'b 0};
-	localparam [35:0] TRACE_IRQ    = {4'b 1000, 32'b 0};
 
 	reg [31:0] alu_out, alu_out_q;
 	reg alu_out_0, alu_out_0_q;
