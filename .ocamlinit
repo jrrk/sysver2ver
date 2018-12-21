@@ -28,6 +28,7 @@ let xmlf = "obj_dir/Valways_test.xml";;
 *)
 
 let xmlf = "../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml";;
+let xmlf = "obj_dir/Vtilde.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;
@@ -56,6 +57,8 @@ let mods = ref [];;
 Hashtbl.iter (fun k x -> print_endline k; mods := k :: !mods) modules_opt;;
 
 let (a,b,c) = f (List.hd !mods);;
+(*
 let l = List.length !(c.alwys);;
 let (x,y,z) = (List.hd !(c.alwys));;
 let opt = optitm z;;
+*)

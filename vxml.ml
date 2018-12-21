@@ -530,8 +530,8 @@ inst=ref !(prev.inst) }
 
 let unaryopv = function
 | Unknown -> "???"
-| Unot -> " ! "
-| Ulognot -> " ~ "
+| Unot -> " ~ "
+| Ulognot -> " ! "
 | Unegate -> " - "
 | Uextend -> "$unsigned"
 | Uextends -> "$signed"
@@ -625,7 +625,7 @@ let rec expr = function
 | IRNG (expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
 | XRF (id, tid, dotted, dirop) as xrf -> xrflst := xrf :: !xrflst; IDENT (dotted^(match !dirop with Dinam _ -> "_" | _ -> ".")^id) :: []
 | TPLSRGS (id, tid, []) -> IDENT "$test$plusargs" :: LPAREN :: DQUOTE :: IDENT id :: DQUOTE :: RPAREN :: []
-| VPLSRGS (id, CNST ((len, fmt), 13, []) :: VRF (arg, []) :: []) -> IDENT "$value$plusargs" :: LPAREN :: NUM fmt :: COMMA :: IDENT arg :: RPAREN :: []
+| VPLSRGS (tid, CNST ((len, fmt), _, []) :: VRF (arg, []) :: []) -> IDENT "$value$plusargs" :: LPAREN :: NUM fmt :: COMMA :: IDENT arg :: RPAREN :: []
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 
 let rec portconn = function
