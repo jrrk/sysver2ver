@@ -54,3 +54,8 @@ List.length !memothlst
 
 let mods = ref [];;
 Hashtbl.iter (fun k x -> print_endline k) modules;;
+
+let (a,b,c) = f "always_test_opt";;
+let l = List.length !(c.alwys);;
+let (x,y,z) = (List.hd !(c.alwys));;
+let opt = optitm z;;

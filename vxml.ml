@@ -258,6 +258,7 @@ let memothlst = ref []
 let mapothlst = ref []
 let subothlst = ref []
 let tskothlst = ref []
+let optothlst = ref []
 let xrflst = ref []
 let forlst = ref []
 let ternlst = ref []
@@ -755,7 +756,7 @@ let rec iter2 dly lst =
     List.flatten (List.map (fun itm -> cstmt dly itm @ [SEMI;NL]) lst)
 
 and csitm dly = function
-    | CSITM (cexp :: (BGN _ as st) :: []) -> expr cexp @ COLON :: BEGIN :: cstmt dly st @ END :: NL :: []
+    | CSITM (cexp :: (BGN _ as st) :: []) -> expr cexp @ COLON :: cstmt dly st @ NL :: []
     | CSITM (cexp :: st :: []) -> expr cexp @ COLON :: BEGIN :: cstmt dly st @ SEMI :: END :: NL :: []
     | CSITM (st :: []) -> DEFAULT :: COLON :: cstmt dly st @ SEMI :: []
     | CSITM (cexplst) -> (match List.rev cexplst with
@@ -853,26 +854,53 @@ let rec cell_hier = function
    (nam,subnam) :: hier_lst
 | oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
 
-let rec optitm' = function
+let rec optitm3 = function
 | [] -> []
-| TMPVAR (a,b,c,d) :: tl -> c :: d :: optitm' tl
-| ASGNDLY _ as asgn :: tl -> asgn :: optitm' tl
-| ASGN _ as asgn :: tl -> asgn :: optitm' tl
-| hd :: tl -> hd :: optitm' tl
-
-let rec optitm = function
-| [] -> []
-| BGN ("", tl) :: BGN ("", tl') :: tl'' -> optitm (BGN ("", tl @ tl') :: tl'')
-| BGN ("", tl) :: tl' -> BGN ("", optitm' tl) :: optitm tl'
-| CS(rw_lst) :: tl -> CS(optitm rw_lst) :: optitm tl
-| CSITM(rw_lst) :: tl -> CSITM(optitm rw_lst) :: optitm tl
-| WHL(rw_lst) :: tl -> WHL(optitm rw_lst) :: optitm tl
-| FORSTMT(cmpop,ix,strt,stop,inc,rw_lst) :: tl -> FORSTMT(cmpop,ix,strt,stop,inc,optitm rw_lst) :: optitm tl
-| TASK(tsk, nam, rw_lst) :: tl -> TASK(tsk, nam, optitm rw_lst) :: optitm tl
-| ASGN(rw_lst) as oth :: tl -> oth :: optitm tl
-| ASGNDLY(rw_lst) as oth :: tl -> oth :: optitm tl
-| hd :: tl -> hd :: optitm tl
+| BGN ("", tl) :: BGN ("", tl') :: tl'' -> optitm3 (BGN ("", tl @ tl') :: tl'')
+| BGN ("", tl) :: tl' -> BGN ("", optitm2 tl) :: optitm3 tl'
+| CS(rw_lst) :: tl -> CS(optitm3 rw_lst) :: optitm3 tl
+| CSITM(rw_lst) :: tl -> CSITM(optitm3 rw_lst) :: optitm3 tl
+| WHL(rw_lst) :: tl -> WHL(optitm3 rw_lst) :: optitm3 tl
+| FORSTMT(cmpop,ix,strt,stop,inc,rw_lst) :: tl -> FORSTMT(cmpop,ix,strt,stop,inc,optitm3 rw_lst) :: optitm3 tl
+| TASK(tsk, nam, rw_lst) :: tl -> TASK(tsk, nam, optitm3 rw_lst) :: optitm3 tl
+| ASGN(rw_lst) as oth :: tl -> oth :: optitm3 tl
+| ASGNDLY(rw_lst) as oth :: tl -> oth :: optitm3 tl
+| IF(cnd :: then_stmt :: []) :: tl -> IF (cnd :: BGN("", optitm3 [then_stmt]) :: []) :: optitm3 tl
+| IF(cnd :: then_stmt :: else_stmt :: []) :: tl -> IF (cnd :: BGN("", optitm3 [then_stmt]) :: BGN("", optitm3 [else_stmt]) :: []) :: optitm3 tl
+| CS (sel :: lst) :: tl -> CS (sel :: optitm3 lst) :: optitm2 tl
+| CNST _ as cnst :: tl -> cnst :: optitm3 tl
+| oth :: tl -> optothlst := oth :: !optothlst; failwith "optothlst3"
+| hd :: tl -> hd :: optitm3 tl
                                                          
+and optitm2 = function
+| [] -> []
+| TMPVAR (a,b,c,d) :: tl -> c :: d :: optitm2 tl
+| ASGNDLY _ as asgn :: tl -> asgn :: optitm2 tl
+| ASGN _ as asgn :: tl -> asgn :: optitm2 tl
+| IF(cnd :: then_stmt :: []) :: tl -> IF (cnd :: BGN("", optitm3 [then_stmt]) :: []) :: optitm2 tl
+| IF(cnd :: then_stmt :: else_stmt :: []) :: tl -> IF (cnd :: BGN("", optitm3 [then_stmt]) :: BGN("", optitm3 [else_stmt]) :: []) :: optitm2 tl
+| CS (sel :: lst) :: tl -> CS (sel :: optitm3 lst) :: optitm2 tl
+| BGN _ as bgn :: tl -> optitm3 (bgn :: tl)
+| oth :: tl -> optothlst := oth :: !optothlst; failwith "optothlst2"
+| hd :: tl -> hd :: optitm2 tl
+
+let rec optitm4 = function
+| BGN ("", BGN ("", tl) :: []) -> optitm4 (BGN("", tl)) 
+| BGN ("", tl) -> BGN ("", List.map optitm4 tl)
+| IF(cnd :: then_else_stmt_lst) -> IF (cnd :: List.map optitm4 then_else_stmt_lst)
+| CS (sel :: lst) -> CS (sel :: List.map optitm4 lst)
+| CNST _ as oth -> oth
+| ASGN _ as oth -> oth
+| ASGNDLY _ as oth -> oth
+| CSITM(rw_lst) -> CSITM(List.map optitm4 rw_lst)
+| WHL(rw_lst) -> WHL(List.map optitm4 rw_lst)
+| FORSTMT(cmpop,ix,strt,stop,inc,rw_lst) -> FORSTMT(cmpop,ix,strt,stop,inc,List.map optitm4 rw_lst)
+| TASK(tsk, nam, rw_lst) -> TASK(tsk, nam, List.map optitm4 rw_lst)
+| oth -> optothlst := oth :: !optothlst; failwith "optothlst4"
+| oth -> oth
+
+let optitm lst = let lst' = optitm3 lst in List.map optitm4 lst'
+
 let rec catitm pth itms = function
 | IO(str1, int1, Dunknown, "ifaceref", []) ->
     let (dtype, dir, _, _) = Hashtbl.find typetable int1 in

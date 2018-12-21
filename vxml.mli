@@ -250,6 +250,7 @@ val memothlst : typmap list ref
 val subothlst : rw list ref
 val mapothlst : (string * string) list list ref
 val tskothlst : rw list ref
+val optothlst : rw list ref
 val xrflst : rw list ref
 val forlst : (rw list * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
@@ -269,6 +270,7 @@ val cadd : cexp list -> cexp
 val cexp : string -> int * cexp
 val expr : rw -> token list
 val ewidth : rw -> int
+val optitm : rw list -> rw list
 
 val fortailmatch : string -> rw list -> bool
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml
