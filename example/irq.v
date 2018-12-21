@@ -94,8 +94,12 @@ module irq #(
 	output reg 		       latched_is_lb,
 	output reg [regindex_bits-1:0] latched_rd,
 	output reg [31:0] 	       next_irq_pending,
-	output reg [31:0] 	       current_pc
+	output reg [31:0] 	       current_pc,
 
+	input reg [7:0] cpu_state,
+	output reg [1:0] irq_state,
+
+	output reg cpuregs_write
 );
 	localparam integer irq_timer = 0;
 	localparam integer irq_ebreak = 1;
@@ -131,12 +135,6 @@ module irq #(
 	reg [31:0] cpuregs [0:regfile_size-1];
 
 	integer i;
-	initial begin
-		if (REGS_INIT_ZERO) begin
-			for (i = 0; i < regfile_size; i = i+1)
-				cpuregs[i] = 0;
-		end
-	end
 `endif
 
 	task empty_statement;
@@ -155,11 +153,6 @@ module irq #(
 	localparam cpu_state_shift  = 8'b00000100;
 	localparam cpu_state_stmem  = 8'b00000010;
 	localparam cpu_state_ldmem  = 8'b00000001;
-
-	reg [7:0] cpu_state;
-	reg [1:0] irq_state;
-
-	reg cpuregs_write;
 
 	always @* begin
 		cpuregs_write = 0;
@@ -272,7 +265,6 @@ module irq #(
 			irq_delay <= 0;
 			irq_mask <= ~0;
 			next_irq_pending = 0;
-			irq_state <= 0;
 			eoi <= 0;
 			timer <= 0;
 			if (~STACKADDR) begin
@@ -280,7 +272,6 @@ module irq #(
 				latched_rd <= 2;
 				reg_out <= STACKADDR;
 			end
-			cpu_state <= cpu_state_fetch;
 		end else
 		(* parallel_case, full_case *)
 		case (cpu_state)
