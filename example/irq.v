@@ -61,7 +61,8 @@ module irq #(
 	parameter [31:0] LATCHED_IRQ = 32'h ffff_ffff,
 	parameter [31:0] PROGADDR_RESET = 32'h 0000_0000,
 	parameter [31:0] PROGADDR_IRQ = 32'h 0000_0010,
-	parameter [31:0] STACKADDR = 32'h ffff_ffff
+	parameter [31:0] STACKADDR = 32'h ffff_ffff,
+	parameter integer regindex_bits = (ENABLE_REGS_16_31 ? 5 : 4) + ENABLE_IRQ*ENABLE_IRQ_QREGS
 ) (
 	input 		  clk, resetn,
 	output reg 	  trap,
@@ -86,7 +87,6 @@ module irq #(
 
 	localparam integer irqregs_offset = ENABLE_REGS_16_31 ? 32 : 16;
 	localparam integer regfile_size = (ENABLE_REGS_16_31 ? 32 : 16) + 4*ENABLE_IRQ*ENABLE_IRQ_QREGS;
-	localparam integer regindex_bits = (ENABLE_REGS_16_31 ? 5 : 4) + ENABLE_IRQ*ENABLE_IRQ_QREGS;
 
 	localparam WITH_PCPI = ENABLE_PCPI || ENABLE_MUL || ENABLE_FAST_MUL || ENABLE_DIV;
 
