@@ -27,10 +27,10 @@ P = picorv32_axi_opt_translate.v picorv32_wrapper_mixed.v picorv32_opt_translate
 M = axi4_memory_opt_translate.v picorv32_axi_adapter_opt_translate.v picorv32_axi_opt_translate.v picorv32_pcpi_div_opt_translate.v picorv32_pcpi_mul_opt_translate.v picorv32_opt_translate.v ref_opt/picorv32_axi_mixed.v ref_opt/picorv32_mixed.v ref_opt/picorv32_wrapper_mixed.v # picorv32_wrapper_opt_translate.v
 
 mixed.vvp: $S $M
-	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA $S $M
+	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA -DDEBUGREGS $S $M
 
 trans.vvp: $S $T $P
-	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA $S $T $P
+	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA -DDEBUGREGS $S $T $P
 
 mixed.vcs: $S $M
 	vcs -full64 -sverilog -debug_access+all +lint=TFIPC-L -o $@ -DCOMPRESSED_ISA $S $M
@@ -42,7 +42,7 @@ $T: obj_dir/Vpicorv32_wrapper.xml
 	env VXML_SEPARATE=1 ./vxmlmain $<
 
 obj_dir/Vpicorv32_wrapper.xml: $V
-	verilator --xml-only -Wno-fatal -DCOMPRESSED_ISA $V
+	verilator --xml-only -Wno-fatal -DCOMPRESSED_ISA -DDEBUGREGS $V
 
 picorv32_axi_opt_translate.v: picorv32_axi__pi1_opt_translate.v
 	sed -e 's=\(\ picorv32_axi\)__pi1\(_opt\)=\1\2\ =' -e 's=\(\picorv32\)__pi2\(_opt\)=\1\2=' $< > $@

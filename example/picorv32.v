@@ -63,46 +63,46 @@ module picorv32 #(
 	parameter [31:0] PROGADDR_IRQ = 32'h 0000_0010,
 	parameter [31:0] STACKADDR = 32'h ffff_ffff
 ) (
-	input clk, resetn,
-	output reg trap,
+	input 		  clk, resetn,
+	output reg 	  trap,
 
-	output reg        mem_valid,
-	output reg        mem_instr,
-	input             mem_ready,
+	output reg 	  mem_valid,
+	output reg 	  mem_instr,
+	input 		  mem_ready,
 
 	output reg [31:0] mem_addr,
 	output reg [31:0] mem_wdata,
 	output reg [ 3:0] mem_wstrb,
-	input      [31:0] mem_rdata,
+	input [31:0] 	  mem_rdata,
 
 	// Look-Ahead Interface
-	output            mem_la_read,
-	output            mem_la_write,
-	output     [31:0] mem_la_addr,
+	output 		  mem_la_read,
+	output 		  mem_la_write,
+	output [31:0] 	  mem_la_addr,
 	output reg [31:0] mem_la_wdata,
 	output reg [ 3:0] mem_la_wstrb,
 
 	// Pico Co-Processor Interface (PCPI)
-	output reg        pcpi_valid,
+	output reg 	  pcpi_valid,
 	output reg [31:0] pcpi_insn,
-	output     [31:0] pcpi_rs1,
-	output     [31:0] pcpi_rs2,
-	input             pcpi_wr,
-	input      [31:0] pcpi_rd,
-	input             pcpi_wait,
-	input             pcpi_ready,
+	output [31:0] 	  pcpi_rs1,
+	output [31:0] 	  pcpi_rs2,
+	input 		  pcpi_wr,
+	input [31:0] 	  pcpi_rd,
+	input 		  pcpi_wait,
+	input 		  pcpi_ready,
 
 	// IRQ Interface
-	input      [31:0] irq,
+	input [31:0] 	  irq,
 	output reg [31:0] eoi,
 
 `ifdef RISCV_FORMAL
-	output reg        rvfi_valid,
+	output reg 	  rvfi_valid,
 	output reg [63:0] rvfi_order,
 	output reg [31:0] rvfi_insn,
-	output reg        rvfi_trap,
-	output reg        rvfi_halt,
-	output reg        rvfi_intr,
+	output reg 	  rvfi_trap,
+	output reg 	  rvfi_halt,
+	output reg 	  rvfi_intr,
 	output reg [ 1:0] rvfi_mode,
 	output reg [ 4:0] rvfi_rs1_addr,
 	output reg [ 4:0] rvfi_rs2_addr,
@@ -119,8 +119,43 @@ module picorv32 #(
 	output reg [31:0] rvfi_mem_wdata,
 `endif
 
+`ifdef DEBUGREGS   
+	output [31:0] 	  dbg_reg_x0,
+	output [31:0] 	  dbg_reg_x1,
+	output [31:0] 	  dbg_reg_x2,
+	output [31:0] 	  dbg_reg_x3,
+	output [31:0] 	  dbg_reg_x4,
+	output [31:0] 	  dbg_reg_x5,
+	output [31:0] 	  dbg_reg_x6,
+	output [31:0] 	  dbg_reg_x7,
+	output [31:0] 	  dbg_reg_x8,
+	output [31:0] 	  dbg_reg_x9,
+	output [31:0] 	  dbg_reg_x10,
+	output [31:0] 	  dbg_reg_x11,
+	output [31:0] 	  dbg_reg_x12,
+	output [31:0] 	  dbg_reg_x13,
+	output [31:0] 	  dbg_reg_x14,
+	output [31:0] 	  dbg_reg_x15,
+	output [31:0] 	  dbg_reg_x16,
+	output [31:0] 	  dbg_reg_x17,
+	output [31:0] 	  dbg_reg_x18,
+	output [31:0] 	  dbg_reg_x19,
+	output [31:0] 	  dbg_reg_x20,
+	output [31:0] 	  dbg_reg_x21,
+	output [31:0] 	  dbg_reg_x22,
+	output [31:0] 	  dbg_reg_x23,
+	output [31:0] 	  dbg_reg_x24,
+	output [31:0] 	  dbg_reg_x25,
+	output [31:0] 	  dbg_reg_x26,
+	output [31:0] 	  dbg_reg_x27,
+	output [31:0] 	  dbg_reg_x28,
+	output [31:0] 	  dbg_reg_x29,
+	output [31:0] 	  dbg_reg_x30,
+	output [31:0] 	  dbg_reg_x31,
+`endif
+   
 	// Trace Interface
-	output reg        trace_valid,
+	output reg 	  trace_valid,
 	output reg [35:0] trace_data
 );
 	localparam integer irq_timer = 0;
@@ -183,38 +218,38 @@ module picorv32 #(
 	endtask
 
 `ifdef DEBUGREGS
-	wire [31:0] dbg_reg_x0  = 0;
-	wire [31:0] dbg_reg_x1  = cpuregs[1];
-	wire [31:0] dbg_reg_x2  = cpuregs[2];
-	wire [31:0] dbg_reg_x3  = cpuregs[3];
-	wire [31:0] dbg_reg_x4  = cpuregs[4];
-	wire [31:0] dbg_reg_x5  = cpuregs[5];
-	wire [31:0] dbg_reg_x6  = cpuregs[6];
-	wire [31:0] dbg_reg_x7  = cpuregs[7];
-	wire [31:0] dbg_reg_x8  = cpuregs[8];
-	wire [31:0] dbg_reg_x9  = cpuregs[9];
-	wire [31:0] dbg_reg_x10 = cpuregs[10];
-	wire [31:0] dbg_reg_x11 = cpuregs[11];
-	wire [31:0] dbg_reg_x12 = cpuregs[12];
-	wire [31:0] dbg_reg_x13 = cpuregs[13];
-	wire [31:0] dbg_reg_x14 = cpuregs[14];
-	wire [31:0] dbg_reg_x15 = cpuregs[15];
-	wire [31:0] dbg_reg_x16 = cpuregs[16];
-	wire [31:0] dbg_reg_x17 = cpuregs[17];
-	wire [31:0] dbg_reg_x18 = cpuregs[18];
-	wire [31:0] dbg_reg_x19 = cpuregs[19];
-	wire [31:0] dbg_reg_x20 = cpuregs[20];
-	wire [31:0] dbg_reg_x21 = cpuregs[21];
-	wire [31:0] dbg_reg_x22 = cpuregs[22];
-	wire [31:0] dbg_reg_x23 = cpuregs[23];
-	wire [31:0] dbg_reg_x24 = cpuregs[24];
-	wire [31:0] dbg_reg_x25 = cpuregs[25];
-	wire [31:0] dbg_reg_x26 = cpuregs[26];
-	wire [31:0] dbg_reg_x27 = cpuregs[27];
-	wire [31:0] dbg_reg_x28 = cpuregs[28];
-	wire [31:0] dbg_reg_x29 = cpuregs[29];
-	wire [31:0] dbg_reg_x30 = cpuregs[30];
-	wire [31:0] dbg_reg_x31 = cpuregs[31];
+	assign dbg_reg_x0  = 0;
+	assign dbg_reg_x1  = cpuregs[1];
+	assign dbg_reg_x2  = cpuregs[2];
+	assign dbg_reg_x3  = cpuregs[3];
+	assign dbg_reg_x4  = cpuregs[4];
+	assign dbg_reg_x5  = cpuregs[5];
+	assign dbg_reg_x6  = cpuregs[6];
+	assign dbg_reg_x7  = cpuregs[7];
+	assign dbg_reg_x8  = cpuregs[8];
+	assign dbg_reg_x9  = cpuregs[9];
+	assign dbg_reg_x10 = cpuregs[10];
+	assign dbg_reg_x11 = cpuregs[11];
+	assign dbg_reg_x12 = cpuregs[12];
+	assign dbg_reg_x13 = cpuregs[13];
+	assign dbg_reg_x14 = cpuregs[14];
+	assign dbg_reg_x15 = cpuregs[15];
+	assign dbg_reg_x16 = cpuregs[16];
+	assign dbg_reg_x17 = cpuregs[17];
+	assign dbg_reg_x18 = cpuregs[18];
+	assign dbg_reg_x19 = cpuregs[19];
+	assign dbg_reg_x20 = cpuregs[20];
+	assign dbg_reg_x21 = cpuregs[21];
+	assign dbg_reg_x22 = cpuregs[22];
+	assign dbg_reg_x23 = cpuregs[23];
+	assign dbg_reg_x24 = cpuregs[24];
+	assign dbg_reg_x25 = cpuregs[25];
+	assign dbg_reg_x26 = cpuregs[26];
+	assign dbg_reg_x27 = cpuregs[27];
+	assign dbg_reg_x28 = cpuregs[28];
+	assign dbg_reg_x29 = cpuregs[29];
+	assign dbg_reg_x30 = cpuregs[30];
+	assign dbg_reg_x31 = cpuregs[31];
 `endif
 
 	// Internal PCPI Cores
