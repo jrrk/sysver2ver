@@ -66,21 +66,10 @@ module irq #(
 	input clk, resetn,
 	output reg trap,
 
-	output reg        mem_valid,
-	output reg        mem_instr,
-	input             mem_ready,
-
 	output reg [31:0] mem_addr,
 	output reg [31:0] mem_wdata,
 	output reg [ 3:0] mem_wstrb,
 	input      [31:0] mem_rdata,
-
-	// Look-Ahead Interface
-	output            mem_la_read,
-	output            mem_la_write,
-	output     [31:0] mem_la_addr,
-	output reg [31:0] mem_la_wdata,
-	output reg [ 3:0] mem_la_wstrb,
 
 	// Pico Co-Processor Interface (PCPI)
 	output reg        pcpi_valid,
@@ -121,7 +110,10 @@ module irq #(
 
 	// Trace Interface
 	output reg        trace_valid,
-	output reg [35:0] trace_data
+	output reg [35:0] trace_data,
+   	input decoder_trigger,
+	input do_waitirq
+
 );
 	localparam integer irq_timer = 0;
 	localparam integer irq_ebreak = 1;
@@ -145,9 +137,6 @@ module irq #(
 	reg [31:0] dbg_insn_opcode;
 	reg [31:0] dbg_insn_addr;
 
-	wire dbg_mem_valid = mem_valid;
-	wire dbg_mem_instr = mem_instr;
-	wire dbg_mem_ready = mem_ready;
 	wire [31:0] dbg_mem_addr  = mem_addr;
 	wire [31:0] dbg_mem_wdata = mem_wdata;
 	wire [ 3:0] dbg_mem_wstrb = mem_wstrb;
@@ -265,7 +254,6 @@ module irq #(
 reg [31:0] alu_out, alu_out_q;
 reg [31:0] next_irq_pending;
    	reg pcpi_timeout;
-	reg do_waitirq;
 	reg [31:0] current_pc;
 
 	always @* begin
@@ -297,7 +285,6 @@ reg [31:0] next_irq_pending;
 
    	reg [regindex_bits-1:0] decoded_rd, decoded_rs1, decoded_rs2;
 	reg [31:0] decoded_imm, decoded_imm_uj;
-	reg decoder_trigger;
 	reg decoder_trigger_q;
 	reg mem_do_prefetch;
 	reg mem_do_rdata;
