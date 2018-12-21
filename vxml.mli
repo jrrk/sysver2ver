@@ -256,7 +256,7 @@ val forlst : (rw list * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
 val ternothlst : rw list list ref
 val widthlst : rw list ref
-val optitmlst : rw list list ref
+val optitmlst : (rw list * rw list) list ref
 
 val modules : (string, string * int * itms) Hashtbl.t
 val modules_opt : (string, string * int * itms) Hashtbl.t

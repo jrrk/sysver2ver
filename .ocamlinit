@@ -28,7 +28,6 @@ let xmlf = "obj_dir/Valways_test.xml";;
 *)
 
 let xmlf = "../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml";;
-let xmlf = "obj_dir/Vdecoder.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;

@@ -854,6 +854,8 @@ let rec cell_hier = function
    (nam,subnam) :: hier_lst
 | oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
 
+let catch_escapes = ref false
+
 let rec optim2 = function
 | [] -> []
 | ASGN (expr :: tmp1 :: []) :: ASGNDLY (SEL (tmp1' :: lst) :: dst :: []) ::
@@ -868,7 +870,7 @@ let rec optitm3 = function
 | BGN ("", tl) :: BGN ("", tl') :: tl'' -> optitm3 (BGN ("", tl @ tl') :: tl'')
 | BGN ("", tl) :: tl' -> BGN ("", optitm3 tl) :: optitm3 tl'
 | TMPVAR (a,b,lst1) :: TMPVAR (a',b',lst2) :: tl when b <= b' -> optitm3 (TMPVAR(a,b,lst1@lst2) :: tl)
-| TMPVAR (a,b,lst) :: tl -> optitmlst := lst :: !optitmlst; optim2 lst @ optitm3 tl
+| TMPVAR (a,b,lst) :: tl -> let optlst = optim2 lst in optitmlst := (lst,optlst) :: !optitmlst; optlst @ optitm3 tl
 | CS(rw_lst) :: tl -> CS(optitm3 rw_lst) :: optitm3 tl
 | CSITM(rw_lst) :: tl -> CSITM(optitm3 rw_lst) :: optitm3 tl
 | WHL(rw_lst) :: tl -> WHL(optitm3 rw_lst) :: optitm3 tl
@@ -878,8 +880,8 @@ let rec optitm3 = function
 | ASGNDLY(rw_lst) as oth :: tl -> oth :: optitm3 tl
 | IF(cnd :: then_stmt :: []) :: tl -> IF (cnd :: BGN("", optitm3 [then_stmt]) :: []) :: optitm3 tl
 | IF(cnd :: then_stmt :: else_stmt :: []) :: tl -> IF (cnd :: BGN("", optitm3 [then_stmt]) :: BGN("", optitm3 [else_stmt]) :: []) :: optitm3 tl
-| (CNST _ | VRF _ | LOGIC _ | SEL _ | DSPLY _ | SYS _) as oth :: tl -> oth :: optitm3 tl
-| oth :: tl -> optothlst := oth :: !optothlst; failwith "optothlst3"
+| (CNST _ | VRF _ | LOGIC _ | SEL _ | DSPLY _ | SYS _ | UNRY _) as oth :: tl -> oth :: optitm3 tl
+| oth :: tl when !catch_escapes -> optothlst := oth :: !optothlst; failwith "optothlst3"
 | hd :: tl -> hd :: optitm3 tl
                                                          
 let rec optitm4 = function
