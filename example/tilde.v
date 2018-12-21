@@ -6,10 +6,8 @@ module tilde
 	output reg 	  zero,lognot
 );
 
-    reg [1023:0]  arg;
-   
    assign wrdata = irq & ~mask;
    assign zero = !mask;
-   assign lognot = !$value$plusargs("lognot=%d", arg);
+   assign lognot = !$value$plusargs("lognot",);
 
 endmodule

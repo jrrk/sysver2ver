@@ -89,11 +89,12 @@ type typmap =
 type typetable_t = string*string*typmap*typmap list
 
 type cexp =
-| ERR
+| ERR of string
 | BIN of char
 | HEX of int
 | SHEX of int
 | STRING of string
+| FLT of float
 
 type rw =
 | UNKNOWN

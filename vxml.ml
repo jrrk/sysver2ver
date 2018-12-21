@@ -89,11 +89,12 @@ type typmap =
 type typetable_t = string*string*typmap*typmap list
 
 type cexp =
-| ERR
+| ERR of string
 | BIN of char
 | HEX of int
 | SHEX of int
 | STRING of string
+| FLT of float
 
 type rw =
 | UNKNOWN
@@ -349,7 +350,8 @@ let decode str =
 let cexp exp = try Scanf.sscanf exp "%d'h%x" (fun b n -> (b, HEX n)) with err ->
     try Scanf.sscanf exp "%d'sh%x" (fun b n -> (b, SHEX n)) with err ->
     try Scanf.sscanf exp "%d'bx" (fun b -> (b, BIN 'x')) with err ->
-    try Scanf.sscanf exp "%d'h%s" (fun b n -> (b, decode n)) with err -> (-1,ERR)
+    try Scanf.sscanf exp "%d'h%s" (fun b n -> (b, decode n)) with err ->
+    try Scanf.sscanf exp "%f" (fun f -> (64, FLT f)) with err -> (-1,ERR exp)
 
 let rec typmap = function
 | [] -> TYPNONE
@@ -368,7 +370,7 @@ let fortailmatch ix' = function
 
 let forinc = function
 | ASGN (ARITH (Aadd, CNST (inc, _, []) :: VRF (ix'', []) :: []) :: VRF (ix''', []) :: []) :: tl -> (inc,List.rev tl)
-| tl -> ((0,ERR),List.rev tl)
+| tl -> ((0,ERR ""),List.rev tl)
 
 let rec rw' errlst = function
 | Xml.Element ("verilator_xml", [], xlst) -> XML (List.map (rw' errlst) xlst)
@@ -460,7 +462,7 @@ let rec rw' errlst = function
 | Xml.Element ("varxref", [("fl", _); ("name", nam); ("dtype_id", tid); ("dotted", dotted)], []) ->
     XRF (nam, tid, dotted, ref Dunknown)
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' errlst) xlst)
-| Xml.Element ("initarray"|"streaml"|"powsu" as op, [("fl", _); ("dtype_id", tid)], xlst) -> SYS (op, List.map (rw' errlst) xlst)
+| Xml.Element ("initarray"|"streaml"|"powsu"|"realtobits"|"itord" as op, [("fl", _); ("dtype_id", tid)], xlst) -> SYS ("$"^op, List.map (rw' errlst) xlst)
 | Xml.Element ("replicate", [("fl", _); ("dtype_id", tid)], xlst) -> REPL (int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("iface", [("fl", src); ("name", bus); ("origName", bus')], xlst) -> IFC (src, bus, List.map (rw' errlst) xlst)
 | Xml.Element ("ifacerefdtype" as ifr, [("fl", _); ("id", num); ("modportname", nam)], xlst) ->
@@ -494,7 +496,8 @@ let rec rw' errlst = function
 | Xml.Element (("fopen"|"fclose"|"typetable"|"finish"|"stop" as sys), [("fl", _)], xlst) -> SYS ("$"^sys, List.map (rw' errlst) xlst)
 | Xml.Element (("task"|"taskref") as tsk, [("fl", _); ("name", nam)], xlst) -> TASK(tsk, nam, List.map (rw' errlst) xlst)
 | Xml.Element ("valueplusargs", [("fl", _); ("dtype_id", tid)], xlst) -> VPLSRGS(int_of_string tid, List.map (rw' errlst) xlst)
-| Xml.Element ("testplusargs", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> TPLSRGS(nam, int_of_string tid, List.map (rw' errlst) xlst)
+| Xml.Element ("testplusargs", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) ->
+    TPLSRGS(nam, int_of_string tid, List.map (rw' errlst) xlst)
 | Xml.Element ("modportftaskref", [("fl", _); ("name", nam)], []) -> MODPORTFTR nam
 | (Xml.Element (str, _, _) | Xml.PCData str) as err -> errlst := err :: !errlst; failwith str
 
@@ -583,17 +586,19 @@ let diropv = function
 
 let rec cadd = function
 | [] -> HEX 0
-| ERR :: tl -> ERR
+| ERR err :: tl -> ERR err
 | HEX n :: [] -> HEX n
 | SHEX n :: [] -> SHEX n
-| STRING _ :: tl -> ERR
+| FLT f :: [] -> FLT f
+| FLT f :: _ -> ERR "addflt"
+| STRING _ :: tl -> ERR "addstr"
 | BIN 'x' :: tl -> cadd (BIN 'x' :: tl)
 | BIN _ :: tl -> cadd (BIN 'x' :: tl)
 | HEX n :: HEX m :: tl -> cadd (HEX (n+m) :: tl)
 | SHEX n :: HEX m :: tl -> cadd (HEX (n+m) :: tl)
 | HEX n :: SHEX m :: tl -> cadd (HEX (n+m) :: tl)
 | SHEX n :: SHEX m :: tl -> cadd (SHEX (n+m) :: tl)
-| (HEX _ | SHEX _) ::(ERR|BIN _|STRING _):: tl -> ERR
+| (HEX _ | SHEX _) ::(ERR _|BIN _|STRING _|FLT _):: tl -> ERR "cadd"
 
 let avoid_dollar_unsigned = true
 
@@ -626,7 +631,11 @@ let rec expr = function
 | XRF (id, tid, dotted, dirop) as xrf -> xrflst := xrf :: !xrflst; IDENT (dotted^(match !dirop with Dinam _ -> "_" | _ -> ".")^id) :: []
 | TPLSRGS (id, tid, []) -> IDENT "$test$plusargs" :: LPAREN :: DQUOTE :: IDENT id :: DQUOTE :: RPAREN :: []
 | VPLSRGS (tid, CNST ((len, fmt), _, []) :: VRF (arg, []) :: []) -> IDENT "$value$plusargs" :: LPAREN :: NUM fmt :: COMMA :: IDENT arg :: RPAREN :: []
+| SYS (fn, arglst) -> IDENT fn :: LPAREN :: eiter SP arglst @ [RPAREN]
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
+and eiter tok lst =
+    let delim = ref tok in
+    List.flatten (List.map (fun itm -> let lst' = !delim :: expr itm in delim := COMMA; lst') lst)
 
 let rec portconn = function
 | VRF (id, []) -> DOT :: IDENT id :: []
@@ -674,13 +683,15 @@ let tokenout fd indent = function
 | NUM (HEX n) -> output_string fd (string_of_int n)
 | NUM (SHEX n) -> output_string fd (string_of_int n)
 | NUM (STRING s) -> output_string fd ("\""^String.escaped s^"\"")
-| NUM (ERR) -> output_string fd "NumberError"
+| NUM (FLT f) -> output_string fd (string_of_float f)
+| NUM (ERR err) -> output_string fd ("NumberError:"^err)
 | SIZED (w,n) -> output_string fd ((function
         | BIN b -> string_of_int w^"'b"^String.make w b
 	| HEX n -> Printf.sprintf "%d'h%x" w n
 	| SHEX n -> Printf.sprintf "%d'sh%x" w n
 	| STRING s -> "\""^String.escaped s^"\""
-        | ERR -> "NumberError") n)
+	| FLT f -> string_of_float f
+        | ERR err -> ("NumberError:"^err)) n)
 | DIR str -> output_string fd (diropv str)
 | BEGIN -> incr indent; output_string fd "    begin"
 | END -> output_string fd "end"; decr indent
@@ -737,10 +748,6 @@ let rec reformat2 = function
 | END :: NL :: NL :: ELSE :: tl -> END :: reformat2 (NL :: ELSE :: tl)
 
 | oth :: tl -> oth :: reformat2 tl
-
-let eiter tok lst =
-    let delim = ref tok in
-    List.flatten (List.map (fun itm -> let lst' = !delim :: expr itm in delim := COMMA; lst') lst)
 
 let reviter lst =
     let delim = ref COLON in
@@ -1035,6 +1042,7 @@ let rec cntbasic = function
 | ("uniondtype",_,typmap,rw_lst) -> fold1 (max) (List.flatten (List.map cntmembers rw_lst)) :: []
 | ("basicdtype", ("logic"|"integer"|"int"|"bit"), TYPRNG(hi, lo), []) -> hi - lo + 1 :: []
 | ("basicdtype", ("logic"|"bit"), TYPNONE, []) -> 1 :: []
+| ("basicdtype", ("real"), TYPNONE, []) -> 64 :: []
 | ("ifacerefdtype", _, TYPNONE, []) -> 0 :: []
 | ("packarraydtype", "", SUBTYP subtyp, [TYPRNG(n,n')]) -> List.map (fun itm -> itm * (n - n' + 1)) (findmembers subtyp)
 | ("unpackarraydtype", "", SUBTYP subtyp, [TYPRNG (n,n')]) -> (n - n' + 1) :: findmembers subtyp
