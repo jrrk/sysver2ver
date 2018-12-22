@@ -85,7 +85,7 @@ module decoded_imm #(
 	input 		  pcpi_ready,
 
 	// IRQ Interface
-	input [31:0] 	  irq, reg_op1,
+	input [31:0] 	  irq, reg_op1, reg_out, reg_next_pc, 
 	input 		  mem_do_prefetch,
 	input 		  mem_do_rinst,
 	input 		  mem_do_rdata,
@@ -120,7 +120,7 @@ module decoded_imm #(
    
    
 	reg [63:0] count_cycle, count_instr;
-	reg [31:0] reg_pc, reg_next_pc, reg_op2, reg_out;
+	reg [31:0] reg_pc, reg_op2;
 	reg [4:0] reg_sh;
 
 	reg [31:0] next_insn_opcode;
