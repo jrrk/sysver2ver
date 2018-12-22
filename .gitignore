@@ -7,6 +7,8 @@ vxmlmain
 *.tcl
 *.txt
 *.mr
+*.vvp
+*.vcs
 fm_shell_command*.log
 obj_dir
 .nodeIdDynamicRanges

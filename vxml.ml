@@ -150,7 +150,7 @@ type rw =
 | WHL of rw list
 | FORSTMT of (cmpop * string * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
 | ARG of rw list
-| DSPLY of rw list
+| DSPLY of string * rw list
 | FILS of string * rw list
 | FIL of string * string
 | NTL of rw list
@@ -491,7 +491,7 @@ let rec rw' errlst = function
 | Xml.Element ("cells", [], xlst) -> CELLS(List.map (rw' errlst) xlst)
 | Xml.Element ("cell", [("fl", origin); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
     CELL(origin, nam, subnam, hier, List.map (rw' errlst) xlst)
-| Xml.Element ("display", [("fl", _)], xlst) -> DSPLY (List.map (rw' errlst) xlst)
+| Xml.Element ("display", [("fl", _); ("displaytype", nam)], xlst) -> DSPLY (nam, List.map (rw' errlst) xlst)
 | Xml.Element ("readmem", [("fl", _)], xlst) -> SYS ("$readmemh", List.map (rw' errlst) xlst)
 | Xml.Element (("fopen"|"fclose"|"typetable"|"finish"|"stop" as sys), [("fl", _)], xlst) -> SYS ("$"^sys, List.map (rw' errlst) xlst)
 | Xml.Element (("task"|"taskref") as tsk, [("fl", _); ("name", nam)], xlst) -> TASK(tsk, nam, List.map (rw' errlst) xlst)
@@ -833,8 +833,8 @@ and cstmt dly = function
     SIZED stop :: CMPOP cnd :: IDENT ix :: SEMI ::
     IDENT ix :: ASSIGNMENT :: IDENT ix :: PLUS :: SIZED inc :: RPAREN ::
     BEGIN :: iter2 dly stmts @ [END]
-| DSPLY (SFMT (fmt, arglst) :: []) -> IDENT "$display" :: LPAREN :: DQUOTE :: IDENT fmt :: DQUOTE :: eiter COMMA arglst @ [RPAREN]
-| DSPLY (SFMT (fmt, arglst) :: expr1 :: []) ->
+| DSPLY (typ, SFMT (fmt, arglst) :: []) -> IDENT typ :: LPAREN :: DQUOTE :: IDENT fmt :: DQUOTE :: eiter COMMA arglst @ [RPAREN]
+| DSPLY (typ, SFMT (fmt, arglst) :: expr1 :: []) ->
     IDENT "$fdisplay" :: LPAREN :: expr expr1 @ (COMMA :: IDENT fmt :: COMMA :: reviter arglst) @ [RPAREN]
 | SYS (fn, arglst) -> IDENT fn :: LPAREN :: eiter SP arglst @ [RPAREN]
 | CNST((s,n), _, []) -> SIZED (s,n) :: []
@@ -1004,7 +1004,7 @@ let rec catitm pth itms = function
 | CAT(rw_lst)
 | CPS(rw_lst)
 | CND(rw_lst)
-| DSPLY(rw_lst)
+| DSPLY(_, rw_lst)
 | VPLSRGS(_, rw_lst)
 | REPL(_, rw_lst) -> List.iter (catitm pth itms) rw_lst
 | XRF(str1, str2, str3, dirop) ->

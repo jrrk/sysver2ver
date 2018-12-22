@@ -20,11 +20,14 @@ testbench.vvp: example/testbench.v picorv32_wrapper_opt_translate.v
 	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA example/testbench.v ../picorv32/picorv32.v picorv32_wrapper_opt_translate.v
 
 B = example/testbench.v
+G = example/testbench_golden.v
+I = example/testbench_implement.v
 V =  example/picorv32_wrapper.v example/axi4_memory.v example/picorv32_axi_adapter.v example/picorv32_axi.v example/picorv32_pcpi_div.v example/picorv32_pcpi_mul.v example/picorv32.v
 S = $B $V
-T = axi4_memory_opt_translate.v picorv32__pi2_opt_translate.v picorv32_axi__pi1_opt_translate.v  picorv32_axi_adapter_opt_translate.v picorv32_pcpi_div_opt_translate.v picorv32_pcpi_mul_opt_translate.v # picorv32_wrapper_opt_translate.v
+T = axi4_memory_opt_translate.v picorv32__pi2_opt_translate.v picorv32_axi__pi1_opt_translate.v  picorv32_axi_adapter_opt_translate.v picorv32_pcpi_div_opt_translate.v picorv32_pcpi_mul_opt_translate.v
 P = picorv32_axi_opt_translate.v picorv32_wrapper_mixed.v picorv32_opt_translate.v 
 M = axi4_memory_opt_translate.v picorv32_axi_adapter_opt_translate.v picorv32_axi_opt_translate.v picorv32_pcpi_div_opt_translate.v picorv32_pcpi_mul_opt_translate.v picorv32_opt_translate.v ref_opt/picorv32_axi_mixed.v ref_opt/picorv32_mixed.v ref_opt/picorv32_wrapper_mixed.v # picorv32_wrapper_opt_translate.v
+X =  picorv32_wrapper_opt_translate.v
 
 mixed.vvp: $S $M
 	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA -DDEBUGREGS $S $M
@@ -35,8 +38,11 @@ trans.vvp: $S $T $P
 mixed.vcs: $S $M
 	vcs -full64 -sverilog -debug_access+all +lint=TFIPC-L -o $@ -DCOMPRESSED_ISA $S $M
 
-reference.vvp: example/testbench.v picorv32_wrapper_opt_translate.v
-	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA ../picorv32/testbench.v ../picorv32/picorv32.v
+golden.vvp: $G $V
+	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA $G $V
+
+target.vvp: $I $T $X
+	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA $I $T $X
 
 $T: obj_dir/Vpicorv32_wrapper.xml
 	env VXML_SEPARATE=1 ./vxmlmain $<

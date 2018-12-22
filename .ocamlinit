@@ -25,10 +25,10 @@ let xmlf = "obj_dir/Vreset_transform.xml";;
 let xmlf = "obj_dir/Vaccum.xml";;
 let xmlf = "obj_dir/Vdecoder.xml";;
 let xmlf = "obj_dir/Valways_test.xml";;
+let xmlf = "obj_dir/Vtilde.xml";;
 *)
 
-let xmlf = "../picorv32/xml_verilator_dir/Vpicorv32_wrapper.xml";;
-let xmlf = "obj_dir/Vtilde.xml";;
+let xmlf = "obj_dir/Vtestbench_golden.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;

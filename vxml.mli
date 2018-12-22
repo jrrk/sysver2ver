@@ -150,7 +150,7 @@ type rw =
 | WHL of rw list
 | FORSTMT of (cmpop * string * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
 | ARG of rw list
-| DSPLY of rw list
+| DSPLY of string * rw list
 | FILS of string * rw list
 | FIL of string * string
 | NTL of rw list
