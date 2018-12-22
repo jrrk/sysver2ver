@@ -270,17 +270,17 @@ module skeleton #(
 	reg        pcpi_int_ready;
 
 		assign pcpi_mul_wr = 0;
-		assign pcpi_mul_rd = 32'bx;
+		assign pcpi_mul_rd = 32'b0;
 		assign pcpi_mul_wait = 0;
 		assign pcpi_mul_ready = 0;
 		assign pcpi_div_wr = 0;
-		assign pcpi_div_rd = 32'bx;
+		assign pcpi_div_rd = 32'b0;
 		assign pcpi_div_wait = 0;
 		assign pcpi_div_ready = 0;
 
 	always @* begin
 		pcpi_int_wr = 0;
-		pcpi_int_rd = 32'bx;
+		pcpi_int_rd = 32'b0;
 		pcpi_int_wait  = |{ENABLE_PCPI && pcpi_wait,  (ENABLE_MUL || ENABLE_FAST_MUL) && pcpi_mul_wait,  ENABLE_DIV && pcpi_div_wait};
 		pcpi_int_ready = |{ENABLE_PCPI && pcpi_ready, (ENABLE_MUL || ENABLE_FAST_MUL) && pcpi_mul_ready, ENABLE_DIV && pcpi_div_ready};
 
@@ -339,9 +339,9 @@ module skeleton #(
 
 	assign mem_rdata_latched_noshuffle = (mem_xfer || LATCHED_MEM_RDATA) ? mem_rdata : mem_rdata_q;
 
-	assign mem_rdata_latched = COMPRESSED_ISA && mem_la_use_prefetched_high_word ? {16'bx, mem_16bit_buffer} :
+	assign mem_rdata_latched = COMPRESSED_ISA && mem_la_use_prefetched_high_word ? {16'b0, mem_16bit_buffer} :
 			COMPRESSED_ISA && mem_la_secondword ? {mem_rdata_latched_noshuffle[15:0], mem_16bit_buffer} :
-			COMPRESSED_ISA && mem_la_firstword ? {16'bx, mem_rdata_latched_noshuffle[31:16]} : mem_rdata_latched_noshuffle;
+			COMPRESSED_ISA && mem_la_firstword ? {16'b0, mem_rdata_latched_noshuffle[31:16]} : mem_rdata_latched_noshuffle;
 
 	always @(posedge clk) begin
 		if (!resetn) begin
@@ -989,7 +989,7 @@ module skeleton #(
 		end
 
 		if (decoder_trigger && !decoder_pseudo_trigger) begin
-			pcpi_insn <= WITH_PCPI ? mem_rdata_q : 'bx;
+			pcpi_insn <= WITH_PCPI ? mem_rdata_q : 'b0;
 
 			instr_beq   <= is_beq_bne_blt_bge_bltu_bgeu && mem_rdata_q[14:12] == 3'b000;
 			instr_bne   <= is_beq_bne_blt_bge_bltu_bgeu && mem_rdata_q[14:12] == 3'b001;
@@ -1082,7 +1082,7 @@ module skeleton #(
 				is_sb_sh_sw:
 					decoded_imm <= $signed({mem_rdata_q[31:25], mem_rdata_q[11:7]});
 				default:
-					decoded_imm <= 1'bx;
+					decoded_imm <= 1'b0;
 			endcase
 		end
 
@@ -1257,7 +1257,7 @@ module skeleton #(
 
 	always @* begin
 		cpuregs_write = 0;
-		cpuregs_wrdata = 'bx;
+		cpuregs_wrdata = 'b0;
 
 		if (cpu_state == cpu_state_fetch) begin
 			(* parallel_case *)
@@ -1289,7 +1289,7 @@ module skeleton #(
 	end
 
 	always @* begin
-		decoded_rs = 'bx;
+		decoded_rs = 'b0;
 		if (ENABLE_REGS_DUALPORT) begin
 `ifndef RISCV_FORMAL_BLACKBOX_REGS
 			cpuregs_rs1 = decoded_rs1 ? cpuregs[decoded_rs1] : 0;
@@ -1328,7 +1328,7 @@ module skeleton #(
 	);
 
 	always @* begin
-		decoded_rs = 'bx;
+		decoded_rs = 'b0;
 		if (ENABLE_REGS_DUALPORT) begin
 			cpuregs_rs1 = decoded_rs1 ? cpuregs_rdata1 : 0;
 			cpuregs_rs2 = decoded_rs2 ? cpuregs_rdata2 : 0;
@@ -1344,8 +1344,8 @@ module skeleton #(
 
 	always @(posedge clk) begin
 		trap <= 0;
-		reg_sh <= 'bx;
-		reg_out <= 'bx;
+		reg_sh <= 'b0;
+		reg_out <= 'b0;
 		set_mem_do_rinst = 0;
 		set_mem_do_rdata = 0;
 		set_mem_do_wdata = 0;
@@ -1357,8 +1357,8 @@ module skeleton #(
 		alu_wait_2 <= 0;
 
 		if (launch_next_insn) begin
-			dbg_rs1val <= 'bx;
-			dbg_rs2val <= 'bx;
+			dbg_rs1val <= 'b0;
+			dbg_rs2val <= 'b0;
 			dbg_rs1val_valid <= 0;
 			dbg_rs2val_valid <= 0;
 		end
@@ -1376,11 +1376,11 @@ module skeleton #(
 			count_cycle <= resetn ? count_cycle + 1 : 0;
 			if (!ENABLE_COUNTERS64) count_cycle[63:32] <= 0;
 		end else begin
-			count_cycle <= 'bx;
-			count_instr <= 'bx;
+			count_cycle <= 'b0;
+			count_instr <= 'b0;
 		end
 
-		next_irq_pending = ENABLE_IRQ ? irq_pending & LATCHED_IRQ : 'bx;
+		next_irq_pending = ENABLE_IRQ ? irq_pending & LATCHED_IRQ : 'b0;
 
 		if (ENABLE_IRQ && ENABLE_IRQ_TIMER && timer) begin
 			if (timer - 1 == 0)
@@ -1401,7 +1401,7 @@ module skeleton #(
 		trace_valid <= 0;
 
 		if (!ENABLE_TRACE)
-			trace_data <= 'bx;
+			trace_data <= 'b0;
 
 		if (!resetn) begin
 			reg_pc <= PROGADDR_RESET;
@@ -1526,8 +1526,8 @@ module skeleton #(
 			end
 
 			cpu_state_ld_rs1: begin
-				reg_op1 <= 'bx;
-				reg_op2 <= 'bx;
+				reg_op1 <= 'b0;
+				reg_op2 <= 'b0;
 
 				(* parallel_case *)
 				case (1'b1)
@@ -1913,7 +1913,7 @@ module skeleton #(
 				reg_next_pc[1:0] <= 0;
 			end
 		end
-		current_pc = 'bx;
+		current_pc = 'b0;
 	end
 
 `ifdef RISCV_FORMAL
