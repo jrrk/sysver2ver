@@ -1198,8 +1198,6 @@ module skeleton #(
 	end endgenerate
 
 	always @* begin
-		alu_out_0 = 'bx;
-		(* parallel_case, full_case *)
 		case (1'b1)
 			instr_beq:
 				alu_out_0 = alu_eq;
@@ -1213,10 +1211,9 @@ module skeleton #(
 				alu_out_0 = alu_lts;
 			is_sltiu_bltu_sltu && (!TWO_CYCLE_COMPARE || !{instr_beq,instr_bne,instr_bge,instr_bgeu}):
 				alu_out_0 = alu_ltu;
+		        default: alu_out_0 = 'b0;
 		endcase
 
-		alu_out = 'bx;
-		(* parallel_case, full_case *)
 		case (1'b1)
 			is_lui_auipc_jal_jalr_addi_add_sub:
 				alu_out = alu_add_sub;
@@ -1232,6 +1229,7 @@ module skeleton #(
 				alu_out = alu_shl;
 			BARREL_SHIFTER && (instr_srl || instr_srli || instr_sra || instr_srai):
 				alu_out = alu_shr;
+		        default: alu_out = 'b0;
 		endcase
 
 `ifdef RISCV_FORMAL_BLACKBOX_ALU
