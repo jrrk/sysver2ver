@@ -1238,6 +1238,7 @@ let dumpform f f' source =
     Printf.fprintf fd "set_top i:/WORK/%s\n" f';
     Printf.fprintf fd "match\n";
     Printf.fprintf fd "verify\n";
+    Printf.fprintf fd "report_failing_points -inputs unmatched -inputs undriven\n";
     Printf.fprintf fd "quit\n";
     close_out fd;
     Unix.chmod (outtcl f') 0o740
