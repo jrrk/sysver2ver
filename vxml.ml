@@ -221,19 +221,19 @@ type token =
 | FINAL
 
 type itms = { 
-  io: (string*(int*dirop*string*(int*cexp) list)) list ref;
-  v: (string*(int*string*int)) list ref;
-  iv: (string*(int*rw list*int)) list ref;
-  ir: (string*int) list ref;
-  ca: (rw*rw) list ref;
+  io: (string*(string*int*dirop*string*(int*cexp) list)) list ref;
+  v: (string*(string*int*string*int)) list ref;
+  iv: (string*(string*int*rw list*int)) list ref;
+  ir: (string*string*int) list ref;
+  ca: (string*rw*rw) list ref;
   typ: (string*string*int) list ref;
   alwys: (string*rw*rw list) list ref;
-  init: (token*rw list) list ref;
-  func: (string*int*rw list*itms) list ref;
-  task: (string*rw list*itms) list ref;
-  gen: (rw list) list ref;
-  imp : (string*string) list list ref;
-  inst: (string*(string*rw list)) list ref;
+  init: (string*token*rw list) list ref;
+  func: (string*string*int*rw list*itms) list ref;
+  task: (string*string*rw list*itms) list ref;
+  gen: (string*rw list) list ref;
+  imp : (string*string*string) list list ref;
+  inst: (string*(string*string*rw list)) list ref;
 }
 
 let modules = Hashtbl.create 255
@@ -408,7 +408,7 @@ let rec rw' errlst = function
                PORT (origin, sub, Dvif, int_of_string idx, List.map (rw' errlst) xlst)
 | Xml.Element ("sel", [("fl", origin); ("dtype_id", tid)], xlst) -> SEL (origin, List.map (rw' errlst) xlst)
 | Xml.Element ("arraysel", [("fl", origin); ("dtype_id", tid)], xlst) -> ASEL (List.map (rw' errlst) xlst)
-| Xml.Element ("always", [("fl", src)], xlst) -> ALWYS (src, List.map (rw' errlst) xlst)
+| Xml.Element ("always", [("fl", origin)], xlst) -> ALWYS (origin, List.map (rw' errlst) xlst)
 | Xml.Element ("sentree", [("fl", origin)], xlst) -> SNTRE (List.map (rw' errlst) xlst)
 | Xml.Element ("senitem", [("fl", origin); ("edgeType", etyp)], xlst) -> SNITM (etyp, List.map (rw' errlst) xlst)
 | Xml.Element ("begin", [("fl", _); ("name", namedblk)], xlst) -> BGN (namedblk, List.map (rw' errlst) xlst)
@@ -464,7 +464,7 @@ let rec rw' errlst = function
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' errlst) xlst)
 | Xml.Element ("initarray"|"streaml"|"powsu"|"realtobits"|"itord" as op, [("fl", origin); ("dtype_id", tid)], xlst) -> SYS (origin, "$"^op, List.map (rw' errlst) xlst)
 | Xml.Element ("replicate", [("fl", origin); ("dtype_id", tid)], xlst) -> REPL (origin, int_of_string tid, List.map (rw' errlst) xlst)
-| Xml.Element ("iface", [("fl", src); ("name", bus); ("origName", bus')], xlst) -> IFC (src, bus, List.map (rw' errlst) xlst)
+| Xml.Element ("iface", [("fl", origin); ("name", bus); ("origName", bus')], xlst) -> IFC (origin, bus, List.map (rw' errlst) xlst)
 | Xml.Element ("ifacerefdtype" as ifr, [("fl", _); ("id", num); ("modportname", nam)], xlst) ->
     let xlst' = List.map (rw' errlst) xlst and idx = int_of_string num in
     Hashtbl.add typetable idx (ifr, nam, TYPNONE, List.map subtypmap xlst'); TYP (ifr, nam, idx, xlst')
@@ -616,26 +616,26 @@ let rec expr = function
     LPAREN :: expr (UNRY (Uextends, expr1 :: [])) @ (IDENT (logopv op) :: expr expr2) @[RPAREN]
 | LOGIC (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ (IDENT (logopv op) :: expr expr2) @[RPAREN]
 | ARITH (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ (IDENT (arithopv op) :: expr expr2) @[RPAREN]
-| SEL (o, ((VRF _ | XRF _) as expr1) :: (CNST((szlo,lo'),_,_)) :: (CNST((szw,wid'),_,_)) :: []) ->
+| SEL (origin, ((VRF _ | XRF _) as expr1) :: (CNST((szlo,lo'),_,_)) :: (CNST((szw,wid'),_,_)) :: []) ->
     expr expr1 @ (match wid' with HEX 1 | SHEX 1 -> LBRACK :: NUM lo' :: RBRACK :: []
     | _ -> LBRACK :: NUM (cadd [lo';wid';SHEX (-1)]) :: COLON :: NUM lo' :: RBRACK :: [])
-| SEL (o, VRF(expr1,_) :: expr2 :: CNST((szw,wid'),_,_) :: []) ->
+| SEL (origin, VRF(expr1,_) :: expr2 :: CNST((szw,wid'),_,_) :: []) ->
     IDENT expr1 :: (match wid' with HEX 1 | SHEX 1 -> LBRACK :: expr expr2 @ [RBRACK]
     | _ -> LBRACK :: expr expr2 @ [PLUS;COLON] @ (NUM wid' :: RBRACK :: []))
-| SEL (o, expr1 :: CNST ((32,SHEX 0), _, []) :: (CNST _) :: []) -> expr expr1
-| SEL (o, expr1 :: CNST ((szlo,lo'), _, []) :: (CNST _) :: []) ->
+| SEL (origin, expr1 :: CNST ((32,SHEX 0), _, []) :: (CNST _) :: []) -> expr expr1
+| SEL (origin, expr1 :: CNST ((szlo,lo'), _, []) :: (CNST _) :: []) ->
     LPAREN :: expr expr1 @ (RSHIFT :: NUM lo' :: RPAREN :: [])
 | ASEL (VRF (lval, []) :: expr1 :: []) -> IDENT lval :: LBRACK :: expr expr1 @ [RBRACK]
-| CND (o, expr1 :: lft :: rght :: []) -> LPAREN :: expr expr1 @ [QUERY] @ expr lft @ [COLON] @ expr rght @ [RPAREN]
-| CAT (o, expr1 :: expr2 :: []) -> LCURLY :: expr expr1 @ [COMMA] @ expr expr2 @ [RCURLY]
-| FRF (o, fref, arglst) -> let delim = ref LPAREN in
+| CND (origin, expr1 :: lft :: rght :: []) -> LPAREN :: expr expr1 @ [QUERY] @ expr lft @ [COLON] @ expr rght @ [RPAREN]
+| CAT (origin, expr1 :: expr2 :: []) -> LCURLY :: expr expr1 @ [COMMA] @ expr expr2 @ [RCURLY]
+| FRF (origin, fref, arglst) -> let delim = ref LPAREN in
     IDENT fref :: List.flatten (List.map (function ARG (arg :: []) -> let lst = !delim :: expr arg in delim := COMMA; lst| _ -> [QUERY]) arglst) @ [RPAREN];
-| REPL (o, tid, arg :: CNST ((sz,n'),_,_) :: []) -> LCURLY :: NUM n' :: LCURLY :: expr arg @ [RCURLY;RCURLY]
-| IRNG (o, expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
-| XRF (o, id, tid, dotted, dirop) as xrf -> xrflst := xrf :: !xrflst; IDENT (dotted^(match !dirop with Dinam _ -> "_" | _ -> ".")^id) :: []
-| TPLSRGS (o, id, tid, []) -> IDENT "$test$plusargs" :: LPAREN :: DQUOTE :: IDENT id :: DQUOTE :: RPAREN :: []
-| VPLSRGS (o, tid, CNST ((len, fmt), _, []) :: VRF (arg, []) :: []) -> IDENT "$value$plusargs" :: LPAREN :: NUM fmt :: COMMA :: IDENT arg :: RPAREN :: []
-| SYS (o, fn, arglst) -> IDENT fn :: LPAREN :: eiter SP arglst @ [RPAREN]
+| REPL (origin, tid, arg :: CNST ((sz,n'),_,_) :: []) -> LCURLY :: NUM n' :: LCURLY :: expr arg @ [RCURLY;RCURLY]
+| IRNG (origin, expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
+| XRF (origin, id, tid, dotted, dirop) as xrf -> xrflst := xrf :: !xrflst; IDENT (dotted^(match !dirop with Dinam _ -> "_" | _ -> ".")^id) :: []
+| TPLSRGS (origin, id, tid, []) -> IDENT "$test$plusargs" :: LPAREN :: DQUOTE :: IDENT id :: DQUOTE :: RPAREN :: []
+| VPLSRGS (origin, tid, CNST ((len, fmt), _, []) :: VRF (arg, []) :: []) -> IDENT "$value$plusargs" :: LPAREN :: NUM fmt :: COMMA :: IDENT arg :: RPAREN :: []
+| SYS (origin, fn, arglst) -> IDENT fn :: LPAREN :: eiter SP arglst @ [RPAREN]
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 and eiter tok lst =
     let delim = ref tok in
@@ -643,8 +643,8 @@ and eiter tok lst =
 
 let rec portconn = function
 | VRF (id, []) -> DOT :: IDENT id :: []
-| PORT (o, id_o, dir, idx, []) -> DOT :: IDENT id_o :: LPAREN :: RPAREN :: []
-| PORT (o, id_i, dir, idx, expr1 :: []) -> DOT :: IDENT id_i :: LPAREN :: expr expr1 @ [RPAREN]
+| PORT (origin, id_o, dir, idx, []) -> DOT :: IDENT id_o :: LPAREN :: RPAREN :: []
+| PORT (origin, id_i, dir, idx, expr1 :: []) -> DOT :: IDENT id_i :: LPAREN :: expr expr1 @ [RPAREN]
 | RNG [CNST ((_,lft), _, []); CNST ((_,rght), _, [])] -> LCOMMENT :: NUM lft :: COLON :: NUM rght :: RCOMMENT :: []
 | oth -> portothlst := oth :: !portothlst; failwith "portothlst"
 
@@ -767,10 +767,10 @@ let rec iter2 dly lst =
     List.flatten (List.map (fun itm -> cstmt dly itm @ [SEMI;NL]) lst)
 
 and csitm dly = function
-    | CSITM (o, cexp :: (BGN _ as st) :: []) -> expr cexp @ COLON :: cstmt dly st @ NL :: []
-    | CSITM (o, cexp :: st :: []) -> expr cexp @ COLON :: BEGIN :: cstmt dly st @ SEMI :: END :: NL :: []
-    | CSITM (o, st :: []) -> DEFAULT :: COLON :: cstmt dly st @ SEMI :: []
-    | CSITM (o, cexplst) -> (match List.rev cexplst with
+    | CSITM (origin, cexp :: (BGN _ as st) :: []) -> expr cexp @ COLON :: cstmt dly st @ NL :: []
+    | CSITM (origin, cexp :: st :: []) -> expr cexp @ COLON :: BEGIN :: cstmt dly st @ SEMI :: END :: NL :: []
+    | CSITM (origin, st :: []) -> DEFAULT :: COLON :: cstmt dly st @ SEMI :: []
+    | CSITM (origin, cexplst) -> (match List.rev cexplst with
 			| ((BGN _ as hd)::tl) -> reviter tl @ BEGIN :: cstmt dly hd @ [SEMI;END;NL]
 			| (hd::tl) -> reviter tl @ BEGIN :: cstmt dly hd @ [SEMI;END;NL]
                         | [] -> [])
@@ -790,12 +790,12 @@ and ewidth = function
 and cstmt dly = function
 | JMPG (_,[]) -> []
 | BGN(str1, rw_lst) -> BEGIN :: iter2 dly rw_lst @ [END;NL]
-| IF(o, cnd :: then_stmt :: []) -> ifcond (expr cnd) @ (SP :: cstmt dly then_stmt)
-| IF(o, cnd :: (BGN _ as then_stmt) :: else_stmt :: []) ->
+| IF(origin, cnd :: then_stmt :: []) -> ifcond (expr cnd) @ (SP :: cstmt dly then_stmt)
+| IF(origin, cnd :: (BGN _ as then_stmt) :: else_stmt :: []) ->
     ifcond (expr cnd) @ (SP :: cstmt dly then_stmt) @ [ELSE] @ cstmt dly else_stmt
-| IF(o, cnd :: then_stmt :: else_stmt :: []) ->
+| IF(origin, cnd :: then_stmt :: else_stmt :: []) ->
     ifcond (expr cnd) @ (SP :: cstmt dly then_stmt) @ [SEMI;ELSE] @ cstmt dly else_stmt
-| ASGNDLY (o, 
+| ASGNDLY (origin, 
     src ::
     SEL (_,
         ASEL (VRF (lval, []) ::
@@ -806,24 +806,24 @@ and cstmt dly = function
     []) ::
  []) -> 
     IDENT lval :: LBRACK :: expr expr1 @ RBRACK :: LBRACK :: NUM (cadd [lo';wid';SHEX (-1)]) :: COLON :: NUM lo' :: RBRACK :: stmtdly true @ expr src
-| ASGNDLY(o, src :: dst :: []) -> expr dst @ stmtdly true @ expr src
-| ASGN (o, src :: dst :: []) -> expr dst @ stmtdly false @ expr src
-| CS (o, sel :: lst) -> CASE :: LPAREN :: expr sel @ (RPAREN :: NL :: List.flatten (List.map (csitm dly) lst)) @ [NL;ENDCASE]
-| CA(o, rght::lft::[]) -> ASSIGN :: SP :: expr lft @ stmtdly dly @ expr rght
-| VAR (o, id, _, kind) -> IDENT kind :: IDENT id :: []
+| ASGNDLY(origin, src :: dst :: []) -> expr dst @ stmtdly true @ expr src
+| ASGN (origin, src :: dst :: []) -> expr dst @ stmtdly false @ expr src
+| CS (origin, sel :: lst) -> CASE :: LPAREN :: expr sel @ (RPAREN :: NL :: List.flatten (List.map (csitm dly) lst)) @ [NL;ENDCASE]
+| CA(origin, rght::lft::[]) -> ASSIGN :: SP :: expr lft @ stmtdly dly @ expr rght
+| VAR (origin, id, _, kind) -> IDENT kind :: IDENT id :: []
 | FORSTMT (o,cnd,ix,strt,stop,inc,stmts) ->
     FOR :: LPAREN :: IDENT ix :: ASSIGNMENT :: SIZED strt :: SEMI ::
     SIZED stop :: CMPOP cnd :: IDENT ix :: SEMI ::
     IDENT ix :: ASSIGNMENT :: IDENT ix :: PLUS :: SIZED inc :: RPAREN ::
     BEGIN :: iter2 dly stmts @ [END]
-| DSPLY (o, typ, SFMT (fmt, arglst) :: []) -> IDENT typ :: LPAREN :: DQUOTE :: IDENT fmt :: DQUOTE :: eiter COMMA arglst @ [RPAREN]
-| DSPLY (o, typ, SFMT (fmt, arglst) :: expr1 :: []) ->
+| DSPLY (origin, typ, SFMT (fmt, arglst) :: []) -> IDENT typ :: LPAREN :: DQUOTE :: IDENT fmt :: DQUOTE :: eiter COMMA arglst @ [RPAREN]
+| DSPLY (origin, typ, SFMT (fmt, arglst) :: expr1 :: []) ->
     IDENT typ :: LPAREN :: expr expr1 @ (COMMA :: IDENT fmt :: COMMA :: reviter arglst) @ [RPAREN]
-| SYS (o, fn, arglst) -> IDENT fn :: LPAREN :: eiter SP arglst @ [RPAREN]
+| SYS (origin, fn, arglst) -> IDENT fn :: LPAREN :: eiter SP arglst @ [RPAREN]
 | CNST((s,n), _, []) -> SIZED (s,n) :: []
-| TASK (o, "taskref", nam, arglst) -> IDENT nam :: (if arglst <> [] then eiter LPAREN arglst @ [RPAREN] else [])
-| JMPL(o, rw_lst) -> BEGIN :: iter2 dly rw_lst @ [NL;END;NL]
-| TMPVAR (o, nam, wid, stmtlst) -> cstmt dly (BGN ("", stmtlst))
+| TASK (origin, "taskref", nam, arglst) -> IDENT nam :: (if arglst <> [] then eiter LPAREN arglst @ [RPAREN] else [])
+| JMPL(origin, rw_lst) -> BEGIN :: iter2 dly rw_lst @ [NL;END;NL]
+| TMPVAR (origin, nam, wid, stmtlst) -> cstmt dly (BGN ("", stmtlst))
 | oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
 
 let flatten1 dly = function
@@ -869,11 +869,11 @@ let rec optitm3 = function
 | CSITM(o,rw_lst) :: tl -> CSITM(o,optitm3 rw_lst) :: optitm3 tl
 | WHL(rw_lst) :: tl -> WHL(optitm3 rw_lst) :: optitm3 tl
 | FORSTMT(o,cmpop,ix,strt,stop,inc,rw_lst) :: tl -> FORSTMT(o,cmpop,ix,strt,stop,inc,optitm3 rw_lst) :: optitm3 tl
-| TASK(o, tsk, nam, rw_lst) :: tl -> TASK(o, tsk, nam, optitm3 rw_lst) :: optitm3 tl
+| TASK(origin, tsk, nam, rw_lst) :: tl -> TASK(origin, tsk, nam, optitm3 rw_lst) :: optitm3 tl
 | ASGN _ as oth :: tl -> oth :: optitm3 tl
 | ASGNDLY _ as oth :: tl -> oth :: optitm3 tl
-| IF(o, cnd :: then_stmt :: []) :: tl -> IF (o, cnd :: BGN("", optitm3 [then_stmt]) :: []) :: optitm3 tl
-| IF(o, cnd :: then_stmt :: else_stmt :: []) :: tl -> IF (o, cnd :: BGN("", optitm3 [then_stmt]) :: BGN("", optitm3 [else_stmt]) :: []) :: optitm3 tl
+| IF(origin, cnd :: then_stmt :: []) :: tl -> IF (origin, cnd :: BGN("", optitm3 [then_stmt]) :: []) :: optitm3 tl
+| IF(origin, cnd :: then_stmt :: else_stmt :: []) :: tl -> IF (origin, cnd :: BGN("", optitm3 [then_stmt]) :: BGN("", optitm3 [else_stmt]) :: []) :: optitm3 tl
 | (CNST _ | VRF _ | LOGIC _ | SEL _ | DSPLY _ | SYS _ | UNRY _) as oth :: tl -> oth :: optitm3 tl
 | oth :: tl when !catch_escapes -> optothlst := oth :: !optothlst; failwith "optothlst3"
 | hd :: tl -> hd :: optitm3 tl
@@ -881,79 +881,79 @@ let rec optitm3 = function
 let rec optitm4 = function
 | BGN ("", BGN ("", tl) :: []) -> optitm4 (BGN("", tl)) 
 | BGN ("", tl) -> BGN ("", List.map optitm4 tl)
-| IF(o, cnd :: then_else_stmt_lst) -> IF (o, cnd :: List.map optitm4 then_else_stmt_lst)
-| CS (o, sel :: lst) -> CS (o, sel :: List.map optitm4 lst)
-| CSITM(o, rw_lst) -> CSITM(o, List.map optitm4 rw_lst)
+| IF(origin, cnd :: then_else_stmt_lst) -> IF (origin, cnd :: List.map optitm4 then_else_stmt_lst)
+| CS (origin, sel :: lst) -> CS (origin, sel :: List.map optitm4 lst)
+| CSITM(origin, rw_lst) -> CSITM(origin, List.map optitm4 rw_lst)
 | WHL(rw_lst) -> WHL(List.map optitm4 rw_lst)
 | FORSTMT(o,cmpop,ix,strt,stop,inc,rw_lst) -> FORSTMT(o,cmpop,ix,strt,stop,inc,List.map optitm4 rw_lst)
-| TASK(o, tsk, nam, rw_lst) -> TASK(o, tsk, nam, List.map optitm4 rw_lst)
+| TASK(origin, tsk, nam, rw_lst) -> TASK(origin, tsk, nam, List.map optitm4 rw_lst)
 | (ASGN _  | ASGNDLY _ | CNST _ | VRF _ | LOGIC _ | SEL _ | DSPLY _ | SYS _) as oth -> oth
 | oth -> optothlst := oth :: !optothlst; failwith "optothlst4"
 
 let optitm lst = let lst' = optitm3 lst in let lst'' = List.map optitm4 lst' in lst''
 
 let rec catitm pth itms = function
-| IO(o, str1, int1, Dunknown, "ifaceref", []) ->
+| IO(origin, str1, int1, Dunknown, "ifaceref", []) ->
     let (dtype, dir, _, _) = Hashtbl.find typetable int1 in
-    itms.io := (str1, (int1, Dinam dir, "logic", [])) :: !(itms.io)
-| IO(o, str1, int1, dir, str3, clst) -> itms.io := (str1, (int1, dir, str3, List.map ioconn clst)) :: !(itms.io)
-| VAR(o, str1, int1, "ifaceref") -> itms.ir := (str1, int1) :: !(itms.ir)
-| VAR(o, str1, int1, str2) -> itms.v := (str1, (int1, str2, -1)) :: !(itms.v)
-| IVAR(o, str1, int1, rwlst, int2) -> itms.iv := (str1, (int1, rwlst, int2)) :: !(itms.iv)
-| TMPVAR(o, str1, int1, stmtlst) ->
+    itms.io := (str1, (origin, int1, Dinam dir, "logic", [])) :: !(itms.io)
+| IO(origin, str1, int1, dir, str3, clst) -> itms.io := (str1, (origin, int1, dir, str3, List.map ioconn clst)) :: !(itms.io)
+| VAR(origin, str1, int1, "ifaceref") -> itms.ir := (origin, str1, int1) :: !(itms.ir)
+| VAR(origin, str1, int1, str2) -> itms.v := (str1, (origin, int1, str2, -1)) :: !(itms.v)
+| IVAR(origin, str1, int1, rwlst, int2) -> itms.iv := (str1, (origin, int1, rwlst, int2)) :: !(itms.iv)
+| TMPVAR(origin, str1, int1, stmtlst) ->
     List.iter (catitm pth itms) stmtlst;
     if not (List.mem_assoc str1 !(itms.v)) then
-        itms.v := (str1, (int1, str1, -1)) :: !(itms.v)
-| CA(o, rght::lft::[]) -> itms.ca := (lft, rght) :: !(itms.ca)
+        itms.v := (str1, (origin, int1, str1, -1)) :: !(itms.v)
+| CA(origin, rght::lft::[]) -> itms.ca := (origin, lft, rght) :: !(itms.ca)
 | TYP(str1, str2, int1, []) -> itms.typ := (str1,str2,int1) :: !(itms.typ)
-| INST(o, str1, (str2, port_lst)) -> let pth = if String.length pth > 0 then pth^"_"^str1 else str1 in
-    itms.inst := (pth, (str2, List.rev port_lst)) :: !(itms.inst)
-| ALWYS(src, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("POS", [VRF (rst, [])]) :: []) :: rw_lst) ->
+| INST(origin, str1, (str2, port_lst)) -> let pth = if String.length pth > 0 then pth^"_"^str1 else str1 in
+    itms.inst := (pth, (origin, str2, List.rev port_lst)) :: !(itms.inst)
+| ALWYS(origin, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("POS", [VRF (rst, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
-    itms.alwys := (src, POSPOS(ck,rst), optitm rw_lst) :: !(itms.alwys)    
-| ALWYS(src, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
+    itms.alwys := (origin, POSPOS(ck,rst), optitm rw_lst) :: !(itms.alwys)    
+| ALWYS(origin, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
-    itms.alwys := (src, POSEDGE(ck), optitm rw_lst) :: !(itms.alwys)
-| ALWYS(src, SNTRE(SNITM ("NEG", [VRF (ck, [])]) :: []) :: rw_lst) ->
+    itms.alwys := (origin, POSEDGE(ck), optitm rw_lst) :: !(itms.alwys)
+| ALWYS(origin, SNTRE(SNITM ("NEG", [VRF (ck, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
-    itms.alwys := (src, NEGEDGE(ck), optitm rw_lst) :: !(itms.alwys)
-| ALWYS(src, SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, [])]) :: SNITM ("NEG", [VRF (rst, [])]) :: []) :: rw_lst) ->
+    itms.alwys := (origin, NEGEDGE(ck), optitm rw_lst) :: !(itms.alwys)
+| ALWYS(origin, SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, [])]) :: SNITM ("NEG", [VRF (rst, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     let rw_lst' = (function
-       | BGN(lbl, (IF(o, VRF(rst',[]) :: thn :: els :: []) :: [])) :: [] ->
-           BGN("", (IF(o, UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
-       | IF(o, VRF(rst',[]) :: thn :: els :: []) :: [] ->
-           BGN("", (IF(o, UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
+       | BGN(lbl, (IF(origin, VRF(rst',[]) :: thn :: els :: []) :: [])) :: [] ->
+           BGN("", (IF(origin, UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
+       | IF(origin, VRF(rst',[]) :: thn :: els :: []) :: [] ->
+           BGN("", (IF(origin, UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
        | oth -> posneglst := oth :: !posneglst; oth) rw_lst in
-    itms.alwys := (src, (match edg with "POS" -> POSNEG(ck,rst) | "NEG" -> NEGNEG(ck,rst) | _ -> UNKNOWN), optitm rw_lst') :: !(itms.alwys)
-| ALWYS(src, rw_lst) ->
+    itms.alwys := (origin, (match edg with "POS" -> POSNEG(ck,rst) | "NEG" -> NEGNEG(ck,rst) | _ -> UNKNOWN), optitm rw_lst') :: !(itms.alwys)
+| ALWYS(origin, rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
-    itms.alwys := (src, COMB, rw_lst) :: !(itms.alwys)
-| INIT (o, "initial", rw_lst) ->
+    itms.alwys := (origin, COMB, rw_lst) :: !(itms.alwys)
+| INIT (origin, "initial", rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
-    itms.init := (INITIAL, rw_lst) :: !(itms.init)
-| INIT (o, "final", rw_lst) ->
+    itms.init := (origin, INITIAL, rw_lst) :: !(itms.init)
+| INIT (origin, "final", rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
-    itms.init := (FINAL, rw_lst) :: !(itms.init)
+    itms.init := (origin, FINAL, rw_lst) :: !(itms.init)
 | BGN(str1, rw_lst) -> let pth' = String.map (function ('A'..'Z' | 'a'..'z' | '0'..'9') as ch -> ch | _ -> '_') str1 in
     List.iter (catitm (pth^"_"^pth') itms) rw_lst
-| FNC(o, str1, idx1, rw_lst) ->
+| FNC(origin, str1, idx1, rw_lst) ->
     let itms' = empty_itms () in
     List.iter (catitm pth itms') rw_lst;
-    itms.func := (str1, idx1, rw_lst, itms') :: !(itms.func)
-| IF(o, rw_lst) ->
+    itms.func := (origin, str1, idx1, rw_lst, itms') :: !(itms.func)
+| IF(origin, rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
-    itms.gen := rw_lst :: !(itms.gen)
-| IMP(o, str1, rw_lst) ->
+    itms.gen := (origin,rw_lst) :: !(itms.gen)
+| IMP(origin, str1, rw_lst) ->
     itms.imp := (List.map (function
-    | IMRF(_, str1, str2, []) -> (str1,str2)
-    | MODPORTFTR (_,str1) -> (str1,str1)
+    | IMRF(_, str1, str2, []) -> (origin,str1, str2)
+    | MODPORTFTR (_,str1) -> (origin, str1, str1)
     | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst") rw_lst) :: !(itms.imp)
-| IMRF(o, str1, str2, []) -> ()
-| TASK (o, "task", str1, rw_lst) ->
+| IMRF(origin, str1, str2, []) -> ()
+| TASK (origin, "task", str1, rw_lst) ->
     let itms' = empty_itms () in
     List.iter (catitm pth itms') rw_lst;
-    itms.task := (str1, rw_lst, itms') :: !(itms.task)
+    itms.task := (origin, str1, rw_lst, itms') :: !(itms.task)
 | NTL(rw_lst)
 | RNG(rw_lst)
 | SNTRE(rw_lst)
@@ -990,11 +990,11 @@ let rec catitm pth itms = function
 | DSPLY(_, _, rw_lst)
 | VPLSRGS(_, _, rw_lst)
 | REPL(_, _, rw_lst) -> List.iter (catitm pth itms) rw_lst
-| XRF(o, str1, str2, str3, dirop) ->
+| XRF(origin, str1, str2, str3, dirop) ->
     if List.mem_assoc str3 !(itms.io) then
         begin
         match List.assoc str3 !(itms.io) with
-         | (int1, dir, logic, _) -> dirop := dir
+         | (_, int1, dir, logic, _) -> dirop := dir
         end
     else
     print_endline (str3^" is not io");
@@ -1060,14 +1060,14 @@ let varlst delim idx id =
     List.flatten (List.map (expand delim) widlst) @ MINUS :: num 1 :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: []
 	     
 let rec fnstmt dly nam delim = function
-| IO (o, io, idx, dir, kind', lst) ->
+| IO (origin, io, idx, dir, kind', lst) ->
     let lst = iolst delim dir idx io in delim := COMMA :: []; lst
-| VAR (o, id, idx, kind') -> 
+| VAR (origin, id, idx, kind') -> 
   if !delim <> SEMI :: [] then delim := RPAREN :: SEMI :: [];
     let lst = varlst delim idx id in
     delim := SEMI :: []; lst
-| JMPL(o, (BGN _ :: tl as rw_lst)) -> let dlm = !delim in delim := []; dlm @ (List.flatten (List.map (fnstmt dly nam delim) rw_lst))
-| JMPL(o, rw_lst) -> let dlm = !delim in delim := [BEGIN]; dlm @ (List.flatten (List.map (fnstmt dly nam delim) rw_lst)) @ [SEMI;END]
+| JMPL(origin, (BGN _ :: tl as rw_lst)) -> let dlm = !delim in delim := []; dlm @ (List.flatten (List.map (fnstmt dly nam delim) rw_lst))
+| JMPL(origin, rw_lst) -> let dlm = !delim in delim := [BEGIN]; dlm @ (List.flatten (List.map (fnstmt dly nam delim) rw_lst)) @ [SEMI;END]
 | JMPG (_,[]) -> []
 | itm ->
   let lst = !delim @ cstmt dly itm in
@@ -1087,45 +1087,45 @@ let dump f (source, line, modul) =
   let appendlst = ref [] in
   let append lst = appendlst := lst :: !appendlst in
   if true then print_endline ("f \""^f^"\";; /* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl f ^" */");
-  let delim = ref [NL; MODULE; SP; IDENT f; LPAREN] in List.iter (fun (io, (idx, dir, kind', lst)) -> 
+  let delim = ref [NL; MODULE; SP; IDENT f; LPAREN] in List.iter (fun (io, (origin, idx, dir, kind', lst)) -> 
     let lst = iolst delim dir idx io in
     delim := [COMMA];
     append lst
     ) (List.rev !(modul.io));
   append [RPAREN;SEMI;NL];
-  List.iter (fun (id, (idx, kind', n)) -> append (varlst (ref []) idx id @ SEMI :: NL :: []);
+  List.iter (fun (id, (origin, idx, kind', n)) -> append (varlst (ref []) idx id @ SEMI :: NL :: []);
                  ) (List.rev !(modul.v));
-  List.iter (fun (nam, idx, lst, itms') ->
+  List.iter (fun (origin, nam, idx, lst, itms') ->
 		 let lst = (varlst (ref (SEMI :: NL :: FUNCTION :: SP :: [])) idx nam) @
 		 List.flatten (List.map (fnstmt false nam (ref [LPAREN])) (List.tl lst)) @ [ENDFUNCTION] in
 		 append lst;
                  ) (List.rev !(modul.func));
-  List.iter (fun (nam, lst, itms') ->
+  List.iter (fun (origin, nam, lst, itms') ->
 		 let lst = List.flatten (List.map (taskstmt false nam) lst) in
 		 append (TASK :: SP :: IDENT nam :: SEMI :: NL :: BEGIN :: lst @ END :: ENDTASK :: NL :: []);
                  ) (List.rev !(modul.task));
-  List.iter (fun (dst, src) ->
+  List.iter (fun (origin, dst, src) ->
                  append (ASSIGN :: SP :: expr dst @ (SP :: ASSIGNMENT :: SP:: expr src @ SEMI :: NL :: []));
                  ) (List.rev !(modul.ca));
   List.iter (function
-    | (src, COMB, lst) ->
-      append (SRC src :: ALWAYS :: AT :: STAR :: flatten1 false lst);
-    | (src, POSNEG (ck, rst), lst) ->
-      append (SRC src :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
-    | (src, NEGNEG (ck, rst), lst) ->
-      append (SRC src :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
-    | (src, POSEDGE (ck), lst) ->
-      append (SRC src :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
-    | (src, NEGEDGE (ck), lst) ->
-      append (SRC src :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
-    | (src, _, lst) -> failwith "not implemented";
-    ) (List.rev (List.map (fun (src,edg,lst) -> (find_source src, edg, lst)) !(modul.alwys)));
-  List.iter (fun (inst, (kind, lst)) ->
+    | (origin, COMB, lst) ->
+      append (SRC origin :: ALWAYS :: AT :: STAR :: flatten1 false lst);
+    | (origin, POSNEG (ck, rst), lst) ->
+      append (SRC origin :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
+    | (origin, NEGNEG (ck, rst), lst) ->
+      append (SRC origin :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
+    | (origin, POSEDGE (ck), lst) ->
+      append (SRC origin :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
+    | (origin, NEGEDGE (ck), lst) ->
+      append (SRC origin :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
+    | (origin, _, lst) -> failwith "not implemented";
+    ) (List.rev (List.map (fun (origin,edg,lst) -> (find_source origin, edg, lst)) !(modul.alwys)));
+  List.iter (fun (inst, (origin, kind, lst)) ->
                  let delim = ref SP in
                  let lst = List.flatten (List.map (fun term -> let lst = !delim :: portconn term in delim := COMMA; lst) lst) in
                  append (NL :: NL :: IDENT kind :: SP :: IDENT inst :: LPAREN :: lst @ [NL;RPAREN;SEMI]);
                  ) !(modul.inst);
-  List.iter (fun (tok, lst) -> append (NL :: tok :: flatten1 false lst);
+  List.iter (fun (origin, tok, lst) -> append (NL :: tok :: flatten1 false lst);
                  ) !(modul.init);
   append [NL;ENDMODULE;NL;NL];
   List.flatten (List.rev !appendlst)
@@ -1134,39 +1134,39 @@ let rec iterate f (source, line, modul) =
     let newitms = copy_itms modul in
     newitms.ir := [];
     newitms.inst := [];
-    List.iter (fun (inst, (kind, iolst)) ->
+    List.iter (fun (inst, (origin, kind, iolst)) ->
         if Hashtbl.mem interfaces kind then
            begin
-           let (src, lin, intf, _) = Hashtbl.find interfaces kind in
-           List.iter (fun (nam, (idx, kind, n)) ->
+           let (origin, lin, intf, _) = Hashtbl.find interfaces kind in
+           List.iter (fun (nam, (origin, idx, kind, n)) ->
                  let pth = inst^"_"^nam in
-                 newitms.v := (pth, (idx, kind, n)) :: !(newitms.v);
+                 newitms.v := (pth, (origin, idx, kind, n)) :: !(newitms.v);
                 ) !(intf.v);
            end
         else if Hashtbl.mem modules kind then
            begin
-           let (src, lin, itms) = Hashtbl.find modules kind in
+           let (origin, lin, itms) = Hashtbl.find modules kind in
            let newiolst = ref [] in
            let newinnerlst = ref [] in
 	   let previolst = !(itms.io) in
-           List.iter2 (fun ((_, (ix, idir, typ, ilst)) as inr) -> function
+           List.iter2 (fun ((_, (origin, ix, idir, typ, ilst)) as inr) -> function
 		       | VRF (id, []) ->
                            newiolst := PORT("", id, idir, ix, [VRF(id, [])]) :: !newiolst;
                            newinnerlst := inr :: !newinnerlst;
-		       | PORT (o, id_i, Dvif, idx, VRF (id, []) :: []) as pat ->
+		       | PORT (origin, id_i, Dvif, idx, VRF (id, []) :: []) as pat ->
                            if List.mem_assoc id !(modul.inst) then
-			       let (inam,_) = List.assoc id !(modul.inst) in
+			       let (_,inam,_) = List.assoc id !(modul.inst) in
 			       if Hashtbl.mem interfaces inam then (match idir with Dinam iport ->
 				  begin
-				  let (src, lin, intf, imp) = Hashtbl.find interfaces inam in
+				  let (origin, lin, intf, imp) = Hashtbl.find interfaces inam in
 				  let imp' = List.filter (function IMP _ -> true | _ -> false) imp in 
                                   let imp'' = List.map (function IMP(_, str, lst) -> (str,lst) | _ -> ("",[])) imp' in
                                   if List.mem_assoc iport imp'' then
-				  List.iter (function IMRF (o, nam, dir, []) ->
+				  List.iter (function IMRF (origin, nam, dir, []) ->
                                         (* print_endline (inam^":"^iport^":"^nam^":"^id_i); *)
-                                        let (idx, kind, _) = List.assoc nam !(intf.v) in
-					newiolst := PORT(o, id_i^"_"^nam, dirop dir, idx, [VRF(id^"_"^nam, [])]) :: !newiolst;
-				        newinnerlst := (id_i^"_"^nam, (idx, dirop dir, typ, ilst)) :: !newinnerlst;
+                                        let (_, idx, kind, _) = List.assoc nam !(intf.v) in
+					newiolst := PORT(origin, id_i^"_"^nam, dirop dir, idx, [VRF(id^"_"^nam, [])]) :: !newiolst;
+				        newinnerlst := (id_i^"_"^nam, (origin, idx, dirop dir, typ, ilst)) :: !newinnerlst;
 				       | _ -> ()) (List.assoc iport imp'')
 				  end
                                | _ -> newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst)
@@ -1192,10 +1192,10 @@ let rec iterate f (source, line, modul) =
                begin
                let newinneritms = copy_itms itms in
                newinneritms.io := newinnerlst;
-               let newhash = (src, lin, newinneritms) in
+               let newhash = (origin, lin, newinneritms) in
 	       iterate kind newhash
                end;
-           newitms.inst := (inst, (kind_opt, !newiolst)) :: !(newitms.inst);
+           newitms.inst := (inst, (origin, kind_opt, !newiolst)) :: !(newitms.inst);
            end
         ) !(modul.inst);
     Hashtbl.replace modules_opt (f^"_opt") (source, line, newitms);

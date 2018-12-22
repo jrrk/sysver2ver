@@ -221,19 +221,19 @@ type token =
 | FINAL
 
 type itms = { 
-  io: (string*(int*dirop*string*(int*cexp) list)) list ref;
-  v: (string*(int*string*int)) list ref;
-  iv: (string*(int*rw list*int)) list ref;
-  ir: (string*int) list ref;
-  ca: (rw*rw) list ref;
+  io: (string*(string*int*dirop*string*(int*cexp) list)) list ref;
+  v: (string*(string*int*string*int)) list ref;
+  iv: (string*(string*int*rw list*int)) list ref;
+  ir: (string*string*int) list ref;
+  ca: (string*rw*rw) list ref;
   typ: (string*string*int) list ref;
   alwys: (string*rw*rw list) list ref;
-  init: (token*rw list) list ref;
-  func: (string*int*rw list*itms) list ref;
-  task: (string*rw list*itms) list ref;
-  gen : rw list list ref;
-  imp : (string*string) list list ref;
-  inst: (string*(string*rw list)) list ref;
+  init: (string*token*rw list) list ref;
+  func: (string*string*int*rw list*itms) list ref;
+  task: (string*string*rw list*itms) list ref;
+  gen: (string*rw list) list ref;
+  imp : (string*string*string) list list ref;
+  inst: (string*(string*string*rw list)) list ref;
 }
 
 val exprothlst : rw list ref
