@@ -90,8 +90,11 @@ module decoded_imm #(
 	input 		  pcpi_ready,
 
 	// IRQ Interface
-	input [31:0] 	  irq
-   
+	input [31:0] 	  irq,
+	input mem_do_prefetch,
+	input mem_do_rinst,
+	input mem_do_rdata,
+	input mem_do_wdata   
 );
 	localparam integer irq_timer = 0;
 	localparam integer irq_ebreak = 1;
@@ -112,10 +115,6 @@ module decoded_imm #(
 	reg decoder_trigger;
 	reg mem_la_secondword, mem_la_firstword_reg, last_mem_valid;
 	reg [15:0] mem_16bit_buffer;
-	reg mem_do_prefetch;
-	reg mem_do_rinst;
-	reg mem_do_rdata;
-	reg mem_do_wdata;
 	reg [1:0] mem_state;
 	reg [31:0] next_pc;
         reg 		    prefetched_high_word;
