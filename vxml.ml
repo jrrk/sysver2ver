@@ -1237,6 +1237,7 @@ let dumpform f f' source =
     Printf.fprintf fd "}\n";
     Printf.fprintf fd "set_top i:/WORK/%s\n" f';
     Printf.fprintf fd "match\n";
+    Printf.fprintf fd "report_potentially_constant_registers\n";
     Printf.fprintf fd "verify\n";
     Printf.fprintf fd "report_failing_points -inputs unmatched -inputs undriven\n";
     Printf.fprintf fd "quit\n";
