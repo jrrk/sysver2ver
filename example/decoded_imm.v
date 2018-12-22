@@ -64,7 +64,6 @@ module decoded_imm #(
 	parameter [31:0] STACKADDR = 32'h ffff_ffff
 ) (
 	input 		  clk, resetn,
-        output reg 	  trap,
 
         output reg 	  mem_valid,
         output reg 	  mem_instr,
@@ -77,7 +76,6 @@ module decoded_imm #(
         output 		  mem_la_read,
         output 		  mem_la_write,
         output [31:0] 	  mem_la_addr,
-        output reg [ 3:0] mem_la_wstrb,
 
 	// Pico Co-Processor Interface (PCPI)
 	output reg [31:0] pcpi_insn,
@@ -87,13 +85,16 @@ module decoded_imm #(
 	input 		  pcpi_ready,
 
 	// IRQ Interface
-	input [31:0] 	  irq,
+	input [31:0] 	  irq, reg_op1,
 	input 		  mem_do_prefetch,
 	input 		  mem_do_rinst,
 	input 		  mem_do_rdata,
 	input 		  mem_do_wdata,
 
-	input 		  latched_branch   
+	input 		  latched_branch,
+	input 		  decoder_pseudo_trigger,
+	input 		  latched_store
+
 );
 	localparam integer irq_timer = 0;
 	localparam integer irq_ebreak = 1;
@@ -110,17 +111,16 @@ module decoded_imm #(
 	localparam [35:0] TRACE_IRQ    = {4'b 1000, 32'b 0};
 
 	reg clear_prefetched_high_word;
-	reg decoder_pseudo_trigger;
 	reg decoder_trigger;
 	reg mem_la_secondword, mem_la_firstword_reg, last_mem_valid;
 	reg [15:0] mem_16bit_buffer;
 	reg [1:0] mem_state;
-	reg [31:0] next_pc;
+	wire [31:0] next_pc;
         reg 		    prefetched_high_word;
    
    
 	reg [63:0] count_cycle, count_instr;
-	reg [31:0] reg_pc, reg_next_pc, reg_op1, reg_op2, reg_out;
+	reg [31:0] reg_pc, reg_next_pc, reg_op2, reg_out;
 	reg [4:0] reg_sh;
 
 	reg [31:0] next_insn_opcode;
@@ -132,6 +132,9 @@ module decoded_imm #(
 	reg [31:0] irq_mask;
 	reg [31:0] irq_pending;
 	reg [31:0] timer;
+
+        wire 	   trap = 0;
+     
 
 `ifndef PICORV32_REGS
 	reg [31:0] cpuregs [0:regfile_size-1];
@@ -904,5 +907,13 @@ module decoded_imm #(
                 end
         end
 
+       always @(posedge clk) begin
+                 decoder_trigger <= mem_do_rinst && mem_done;
+                decoder_trigger_q <= decoder_trigger;
+                decoder_pseudo_trigger_q <= decoder_pseudo_trigger;
+       end
 
+         assign next_pc = latched_store && latched_branch ? reg_out & ~1 : reg_next_pc;
+
+ 
 endmodule
