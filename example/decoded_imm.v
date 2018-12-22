@@ -82,15 +82,6 @@ module decoded_imm #(
         output reg [31:0] mem_la_wdata,
         output reg [ 3:0] mem_la_wstrb,
 
-	input 		  mem_ready,
-
-	input [31:0] 	  mem_rdata,
-
-	// Look-Ahead Interface
-	output 		  mem_la_read,
-	output 		  mem_la_write,
-	output [31:0] 	  mem_la_addr,
-
 	// Pico Co-Processor Interface (PCPI)
 	output reg [31:0] pcpi_insn,
 	input 		  pcpi_wr,
@@ -126,7 +117,6 @@ module decoded_imm #(
 	reg mem_do_rdata;
 	reg mem_do_wdata;
 	reg [1:0] mem_state;
-	reg 	  mem_valid;
 	reg [31:0] next_pc;
         reg 		    prefetched_high_word;
    
