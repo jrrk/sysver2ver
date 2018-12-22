@@ -516,6 +516,7 @@ task=ref [];
 gen=ref [];
 imp=ref [];
 inst=ref [] }
+
 let copy_itms prev = {
 io=ref !(prev.io);
 v=ref !(prev.v);
@@ -838,7 +839,9 @@ let find_source origin =
     let k = String.sub origin 0 !last in
     let source = if Hashtbl.mem files k then Hashtbl.find files k else "origin_unknown" in
     let line = String.sub origin !last (String.length origin - !last) in
-    (source, int_of_string line)
+    (source, try int_of_string line with err -> 0)
+
+let fsrc src = SRC (find_source src)
 
 let rec cell_hier = function
 | CELL (_, nam, subnam, hier, rw_lst) ->
@@ -1093,37 +1096,37 @@ let dump f (source, line, modul) =
     append lst
     ) (List.rev !(modul.io));
   append [RPAREN;SEMI;NL];
-  List.iter (fun (id, (origin, idx, kind', n)) -> append (varlst (ref []) idx id @ SEMI :: NL :: []);
+  List.iter (fun (id, (origin, idx, kind', n)) -> append (fsrc origin :: varlst (ref []) idx id @ SEMI :: NL :: []);
                  ) (List.rev !(modul.v));
   List.iter (fun (origin, nam, idx, lst, itms') ->
-		 let lst = (varlst (ref (SEMI :: NL :: FUNCTION :: SP :: [])) idx nam) @
+		 let lst = fsrc origin :: (varlst (ref (SEMI :: NL :: FUNCTION :: SP :: [])) idx nam) @
 		 List.flatten (List.map (fnstmt false nam (ref [LPAREN])) (List.tl lst)) @ [ENDFUNCTION] in
 		 append lst;
                  ) (List.rev !(modul.func));
   List.iter (fun (origin, nam, lst, itms') ->
 		 let lst = List.flatten (List.map (taskstmt false nam) lst) in
-		 append (TASK :: SP :: IDENT nam :: SEMI :: NL :: BEGIN :: lst @ END :: ENDTASK :: NL :: []);
+		 append (fsrc origin :: TASK :: SP :: IDENT nam :: SEMI :: NL :: BEGIN :: lst @ END :: ENDTASK :: NL :: []);
                  ) (List.rev !(modul.task));
   List.iter (fun (origin, dst, src) ->
-                 append (ASSIGN :: SP :: expr dst @ (SP :: ASSIGNMENT :: SP:: expr src @ SEMI :: NL :: []));
+                 append (fsrc origin :: ASSIGN :: SP :: expr dst @ (SP :: ASSIGNMENT :: SP:: expr src @ SEMI :: NL :: []));
                  ) (List.rev !(modul.ca));
   List.iter (function
     | (origin, COMB, lst) ->
-      append (SRC origin :: ALWAYS :: AT :: STAR :: flatten1 false lst);
+      append (fsrc origin :: ALWAYS :: AT :: STAR :: flatten1 false lst);
     | (origin, POSNEG (ck, rst), lst) ->
-      append (SRC origin :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
+      append (fsrc origin :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
     | (origin, NEGNEG (ck, rst), lst) ->
-      append (SRC origin :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
+      append (fsrc origin :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 true lst);
     | (origin, POSEDGE (ck), lst) ->
-      append (SRC origin :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
+      append (fsrc origin :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
     | (origin, NEGEDGE (ck), lst) ->
-      append (SRC origin :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
+      append (fsrc origin :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 true lst);
     | (origin, _, lst) -> failwith "not implemented";
-    ) (List.rev (List.map (fun (origin,edg,lst) -> (find_source origin, edg, lst)) !(modul.alwys)));
+    ) (List.rev (List.map (fun (origin,edg,lst) -> (origin, edg, lst)) !(modul.alwys)));
   List.iter (fun (inst, (origin, kind, lst)) ->
                  let delim = ref SP in
                  let lst = List.flatten (List.map (fun term -> let lst = !delim :: portconn term in delim := COMMA; lst) lst) in
-                 append (NL :: NL :: IDENT kind :: SP :: IDENT inst :: LPAREN :: lst @ [NL;RPAREN;SEMI]);
+                 append (NL :: NL :: fsrc origin :: IDENT kind :: SP :: IDENT inst :: LPAREN :: lst @ [NL;RPAREN;SEMI]);
                  ) !(modul.inst);
   List.iter (fun (origin, tok, lst) -> append (NL :: tok :: flatten1 false lst);
                  ) !(modul.init);
@@ -1151,7 +1154,7 @@ let rec iterate f (source, line, modul) =
 	   let previolst = !(itms.io) in
            List.iter2 (fun ((_, (origin, ix, idir, typ, ilst)) as inr) -> function
 		       | VRF (id, []) ->
-                           newiolst := PORT("", id, idir, ix, [VRF(id, [])]) :: !newiolst;
+                           newiolst := PORT(origin, id, idir, ix, [VRF(id, [])]) :: !newiolst;
                            newinnerlst := inr :: !newinnerlst;
 		       | PORT (origin, id_i, Dvif, idx, VRF (id, []) :: []) as pat ->
                            if List.mem_assoc id !(modul.inst) then
