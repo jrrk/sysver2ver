@@ -64,6 +64,23 @@ module decoded_imm #(
 	parameter [31:0] STACKADDR = 32'h ffff_ffff
 ) (
 	input 		  clk, resetn,
+        output reg        trap,
+
+        output reg        mem_valid,
+        output reg        mem_instr,
+        input             mem_ready,
+
+        output reg [31:0] mem_addr,
+        output reg [31:0] mem_wdata,
+        output reg [ 3:0] mem_wstrb,
+        input [31:0]      mem_rdata,
+
+        // Look-Ahead Interface
+        output            mem_la_read,
+        output            mem_la_write,
+        output [31:0]     mem_la_addr,
+        output reg [31:0] mem_la_wdata,
+        output reg [ 3:0] mem_la_wstrb,
 
 	input 		  mem_ready,
 
@@ -82,22 +99,8 @@ module decoded_imm #(
 	input 		  pcpi_ready,
 
 	// IRQ Interface
-	input [31:0] 	  irq,
+	input [31:0] 	  irq
    
-	input clear_prefetched_high_word,
-	input decoder_pseudo_trigger,
-	input decoder_trigger,
-	input mem_la_secondword, mem_la_firstword_reg, last_mem_valid,
-	input [15:0] mem_16bit_buffer,
-	input mem_do_prefetch,
-	input mem_do_rinst,
-	input mem_do_rdata,
-	input mem_do_wdata,
-	input [1:0] mem_state,
-	input 	  mem_valid,
-	input [31:0] next_pc,
-	input [31:0]  reg_op1,
-	input prefetched_high_word
 );
 	localparam integer irq_timer = 0;
 	localparam integer irq_ebreak = 1;
@@ -113,6 +116,21 @@ module decoded_imm #(
 	localparam [35:0] TRACE_ADDR   = {4'b 0010, 32'b 0};
 	localparam [35:0] TRACE_IRQ    = {4'b 1000, 32'b 0};
 
+	reg clear_prefetched_high_word;
+	reg decoder_pseudo_trigger;
+	reg decoder_trigger;
+	reg mem_la_secondword, mem_la_firstword_reg, last_mem_valid;
+	reg [15:0] mem_16bit_buffer;
+	reg mem_do_prefetch;
+	reg mem_do_rinst;
+	reg mem_do_rdata;
+	reg mem_do_wdata;
+	reg [1:0] mem_state;
+	reg 	  mem_valid;
+	reg [31:0] next_pc;
+        reg 		    prefetched_high_word;
+   
+   
 	reg [63:0] count_cycle, count_instr;
 	reg [31:0] reg_pc, reg_next_pc, reg_op1, reg_op2, reg_out;
 	reg [4:0] reg_sh;
@@ -352,6 +370,102 @@ module decoded_imm #(
 		end
 	end
 
+	always @(posedge clk) begin
+		if (resetn && !trap) begin
+			if (mem_do_prefetch || mem_do_rinst || mem_do_rdata)
+				`assert(!mem_do_wdata);
+
+			if (mem_do_prefetch || mem_do_rinst)
+				`assert(!mem_do_rdata);
+
+			if (mem_do_rdata)
+				`assert(!mem_do_prefetch && !mem_do_rinst);
+
+			if (mem_do_wdata)
+				`assert(!(mem_do_prefetch || mem_do_rinst || mem_do_rdata));
+
+			if (mem_state == 2 || mem_state == 3)
+				`assert(mem_valid || mem_do_prefetch);
+		end
+	end
+
+	always @(posedge clk) begin
+		if (!resetn || trap) begin
+			if (!resetn)
+				mem_state <= 0;
+			if (!resetn || mem_ready)
+				mem_valid <= 0;
+			mem_la_secondword <= 0;
+			prefetched_high_word <= 0;
+		end else begin
+			if (mem_la_read || mem_la_write) begin
+				mem_addr <= mem_la_addr;
+				mem_wstrb <= mem_la_wstrb & {4{mem_la_write}};
+			end
+			if (mem_la_write) begin
+				mem_wdata <= mem_la_wdata;
+			end
+			case (mem_state)
+				0: begin
+					if (mem_do_prefetch || mem_do_rinst || mem_do_rdata) begin
+						mem_valid <= !mem_la_use_prefetched_high_word;
+						mem_instr <= mem_do_prefetch || mem_do_rinst;
+						mem_wstrb <= 0;
+						mem_state <= 1;
+					end
+					if (mem_do_wdata) begin
+						mem_valid <= 1;
+						mem_instr <= 0;
+						mem_state <= 2;
+					end
+				end
+				1: begin
+					`assert(mem_wstrb == 0);
+					`assert(mem_do_prefetch || mem_do_rinst || mem_do_rdata);
+					`assert(mem_valid == !mem_la_use_prefetched_high_word);
+					`assert(mem_instr == (mem_do_prefetch || mem_do_rinst));
+					if (mem_xfer) begin
+						if (COMPRESSED_ISA && mem_la_read) begin
+							mem_valid <= 1;
+							mem_la_secondword <= 1;
+							if (!mem_la_use_prefetched_high_word)
+								mem_16bit_buffer <= mem_rdata[31:16];
+						end else begin
+							mem_valid <= 0;
+							mem_la_secondword <= 0;
+							if (COMPRESSED_ISA && !mem_do_rdata) begin
+								if (~&mem_rdata[1:0] || mem_la_secondword) begin
+									mem_16bit_buffer <= mem_rdata[31:16];
+									prefetched_high_word <= 1;
+								end else begin
+									prefetched_high_word <= 0;
+								end
+							end
+							mem_state <= mem_do_rinst || mem_do_rdata ? 0 : 3;
+						end
+					end
+				end
+				2: begin
+					`assert(mem_wstrb != 0);
+					`assert(mem_do_wdata);
+					if (mem_xfer) begin
+						mem_valid <= 0;
+						mem_state <= 0;
+					end
+				end
+				3: begin
+					`assert(mem_wstrb == 0);
+					`assert(mem_do_prefetch);
+					if (mem_do_rinst) begin
+						mem_state <= 0;
+					end
+				end
+			endcase
+		end
+
+		if (clear_prefetched_high_word)
+			prefetched_high_word <= 0;
+	end
 	reg instr_lui, instr_auipc, instr_jal, instr_jalr;
 	reg instr_beq, instr_bne, instr_blt, instr_bge, instr_bltu, instr_bgeu;
 	reg instr_lb, instr_lh, instr_lw, instr_lbu, instr_lhu, instr_sb, instr_sh, instr_sw;
