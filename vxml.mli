@@ -100,57 +100,57 @@ type rw =
 | UNKNOWN
 | XML of rw list
 | EITM of string * string * string * int * rw list
-| IO of string * int * dirop * string * rw list
-| VAR of string * int * string
-| IVAR of string * int * rw list * int
-| TMPVAR of string * int * rw list
-| CNST of (int*cexp) * int * rw list
+| IO of string * string * int * dirop * string * rw list
+| VAR of string * string * int * string
+| IVAR of string * string * int * rw list * int
+| TMPVAR of string * string * int * rw list
+| CNST of (int * cexp) * int * rw list
 | VRF of string * rw list
 | TYP of string * string * int * rw list
-| FNC of string * int * rw list
-| TASK of string * string * rw list
-| INST of string * (string * rw list)
+| FNC of string * string * int * rw list
+| TASK of string * string * string * rw list
+| INST of string * string * (string * rw list)
 | SFMT of string * rw list
-| SYS of string * rw list
-| TPLSRGS of string * int * rw list
-| VPLSRGS of int * rw list
-| PORT of string * dirop * int * rw list
-| CA of rw list
+| SYS of string * string * rw list
+| TPLSRGS of string * string * int * rw list
+| VPLSRGS of string * int * rw list
+| PORT of string * string * dirop * int * rw list
+| CA of string * rw list
 | UNRY of unaryop * rw list
-| SEL of rw list
+| SEL of string * rw list
 | ASEL of rw list
 | SNITM of string * rw list
-| ASGNDLY of rw list
-| ASGN of rw list
+| ASGNDLY of string * rw list
+| ASGN of string * rw list
 | ARITH of arithop * rw list
 | LOGIC of logop * rw list
 | CMP of cmpop * rw list
-| FRF of string * rw list
-| XRF of string * string * string * dirop ref
+| FRF of string * string * rw list
+| XRF of string * string * string * string * dirop ref
 | PKG of string * string * rw list
-| CAT of rw list
-| CPS of rw list
-| CND of rw list
-| REPL of int * rw list
+| CAT of string * rw list
+| CPS of string * rw list
+| CND of string * rw list
+| REPL of string * int * rw list
 | MODUL of string * string * string * rw list
 | BGN of string * rw list
 | RNG of rw list
 | ALWYS of string * rw list
 | SNTRE of rw list
-| IF of rw list
-| INIT of string * rw list
-| IRNG of rw list
+| IF of string * rw list
+| INIT of string * string * rw list
+| IRNG of string * rw list
 | IFC of string * string * rw list
-| IMP of string * rw list
-| IMRF of string * string * rw list
-| JMPL of rw list
-| JMPG of rw list
-| CS of rw list
-| CSITM of rw list
+| IMP of string * string * rw list
+| IMRF of string * string * string * rw list
+| JMPL of string * rw list
+| JMPG of string * rw list
+| CS of string * rw list
+| CSITM of string * rw list
 | WHL of rw list
-| FORSTMT of (cmpop * string * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
+| FORSTMT of (string * cmpop * string * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
 | ARG of rw list
-| DSPLY of string * rw list
+| DSPLY of string * string * rw list
 | FILS of string * rw list
 | FIL of string * string
 | NTL of rw list
@@ -162,7 +162,7 @@ type rw =
 | POSEDGE of string
 | NEGEDGE of string
 | COMB
-| MODPORTFTR of string
+| MODPORTFTR of string * string
 
 type token =
 | SP
@@ -253,7 +253,7 @@ val mapothlst : (string * string) list list ref
 val tskothlst : rw list ref
 val optothlst : rw list ref
 val xrflst : rw list ref
-val forlst : (rw list * rw * rw list) list ref
+val forlst : (rw * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
 val ternothlst : rw list list ref
 val widthlst : rw list ref
