@@ -64,29 +64,18 @@ module decoded_imm #(
 	parameter [31:0] STACKADDR = 32'h ffff_ffff
 ) (
 	input 		  clk, resetn,
-	output reg 	  trap,
 
-	output reg 	  mem_valid,
-	output reg 	  mem_instr,
 	input 		  mem_ready,
 
-	output reg [31:0] mem_addr,
-	output reg [31:0] mem_wdata,
-	output reg [ 3:0] mem_wstrb,
 	input [31:0] 	  mem_rdata,
 
 	// Look-Ahead Interface
 	output 		  mem_la_read,
 	output 		  mem_la_write,
 	output [31:0] 	  mem_la_addr,
-	output reg [31:0] mem_la_wdata,
-	output reg [ 3:0] mem_la_wstrb,
 
 	// Pico Co-Processor Interface (PCPI)
-	output reg 	  pcpi_valid,
 	output reg [31:0] pcpi_insn,
-	output [31:0] 	  pcpi_rs1,
-	output [31:0] 	  pcpi_rs2,
 	input 		  pcpi_wr,
 	input [31:0] 	  pcpi_rd,
 	input 		  pcpi_wait,
@@ -94,69 +83,21 @@ module decoded_imm #(
 
 	// IRQ Interface
 	input [31:0] 	  irq,
-	output reg [31:0] eoi,
-
-`ifdef RISCV_FORMAL
-	output reg 	  rvfi_valid,
-	output reg [63:0] rvfi_order,
-	output reg [31:0] rvfi_insn,
-	output reg 	  rvfi_trap,
-	output reg 	  rvfi_halt,
-	output reg 	  rvfi_intr,
-	output reg [ 1:0] rvfi_mode,
-	output reg [ 4:0] rvfi_rs1_addr,
-	output reg [ 4:0] rvfi_rs2_addr,
-	output reg [31:0] rvfi_rs1_rdata,
-	output reg [31:0] rvfi_rs2_rdata,
-	output reg [ 4:0] rvfi_rd_addr,
-	output reg [31:0] rvfi_rd_wdata,
-	output reg [31:0] rvfi_pc_rdata,
-	output reg [31:0] rvfi_pc_wdata,
-	output reg [31:0] rvfi_mem_addr,
-	output reg [ 3:0] rvfi_mem_rmask,
-	output reg [ 3:0] rvfi_mem_wmask,
-	output reg [31:0] rvfi_mem_rdata,
-	output reg [31:0] rvfi_mem_wdata,
-`endif
-
-`ifdef DEBUGREGS   
-	output [31:0] 	  dbg_reg_x0,
-	output [31:0] 	  dbg_reg_x1,
-	output [31:0] 	  dbg_reg_x2,
-	output [31:0] 	  dbg_reg_x3,
-	output [31:0] 	  dbg_reg_x4,
-	output [31:0] 	  dbg_reg_x5,
-	output [31:0] 	  dbg_reg_x6,
-	output [31:0] 	  dbg_reg_x7,
-	output [31:0] 	  dbg_reg_x8,
-	output [31:0] 	  dbg_reg_x9,
-	output [31:0] 	  dbg_reg_x10,
-	output [31:0] 	  dbg_reg_x11,
-	output [31:0] 	  dbg_reg_x12,
-	output [31:0] 	  dbg_reg_x13,
-	output [31:0] 	  dbg_reg_x14,
-	output [31:0] 	  dbg_reg_x15,
-	output [31:0] 	  dbg_reg_x16,
-	output [31:0] 	  dbg_reg_x17,
-	output [31:0] 	  dbg_reg_x18,
-	output [31:0] 	  dbg_reg_x19,
-	output [31:0] 	  dbg_reg_x20,
-	output [31:0] 	  dbg_reg_x21,
-	output [31:0] 	  dbg_reg_x22,
-	output [31:0] 	  dbg_reg_x23,
-	output [31:0] 	  dbg_reg_x24,
-	output [31:0] 	  dbg_reg_x25,
-	output [31:0] 	  dbg_reg_x26,
-	output [31:0] 	  dbg_reg_x27,
-	output [31:0] 	  dbg_reg_x28,
-	output [31:0] 	  dbg_reg_x29,
-	output [31:0] 	  dbg_reg_x30,
-	output [31:0] 	  dbg_reg_x31,
-`endif
    
-	// Trace Interface
-	output reg 	  trace_valid,
-	output reg [35:0] trace_data
+	input clear_prefetched_high_word,
+	input decoder_pseudo_trigger,
+	input decoder_trigger,
+	input mem_la_secondword, mem_la_firstword_reg, last_mem_valid,
+	input [15:0] mem_16bit_buffer,
+	input mem_do_prefetch,
+	input mem_do_rinst,
+	input mem_do_rdata,
+	input mem_do_wdata,
+	input [1:0] mem_state,
+	input 	  mem_valid,
+	input [31:0] next_pc,
+	input [31:0]  reg_op1,
+	input prefetched_high_word
 );
 	localparam integer irq_timer = 0;
 	localparam integer irq_ebreak = 1;
@@ -179,19 +120,6 @@ module decoded_imm #(
 	reg [31:0] next_insn_opcode;
 	reg [31:0] dbg_insn_opcode;
 	reg [31:0] dbg_insn_addr;
-
-	wire dbg_mem_valid = mem_valid;
-	wire dbg_mem_instr = mem_instr;
-	wire dbg_mem_ready = mem_ready;
-	wire [31:0] dbg_mem_addr  = mem_addr;
-	wire [31:0] dbg_mem_wdata = mem_wdata;
-	wire [ 3:0] dbg_mem_wstrb = mem_wstrb;
-	wire [31:0] dbg_mem_rdata = mem_rdata;
-
-	assign pcpi_rs1 = reg_op1;
-	assign pcpi_rs2 = reg_op2;
-
-	wire [31:0] next_pc;
 
 	reg irq_delay;
 	reg irq_active;
@@ -278,23 +206,14 @@ module decoded_imm #(
 		assign pcpi_div_wait = 0;
 		assign pcpi_div_ready = 0;
 
-	reg [1:0] mem_state;
 	reg [1:0] mem_wordsize;
 	reg [31:0] mem_rdata_word;
 	reg [31:0] mem_rdata_q;
-	reg mem_do_prefetch;
-	reg mem_do_rinst;
-	reg mem_do_rdata;
-	reg mem_do_wdata;
 
 	wire mem_xfer;
-	reg mem_la_secondword, mem_la_firstword_reg, last_mem_valid;
 	wire mem_la_firstword = COMPRESSED_ISA && (mem_do_prefetch || mem_do_rinst) && next_pc[1] && !mem_la_secondword;
 	wire mem_la_firstword_xfer = COMPRESSED_ISA && mem_xfer && (!last_mem_valid ? mem_la_firstword : mem_la_firstword_reg);
 
-	reg prefetched_high_word;
-	reg clear_prefetched_high_word;
-	reg [15:0] mem_16bit_buffer;
 
 	wire [31:0] mem_rdata_latched_noshuffle;
 	wire [31:0] mem_rdata_latched;
@@ -444,9 +363,7 @@ module decoded_imm #(
 
 	reg [regindex_bits-1:0] decoded_rd, decoded_rs1, decoded_rs2;
 	reg [31:0] decoded_imm, decoded_imm_uj;
-	reg decoder_trigger;
 	reg decoder_trigger_q;
-	reg decoder_pseudo_trigger;
 	reg decoder_pseudo_trigger_q;
 	reg compressed_instr;
 
