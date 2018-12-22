@@ -64,22 +64,19 @@ module decoded_imm #(
 	parameter [31:0] STACKADDR = 32'h ffff_ffff
 ) (
 	input 		  clk, resetn,
-        output reg        trap,
+        output reg 	  trap,
 
-        output reg        mem_valid,
-        output reg        mem_instr,
-        input             mem_ready,
+        output reg 	  mem_valid,
+        output reg 	  mem_instr,
+        input 		  mem_ready,
 
         output reg [31:0] mem_addr,
-        output reg [31:0] mem_wdata,
-        output reg [ 3:0] mem_wstrb,
-        input [31:0]      mem_rdata,
+        input [31:0] 	  mem_rdata,
 
         // Look-Ahead Interface
-        output            mem_la_read,
-        output            mem_la_write,
-        output [31:0]     mem_la_addr,
-        output reg [31:0] mem_la_wdata,
+        output 		  mem_la_read,
+        output 		  mem_la_write,
+        output [31:0] 	  mem_la_addr,
         output reg [ 3:0] mem_la_wstrb,
 
 	// Pico Co-Processor Interface (PCPI)
@@ -91,10 +88,12 @@ module decoded_imm #(
 
 	// IRQ Interface
 	input [31:0] 	  irq,
-	input mem_do_prefetch,
-	input mem_do_rinst,
-	input mem_do_rdata,
-	input mem_do_wdata   
+	input 		  mem_do_prefetch,
+	input 		  mem_do_rinst,
+	input 		  mem_do_rdata,
+	input 		  mem_do_wdata,
+
+	input 		  latched_branch   
 );
 	localparam integer irq_timer = 0;
 	localparam integer irq_ebreak = 1;
@@ -389,17 +388,12 @@ module decoded_imm #(
 		end else begin
 			if (mem_la_read || mem_la_write) begin
 				mem_addr <= mem_la_addr;
-				mem_wstrb <= mem_la_wstrb & {4{mem_la_write}};
-			end
-			if (mem_la_write) begin
-				mem_wdata <= mem_la_wdata;
 			end
 			case (mem_state)
 				0: begin
 					if (mem_do_prefetch || mem_do_rinst || mem_do_rdata) begin
 						mem_valid <= !mem_la_use_prefetched_high_word;
 						mem_instr <= mem_do_prefetch || mem_do_rinst;
-						mem_wstrb <= 0;
 						mem_state <= 1;
 					end
 					if (mem_do_wdata) begin
@@ -409,7 +403,6 @@ module decoded_imm #(
 					end
 				end
 				1: begin
-					`assert(mem_wstrb == 0);
 					`assert(mem_do_prefetch || mem_do_rinst || mem_do_rdata);
 					`assert(mem_valid == !mem_la_use_prefetched_high_word);
 					`assert(mem_instr == (mem_do_prefetch || mem_do_rinst));
@@ -435,7 +428,6 @@ module decoded_imm #(
 					end
 				end
 				2: begin
-					`assert(mem_wstrb != 0);
 					`assert(mem_do_wdata);
 					if (mem_xfer) begin
 						mem_valid <= 0;
@@ -443,7 +435,6 @@ module decoded_imm #(
 					end
 				end
 				3: begin
-					`assert(mem_wstrb == 0);
 					`assert(mem_do_prefetch);
 					if (mem_do_rinst) begin
 						mem_state <= 0;
@@ -890,5 +881,28 @@ module decoded_imm #(
 			instr_and   <= 0;
 		end
 	end
+
+        reg clear_prefetched_high_word_q;
+        always @(posedge clk) clear_prefetched_high_word_q <= clear_prefetched_high_word;
+
+        always @* begin
+                clear_prefetched_high_word = clear_prefetched_high_word_q;
+                if (!prefetched_high_word)
+                        clear_prefetched_high_word = 0;
+                if (latched_branch || !resetn)
+                        clear_prefetched_high_word = COMPRESSED_ISA;
+        end
+
+        always @(posedge clk) begin
+                if (!resetn) begin
+                        mem_la_firstword_reg <= 0;
+                        last_mem_valid <= 0;
+                end else begin
+                        if (!last_mem_valid)
+                                mem_la_firstword_reg <= mem_la_firstword;
+                        last_mem_valid <= mem_valid && !mem_ready;
+                end
+        end
+
 
 endmodule
