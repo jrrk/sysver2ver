@@ -1240,6 +1240,7 @@ let dumpform f f' source =
     Printf.fprintf fd "report_potentially_constant_registers\n";
     Printf.fprintf fd "verify\n";
     Printf.fprintf fd "report_failing_points -inputs unmatched -inputs undriven\n";
+    Printf.fprintf fd "analyze_points -all\n";
     Printf.fprintf fd "quit\n";
     close_out fd;
     Unix.chmod (outtcl f') 0o740
