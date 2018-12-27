@@ -198,6 +198,7 @@ type token =
 | RSHIFT
 | IFF
 | ELSE
+| LOGIC
 | ASSIGN
 | ASSIGNMENT
 | ASSIGNDLY
@@ -210,7 +211,6 @@ type token =
 | POSEDGE
 | NEGEDGE
 | RETURN
-| LOGIC
 | FUNCTION
 | ENDFUNCTION
 | TASK
@@ -259,12 +259,12 @@ val ternothlst : rw list list ref
 val widthlst : rw list ref
 val optitmlst : (rw list * rw list) list ref
 
-val modules : (string, string * int * itms) Hashtbl.t
-val modules_opt : (string, string * int * itms) Hashtbl.t
-val packages : (string, string * int * itms) Hashtbl.t
+val modules : (string, string * itms) Hashtbl.t
+val modules_opt : (string, string * itms) Hashtbl.t
+val packages : (string, string * itms) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
 val typetable : (int, typetable_t) Hashtbl.t
-val interfaces : (string, string * int * itms * rw list) Hashtbl.t
+val interfaces : (string, string * itms * rw list) Hashtbl.t
 val top : (string * string) list ref
 
 val decode : string -> cexp
@@ -275,5 +275,5 @@ val ewidth : rw -> int
 val optitm : rw list -> rw list
 
 val fortailmatch : string -> rw list -> bool
-val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml
-val dump : string -> string * int * itms -> token list
+val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list) list
+val dump : string -> string * itms -> token list

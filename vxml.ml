@@ -198,6 +198,7 @@ type token =
 | RSHIFT
 | IFF
 | ELSE
+| LOGIC
 | ASSIGN
 | ASSIGNMENT
 | ASSIGNDLY
@@ -210,7 +211,6 @@ type token =
 | POSEDGE
 | NEGEDGE
 | RETURN
-| LOGIC
 | FUNCTION
 | ENDFUNCTION
 | TASK
@@ -657,7 +657,9 @@ let stmtdly = function
 | false -> SP :: ASSIGNMENT :: SP :: []
 | true -> SP :: ASSIGNDLY :: SP :: []
 
-let tokenout fd indent = function
+let oldsrc = ref ("",-1)
+
+let rec tokenout fd indent = function
 | SP -> output_string fd " "
 | SEMI -> output_string fd ";"
 | COLON -> output_string fd ":"
@@ -681,7 +683,9 @@ let tokenout fd indent = function
 | QUOTE -> output_string fd "'"
 | DQUOTE -> output_string fd "\""
 | NL -> output_string fd ("\n"^if !indent > 0 then String.make (!indent*4) ' ' else "")
-| SRC (str1,int1) -> output_string fd ("\n/* "^str1^":"^string_of_int int1^" */\n")
+| SRC (str1,int1) ->
+    if (str1,int1) <> !oldsrc then begin output_string fd ("\n/* "^str1^":"^string_of_int int1^" */"); tokenout fd indent NL; end;
+    oldsrc := (str1,int1);
 | DEFAULT -> output_string fd "default"
 | IDENT str -> output_string fd str
 | NUM (BIN n) -> output_string fd (String.make 1 n)
@@ -837,7 +841,7 @@ let find_source origin =
         match origin.[i] with '0'..'9' -> last := i | _ -> ();
     done;
     let k = String.sub origin 0 !last in
-    let source = if Hashtbl.mem files k then Hashtbl.find files k else "origin_unknown" in
+    let source = if Hashtbl.mem files k then Hashtbl.find files k else failwith (k^": origin_unknown") in
     let line = String.sub origin !last (String.length origin - !last) in
     (source, try int_of_string line with err -> 0)
 
@@ -1002,23 +1006,19 @@ let rec catitm pth itms = function
     else
     print_endline (str3^" is not io");
 | MODUL(origin, str1, str2, rw_lst) ->
-    let (source, line) = find_source origin in
-    print_endline (str1^":"^source);
     let itms = empty_itms () in
     List.iter (catitm "" itms) rw_lst;
-    if Hashtbl.mem hierarchy str1 then Hashtbl.add modules str1 (source, line, itms)
-    else if Hashtbl.mem hierarchy str2 then Hashtbl.add modules str2 (source, line, itms)
+    if Hashtbl.mem hierarchy str1 then Hashtbl.add modules str1 (origin, itms)
+    else if Hashtbl.mem hierarchy str2 then Hashtbl.add modules str2 (origin, itms)
     else print_endline ("Module "^str1^"/"^str2^" not in cell hierarchy");
 | PKG(origin, str1, rw_lst) ->
-    let (source, line) = find_source origin in
     let itms = empty_itms () in
     List.iter (catitm str1 itms) rw_lst;
-    Hashtbl.add packages str1 (source, line, itms)
+    Hashtbl.add packages str1 (origin, itms)
 | IFC(origin, str1, rw_lst) ->
-    let (source, line) = find_source origin in
     let itms = empty_itms () in
     List.iter (catitm str1 itms) rw_lst;
-    Hashtbl.add interfaces str1 (source, line, itms, rw_lst)
+    Hashtbl.add interfaces str1 (origin, itms, rw_lst)
 | FIL(enc, fil) ->
     Hashtbl.add files enc fil
 | CELLS(rw_lst) ->
@@ -1086,16 +1086,18 @@ let outnamopt f = let l = String.length f in f^(if l < 4 || String.sub f (l-4) 4
 let outtok f = f^"_tokens.txt"
 let outtcl f = "./"^f^"_fm.tcl"
 
-let dump f (source, line, modul) =
+let dump f (origin, modul) =
   let appendlst = ref [] in
   let append lst = appendlst := lst :: !appendlst in
-  if true then print_endline ("f \""^f^"\";; /* "^outnam f^" versus "^source^":"^string_of_int line^" "^outtcl f ^" */");
-  let delim = ref [NL; MODULE; SP; IDENT f; LPAREN] in List.iter (fun (io, (origin, idx, dir, kind', lst)) -> 
+  if true then print_endline ("f \""^f^"\";; /* "^outnam f^" : "^outtcl f ^" */");
+  let delim = ref [fsrc origin; MODULE; SP; IDENT f; LPAREN] in
+  List.iter (fun (io, (origin, idx, dir, kind', lst)) -> 
     let lst = iolst delim dir idx io in
     delim := [COMMA];
     append lst
     ) (List.rev !(modul.io));
   append [RPAREN;SEMI;NL];
+  appendlst := List.flatten (List.rev !appendlst) :: [];
   List.iter (fun (id, (origin, idx, kind', n)) -> append (fsrc origin :: varlst (ref []) idx id @ SEMI :: NL :: []);
                  ) (List.rev !(modul.v));
   List.iter (fun (origin, nam, idx, lst, itms') ->
@@ -1126,21 +1128,20 @@ let dump f (source, line, modul) =
   List.iter (fun (inst, (origin, kind, lst)) ->
                  let delim = ref SP in
                  let lst = List.flatten (List.map (fun term -> let lst = !delim :: portconn term in delim := COMMA; lst) lst) in
-                 append (NL :: NL :: fsrc origin :: IDENT kind :: SP :: IDENT inst :: LPAREN :: lst @ [NL;RPAREN;SEMI]);
+                 append (fsrc origin :: IDENT kind :: SP :: IDENT inst :: LPAREN :: lst @ [NL;RPAREN;SEMI]);
                  ) !(modul.inst);
-  List.iter (fun (origin, tok, lst) -> append (NL :: tok :: flatten1 false lst);
+  List.iter (fun (origin, tok, lst) -> append (fsrc origin :: tok :: flatten1 false lst);
                  ) !(modul.init);
-  append [NL;ENDMODULE;NL;NL];
-  List.flatten (List.rev !appendlst)
+  List.flatten (List.sort compare !appendlst) @ [NL;ENDMODULE;NL;NL]
 
-let rec iterate f (source, line, modul) =
+let rec iterate f (modorig, modul) =
     let newitms = copy_itms modul in
     newitms.ir := [];
     newitms.inst := [];
     List.iter (fun (inst, (origin, kind, iolst)) ->
         if Hashtbl.mem interfaces kind then
            begin
-           let (origin, lin, intf, _) = Hashtbl.find interfaces kind in
+           let (_, intf, _) = Hashtbl.find interfaces kind in
            List.iter (fun (nam, (origin, idx, kind, n)) ->
                  let pth = inst^"_"^nam in
                  newitms.v := (pth, (origin, idx, kind, n)) :: !(newitms.v);
@@ -1148,7 +1149,7 @@ let rec iterate f (source, line, modul) =
            end
         else if Hashtbl.mem modules kind then
            begin
-           let (origin, lin, itms) = Hashtbl.find modules kind in
+           let (kindorig, itms) = Hashtbl.find modules kind in
            let newiolst = ref [] in
            let newinnerlst = ref [] in
 	   let previolst = !(itms.io) in
@@ -1161,7 +1162,7 @@ let rec iterate f (source, line, modul) =
 			       let (_,inam,_) = List.assoc id !(modul.inst) in
 			       if Hashtbl.mem interfaces inam then (match idir with Dinam iport ->
 				  begin
-				  let (origin, lin, intf, imp) = Hashtbl.find interfaces inam in
+				  let (_, intf, imp) = Hashtbl.find interfaces inam in
 				  let imp' = List.filter (function IMP _ -> true | _ -> false) imp in 
                                   let imp'' = List.map (function IMP(_, str, lst) -> (str,lst) | _ -> ("",[])) imp' in
                                   if List.mem_assoc iport imp'' then
@@ -1184,9 +1185,6 @@ let rec iterate f (source, line, modul) =
 			       newinnerlst := inr :: !newinnerlst;
 			       end
 		       | PORT _ as pat -> newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst
-(*
-		       | RNG [CNST (lft, _, []); CNST (rght, _, [])] -> fprintf stdout "%s" ("/* ["^lft^":"^rght^"] */")
-*)
 		       | oth -> portothlst := oth :: !portothlst; failwith "portothlst"
 		       ) previolst iolst;
            let newinnerlst = List.rev !newinnerlst in
@@ -1195,30 +1193,30 @@ let rec iterate f (source, line, modul) =
                begin
                let newinneritms = copy_itms itms in
                newinneritms.io := newinnerlst;
-               let newhash = (origin, lin, newinneritms) in
+               let newhash = (kindorig, newinneritms) in
 	       iterate kind newhash
                end;
            newitms.inst := (inst, (origin, kind_opt, !newiolst)) :: !(newitms.inst);
            end
         ) !(modul.inst);
-    Hashtbl.replace modules_opt (f^"_opt") (source, line, newitms);
+    Hashtbl.replace modules_opt (f^"_opt") (modorig, newitms);
     print_endline (f^" done")
 
-let dumpform f f' source = 
+let dumpform f f' separate = 
     let fd = open_out (outtcl f') in
     let srcpath = try Sys.getenv "XMLSRCPATH" with err -> "." in
     Printf.fprintf fd "#!/opt/synopsys/fm_vO-2018.06-SP3/bin/fm_shell -f\n";
     Printf.fprintf fd "set hdlin_warn_on_mismatch_message \"FMR_ELAB-115 FMR_ELAB-117 FMR_ELAB-146 FMR_ELAB-147 FMR_VLOG-928\"\n";
     Printf.fprintf fd "read_sverilog -container r -libname WORK -12 { \\\n";
-    let plst = ref [] in Hashtbl.iter (fun _ (s,_,_) -> plst := s :: !plst) packages;
+    let plst = ref [] in Hashtbl.iter (fun _ (s,_) -> plst := fst (find_source s) :: !plst) packages;
     let iflst = List.map snd (if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else []) in
-    let hlst = List.sort_uniq compare (source :: List.map (fun k -> let (s,l,_) = if Hashtbl.mem modules k then Hashtbl.find modules k else ("not_found", 0, empty_itms ()) in s) iflst) in
+    let hlst = List.sort_uniq compare (List.map (fun k -> let (s,_) = if Hashtbl.mem modules k then Hashtbl.find modules k else ("not_found", empty_itms ()) in fst (find_source s)) (f::iflst)) in
     let slst = !plst @ hlst in
     List.iter (fun src -> if src.[0] == '/' then Printf.fprintf fd "%s \\\n" src else Printf.fprintf fd "%s/%s \\\n" srcpath src) slst;
     Printf.fprintf fd "}\n";
     Printf.fprintf fd "set_top r:/WORK/%s\n" f;
     Printf.fprintf fd "read_sverilog -container i -libname WORK -12 { \\\n";
-    let hlst' = List.sort_uniq compare (f' :: iflst) in
+    let hlst' = List.sort_uniq compare (f' :: (if separate then iflst else [])) in
     List.iter (fun nam -> Printf.fprintf fd "%s \\\n" (outnamopt nam)) hlst';
     Printf.fprintf fd "}\n";
     Printf.fprintf fd "set_top i:/WORK/%s\n" f';
@@ -1239,32 +1237,33 @@ let translate errlst xmlf =
     catitm "" (empty_itms ()) rwxml;
     let top = snd(List.hd !top) in
     print_endline ("toplevel is "^top);
-    let (topsrc, topline, topmodul) as tophash = Hashtbl.find modules top in
+    let tophash = Hashtbl.find modules top in
     iterate top tophash;
     let top_opt = top^"_opt" in
-    dumpform top top_opt topsrc;
+    let separate = try int_of_string (Sys.getenv "VXML_SEPARATE") > 0 with _ -> true in
+    dumpform top top_opt separate;
     let mods = ref [] in
-    Hashtbl.iter (fun k x -> let d = reformat0 (dump k x) in mods := reformat2 (reformat1 d) :: !mods) modules_opt;
+    Hashtbl.iter (fun k x -> let d = reformat0 (dump k x) in mods := (k, reformat2 (reformat1 d)) :: !mods) modules_opt;
     let mods = List.sort compare !mods in
-    let separate = try int_of_string (Sys.getenv "VXML_SEPARATE") > 0 with _ -> false in
     let indent = ref 0 in
     if separate then
         begin
-        List.iter (function (NL :: MODULE :: SP :: IDENT k :: tl) as lst ->
+        List.iter (fun (k,lst) ->
         let fd = open_out (outnam k) in
         List.iter (tokenout fd indent) lst;
-        close_out fd
-        | _ -> ()) mods
+        close_out fd) mods
         end
     else
         begin
         let fd = open_out (outnam top_opt) in
+(*
         output_string fd "`default_nettype none\n";
-        List.iter (fun itm ->
-            tokenout fd indent itm;
-        ) (List.flatten mods);
+*)
+        List.iter (fun (_,lst) ->
+            List.iter (tokenout fd indent) lst;
+        ) mods;
         close_out fd;
         end;
-    (line,range,rwxml,xml)
+    (line,range,rwxml,xml,mods)
     
 

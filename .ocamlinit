@@ -26,12 +26,13 @@ let xmlf = "obj_dir/Vaccum.xml";;
 let xmlf = "obj_dir/Vdecoder.xml";;
 let xmlf = "obj_dir/Valways_test.xml";;
 let xmlf = "obj_dir/Vtilde.xml";;
+let xmlf = "obj_dir/Vtestbench_golden.xml";;
 *)
 
-let xmlf = "obj_dir/Vtestbench_golden.xml";;
+let xmlf = "obj_dir/Vpicorv32_wrapper.xml";;
 
 let errlst = ref [];;
-let (line,range,rwxml,xml) = Vxml.translate errlst xmlf;;
+let (line,range,rwxml,xml,mods) = Vxml.translate errlst xmlf;;
 
 let f k = Hashtbl.find Vxml.modules_opt k;;
 let p k = Hashtbl.find Vxml.packages k;;
@@ -53,12 +54,3 @@ List.length !typothlst,
 List.length !memothlst
 );;
 
-let mods = ref [];;
-Hashtbl.iter (fun k x -> print_endline k; mods := k :: !mods) modules_opt;;
-
-let (a,b,c) = f (List.hd !mods);;
-(*
-let l = List.length !(c.alwys);;
-let (x,y,z) = (List.hd !(c.alwys));;
-let opt = optitm z;;
-*)
