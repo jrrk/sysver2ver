@@ -8,7 +8,7 @@ List.iter (fun l -> Printf.printf "%d:" (List.length l)) [
 !stmtothlst;
 !portothlst;
 !iothlst;
-!csothlst;
+List.flatten (!csothlst);
 !bgnothlst;
 !itmothlst;
 !catothlst;

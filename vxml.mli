@@ -133,7 +133,7 @@ type rw =
 | CND of string * rw list
 | REPL of string * int * rw list
 | MODUL of string * string * string * rw list
-| BGN of string * rw list
+| BGN of string option * rw list
 | RNG of rw list
 | ALWYS of string * rw list
 | SNTRE of rw list
@@ -148,7 +148,7 @@ type rw =
 | CS of string * rw list
 | CSITM of string * rw list
 | WHL of rw list
-| FORSTMT of (string * cmpop * string * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
+| FORSTMT of (string * string * cmpop * string * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
 | ARG of rw list
 | DSPLY of string * string * rw list
 | FILS of string * rw list
@@ -183,7 +183,7 @@ type token =
 | NUM of cexp
 | SIZED of (int * cexp)
 | DIR of dirop
-| BEGIN
+| BEGIN of string option
 | END
 | DEFAULT
 | LPAREN
@@ -229,18 +229,19 @@ type itms = {
   typ: (string*string*int) list ref;
   alwys: (string*rw*rw list) list ref;
   init: (string*token*rw list) list ref;
-  func: (string*string*int*rw list*itms) list ref;
+  func: (string*(string*int*rw list*itms)) list ref;
   task: (string*string*rw list*itms) list ref;
   gen: (string*rw list) list ref;
   imp : (string*string*string) list list ref;
   inst: (string*(string*string*rw list)) list ref;
+  needed: string list ref;
 }
 
 val exprothlst : rw list ref
 val stmtothlst : rw list ref
 val portothlst : rw list ref
 val iothlst : rw list ref
-val csothlst : rw list ref
+val csothlst : rw list list ref
 val bgnothlst : rw list ref
 val itmothlst : rw list ref
 val catothlst : rw list ref
@@ -262,9 +263,11 @@ val optitmlst : (rw list * rw list) list ref
 val modules : (string, string * itms) Hashtbl.t
 val modules_opt : (string, string * itms) Hashtbl.t
 val packages : (string, string * itms) Hashtbl.t
-val hierarchy : (string, (string * string) list) Hashtbl.t
-val typetable : (int, typetable_t) Hashtbl.t
 val interfaces : (string, string * itms * rw list) Hashtbl.t
+val hierarchy : (string, (string * string) list) Hashtbl.t
+val functable : (string, string * int * rw list * itms) Hashtbl.t
+val typetable : (int, typetable_t) Hashtbl.t
+
 val top : (string * string) list ref
 
 val decode : string -> cexp
