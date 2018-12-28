@@ -274,6 +274,7 @@ val expr : rw -> token list
 val ewidth : rw -> int
 val optitm : rw list -> rw list
 
+val jump_opt : string -> rw list -> rw
 val fortailmatch : string -> rw list -> bool
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list) list
 val dump : string -> string * itms -> token list

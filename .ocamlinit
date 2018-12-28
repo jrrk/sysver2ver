@@ -27,9 +27,11 @@ let xmlf = "obj_dir/Vdecoder.xml";;
 let xmlf = "obj_dir/Valways_test.xml";;
 let xmlf = "obj_dir/Vtilde.xml";;
 let xmlf = "obj_dir/Vtestbench_golden.xml";;
+let xmlf = "obj_dir/Vpicorv32_wrapper.xml";;
+let xmlf = "../ariane/obj_dir/Vstore_buffer.xml";;
 *)
 
-let xmlf = "obj_dir/Vpicorv32_wrapper.xml";;
+let xmlf = "../ariane/obj_dir/Variane_testharness.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml,mods) = Vxml.translate errlst xmlf;;
