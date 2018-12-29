@@ -263,6 +263,7 @@ let subothlst = ref []
 let tskothlst = ref []
 let optothlst = ref []
 let xrflst = ref []
+let sellst = ref []
 let forlst = ref []
 let ternlst = ref []
 let ternothlst = ref []
@@ -654,10 +655,19 @@ let rec expr = function
     IDENT id1 :: (match wid' with HEX 1 | SHEX 1 -> LBRACK :: expr expr2 @ [RBRACK]
     | _ -> LBRACK :: expr expr2 @ [PLUS;COLON] @ (NUM wid' :: RBRACK :: []))
 | SEL (origin, expr1 :: CNST ((32,SHEX 0), _, []) :: (CNST _) :: []) -> expr expr1
+(*
 | SEL (origin, expr1 :: CNST ((szlo,lo'), _, []) :: (CNST _) :: []) ->
     LPAREN :: expr expr1 @ (RSHIFT :: NUM lo' :: RPAREN :: [])
+*)
 | SEL (_, ((XRF _|ASEL _) as lval1) :: expr2 :: CNST ((szw,wid'), _, []) :: []) ->
     expr lval1 @ LBRACK :: expr expr2 @ [PLUS;COLON] @ (NUM wid' :: RBRACK :: [])
+| SEL (_,
+    [LOGIC (Lshiftl,
+      [UNRY (Uextend, [VRF (id, [])]); CNST ((sz1, n1), _, [])]);
+     CNST ((sz2, n2), _, []); CNST ((sz3, n3), _, [])]) -> IDENT "plugh2" :: []
+| SEL (_,
+    [LOGIC (Lshiftl, [VRF (id, []); CNST ((sz1, n1), _, [])]);
+     CNST ((sz2, n2), _, []); CNST ((sz3, n3), _, [])]) -> IDENT "plugh3" :: []
 | ASEL (VRF (lval, []) :: expr1 :: []) -> IDENT lval :: LBRACK :: expr expr1 @ [RBRACK]
 | ASEL (ASEL _ as multi :: expr' :: []) -> expr multi @ LBRACK :: expr expr' @ [RBRACK]
 | CND (origin, expr1 :: lft :: rght :: []) -> LPAREN :: expr expr1 @ [QUERY] @ expr lft @ [COLON] @ expr rght @ [RPAREN]
@@ -672,9 +682,9 @@ let rec expr = function
 | TPLSRGS (origin, id, tid, []) -> IDENT "$test$plusargs" :: LPAREN :: DQUOTE :: IDENT id :: DQUOTE :: RPAREN :: []
 | VPLSRGS (origin, tid, CNST ((len, fmt), _, []) :: VRF (arg, []) :: []) -> IDENT "$value$plusargs" :: LPAREN :: NUM fmt :: COMMA :: IDENT arg :: RPAREN :: []
 | SYS (origin, fn, arglst) -> IDENT fn :: LPAREN :: eiter SP arglst @ [RPAREN]
-(*
+
 | SEL (origin, expr1 :: lo :: wid :: []) as sel -> sellst := sel :: !sellst; IDENT "plugh" :: []
-*)
+
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 and eiter tok lst =
     let delim = ref tok in
