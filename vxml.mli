@@ -120,8 +120,7 @@ type rw =
 | SEL of string * rw list
 | ASEL of rw list
 | SNITM of string * rw list
-| ASGNDLY of string * rw list
-| ASGN of string * rw list
+| ASGN of bool * string * rw list
 | ARITH of arithop * rw list
 | LOGIC of logop * rw list
 | CMP of cmpop * rw list
@@ -254,11 +253,14 @@ val mapothlst : (string * string) list list ref
 val tskothlst : rw list ref
 val optothlst : rw list ref
 val xrflst : rw list ref
-val sellst : rw list ref
+val smplopt : rw option ref
+val selopt : rw option ref
+val optopt : (rw list * rw list) option ref
 val forlst : (rw * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
-val ternothlst : rw list list ref
+val ternothlst : (rw * rw) list ref
 val widthlst : rw list ref
+val smpothlst : rw list ref
 val optitmlst : (rw list * rw list) list ref
 
 val modules : (string, string * itms) Hashtbl.t
@@ -277,7 +279,8 @@ val cexp : string -> int * cexp
 val expr : rw -> token list
 val ewidth : rw -> int
 val optitm : rw list -> rw list
-
+val simplify_exp : rw list ref -> rw -> rw
+val simplify_asgn : bool -> string -> rw -> rw -> rw
 val jump_opt : string -> rw list -> rw
 val fortailmatch : string -> rw list -> bool
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list) list
