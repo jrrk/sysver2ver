@@ -83,10 +83,26 @@ type typmap =
 | TYPNONE
 | SUBTYP of int
 | TYPRNG of int*int
-| TYPMEMBER of int*string*int
+| TYPMEMBER of int*int
 | TYPENUM of string * int * (int*int)
+| TYPCONST
 
-type typetable_t = string*string*typmap*typmap list
+type typenc =
+| UNKDTYP
+| PACKADTYP
+| UNPACKADTYP
+| CNSTDTYP
+| BASDTYP
+| STRDTYP
+| UNIDTYP
+| REFDTYP
+| ENUMDTYP
+| MEMBDTYP
+| PARMTDTYP
+| IFCRFDTYP of string
+| TYPDF of string
+
+type typetable_t = typenc*string*typmap*typmap list
 
 type cexp =
 | ERR of string
@@ -107,7 +123,7 @@ type rw =
 | TMPVAR of string * string * int * rw list
 | CNST of (int * cexp) * int * rw list
 | VRF of string * rw list
-| TYP of string * string * int * rw list
+| TYP of typenc * int * int * rw list
 | FNC of string * string * int * rw list
 | TASK of string * string * string * rw list
 | INST of string * string * (string * rw list)
@@ -199,6 +215,7 @@ type token =
 | IFF
 | ELSE
 | LOGIC
+| WIRE
 | ASSIGN
 | ASSIGNMENT
 | ASSIGNDLY
@@ -226,7 +243,7 @@ type itms = {
   iv: (string*(string*int*rw list*int)) list ref;
   ir: (string*string*int) list ref;
   ca: (string*rw*rw) list ref;
-  typ: (string*string*int) list ref;
+  typ: (string*int*int) list ref;
   alwys: (string*rw*rw list) list ref;
   init: (string*token*rw list) list ref;
   func: (string*(string*int*rw list*itms)) list ref;
@@ -234,6 +251,7 @@ type itms = {
   gen: (string*rw list) list ref;
   imp : (string*string*string) list list ref;
   inst: (string*(string*string*rw list)) list ref;
+  cnst: (string*(int*cexp)) list ref;
   needed: string list ref;
 }
 
@@ -247,7 +265,7 @@ val itmothlst : rw list ref
 val catothlst : rw list ref
 val cellothlst : rw list ref
 val posneglst : rw list list ref
-val typothlst : (string * string * typmap * typmap list) list ref
+val typothlst : typetable_t list ref
 val memothlst : typmap list ref
 val subothlst : rw list ref
 val mapothlst : (string * string) list list ref
