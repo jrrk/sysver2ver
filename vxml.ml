@@ -113,6 +113,13 @@ type cexp =
 | FLT of float
 | BIGINT of Big_int.big_int
 
+type stage =
+| FIRSTG
+| IOSTG
+| VARSTG
+| JMPSTG
+| BDYSTG
+
 type rw =
 | UNKNOWN
 | XML of rw list
@@ -503,10 +510,8 @@ let simplify_asgn dly' anchor dst = function
                 TMPVAR(anchor, t, idx, ASGN(false, anchor, smpl :: tmp :: []) :: ASGN(dly', anchor, src :: dst' :: []) :: [])
             | TMPVAR(_, t, idx, []) :: ASGN(false, _, smpl :: tmp :: []) ::
               TMPVAR(_, t', idx', []) :: ASGN(false, _, smpl' :: tmp' :: []) :: [] ->
-                TMPVAR(anchor, t, idx, 
-                  ASGN(false, anchor, smpl :: tmp :: []) ::
-                  ASGN(false, anchor, smpl' :: tmp' :: []) ::
-                  ASGN(dly', anchor, src' :: dst' :: []) :: [])
+                BGN (None, TMPVAR(anchor, t, idx, ASGN(false, anchor, smpl :: tmp :: []) :: []) ::
+                            TMPVAR(anchor, t', idx', ASGN(false, anchor, smpl' :: tmp' :: []) :: []) :: ASGN(dly', anchor, src' :: dst' :: []) :: [])
             | _ -> failwith "simplify_asgn"
 
 let rec rw' anchor errlst = function
@@ -761,9 +766,10 @@ let rec expr = function
 | CND (origin, expr1 :: lft :: rght :: []) -> LPAREN :: expr expr1 @ [QUERY] @ expr lft @ [COLON] @ expr rght @ [RPAREN]
 | CAT (origin, expr1 :: expr2 :: []) -> LCURLY :: expr expr1 @ [COMMA] @ expr expr2 @ [RCURLY]
 | FRF (origin, fref, arglst) -> let delim = ref LPAREN in
-    IDENT fref :: List.flatten (List.map (function
+    let lst = IDENT fref :: List.flatten (List.map (function
         | ARG (arg :: []) -> let lst = !delim :: expr arg in delim := COMMA; lst
-        | _ -> [QUERY]) arglst) @ [RPAREN];
+        | _ -> [QUERY]) arglst) in
+    lst @ (if !delim = LPAREN then [LPAREN;RPAREN] else [RPAREN])
 | REPL (origin, tid, arg :: CNST ((sz,n'),_,_) :: []) -> LCURLY :: NUM n' :: LCURLY :: expr arg @ [RCURLY;RCURLY]
 | IRNG (origin, expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
 | XRF (origin, id, tid, dotted, dirop) as xrf -> xrflst := xrf :: !xrflst; IDENT (dotted^(match !dirop with Dinam _ -> "_" | _ -> ".")^id) :: []
@@ -929,7 +935,7 @@ let varlst modul delim idx id =
         let (t,s,m1,ml) as tab = Hashtbl.find typetable idx in
         (cntbasic tab, List.mem TYPCONST ml) else ([], false) in
     let expand delim = fun w -> let lst = !delim :: num w :: [] in delim := STAR; lst in
-    let decl = !delim @ (if cnst then WIRE else LOGIC) :: SP :: match widlst with
+    let decl = !delim :: (if cnst then WIRE else LOGIC) :: SP :: match widlst with
                 | [] -> IDENT id :: []
                 | 1 :: [] when idx >= 0 -> IDENT id :: []
                 | n :: [] -> LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: []
@@ -985,7 +991,7 @@ and cstmt modul dly = function
     expr dst @ stmtdly dly @ expr src
 | CS (origin, sel :: lst) -> CASE :: LPAREN :: expr sel @ (RPAREN :: NL :: List.flatten (List.map (csitm modul dly) lst)) @ [NL;ENDCASE]
 | CA(origin, rght::lft::[]) -> ASSIGN :: SP :: expr lft @ stmtdly dly @ expr rght
-| VAR (origin, id, idx, _) -> varlst modul (ref [SP]) idx id
+| VAR (origin, id, idx, _) -> varlst modul (ref SP) idx id
 | FORSTMT (o,kind,cnd,ix,strt,stop,inc,stmts) ->
     FOR :: LPAREN :: (if kind <> "" then IDENT kind :: SP :: [] else []) @
     IDENT ix :: ASSIGNMENT :: SIZED strt :: SEMI ::
@@ -1239,32 +1245,27 @@ let rec catitm (pth:string option) itms = function
 
 let iolst delim dir idx io =
     let wid = fold1 ( * ) (findmembers idx) in
-    !delim @ (DIR dir :: SP :: LOGIC ::
+    !delim :: (DIR dir :: SP :: LOGIC ::
 	     (if wid > 1 then LBRACK :: num (wid-1) :: COLON :: num 0 :: RBRACK :: [] else []) @ [SP; IDENT io])
 	     
-let rec fnstmt modul dly nam delim = function
+let rec fnstmt modul dly stg = function
 | IO (origin, io, idx, dir, _, lst) ->
-    let lst = iolst delim dir idx io in delim := COMMA :: []; lst
+    let lst = iolst (ref (if !stg = FIRSTG then LPAREN else COMMA)) dir idx io in
+    stg := IOSTG;
+    lst
 | VAR (origin, id, idx, _) -> 
-    if !delim = COMMA :: [] then delim := RPAREN :: SEMI :: [];
-    let lst = varlst modul delim idx id in
-    delim := SEMI :: []; lst
-| JMPL(origin, (BGN _ :: tl as rw_lst)) ->
-    if !delim = COMMA :: [] then delim := RPAREN :: SEMI :: [];
-    let dlm = !delim in
-    delim := [];
-    dlm @ (List.flatten (List.map (fnstmt modul dly nam delim) rw_lst))
+    let dlm = match !stg with FIRSTG -> LPAREN::RPAREN::SEMI::[] | IOSTG -> RPAREN::SEMI::[] | VARSTG | JMPSTG | BDYSTG -> [] in
+    stg := VARSTG;
+    dlm @ varlst modul (ref NL) idx id
 | JMPL(origin, rw_lst) ->
-    if !delim = COMMA :: [] then delim := RPAREN :: SEMI :: [];
-    let dlm = !delim in
-    delim := [BEGIN None];
-    dlm @ (List.flatten (List.map (fnstmt modul dly nam delim) rw_lst)) @ [SEMI;END]
+    let dlm = match !stg with FIRSTG -> LPAREN::RPAREN::SEMI::[] | IOSTG -> RPAREN::SEMI::[] | VARSTG -> SEMI::[] | JMPSTG | BDYSTG -> [] in
+    stg := JMPSTG;
+    dlm @ BEGIN None :: (List.flatten (List.map (fnstmt modul dly stg) rw_lst)) @ [SEMI;END]
 | JMPG (_,[]) -> []
 | itm ->
-    if !delim = COMMA :: [] then delim := RPAREN :: SEMI :: [];
-    let lst = !delim @ cstmt modul dly itm in
-    delim := SEMI :: NL :: [];
-    lst
+    let dlm = match !stg with FIRSTG -> LPAREN::RPAREN::SEMI::[] | IOSTG -> RPAREN::SEMI::[] | JMPSTG -> [] | VARSTG | BDYSTG -> SEMI::[] in
+    stg := BDYSTG;
+    dlm @ cstmt modul dly itm
 
 let rec taskstmt modul dly nam = function
 | BGN(_,rw_lst) -> List.flatten (List.map (taskstmt modul dly nam) rw_lst)
@@ -1276,17 +1277,17 @@ let outtok f = f^"_tokens.txt"
 let outtcl f = "./"^f^"_fm.tcl"
 
 let dump f (origin, modul) =
-  let head = ref [] in
   let appendlst = ref [] in
   let append lst = appendlst := lst :: !appendlst in
   if true then print_endline ("f \""^f^"\";; /* "^outnam f^" : "^outtcl f ^" */");
-  let delim = ref [fsrc origin; MODULE; SP; IDENT f; LPAREN] in
+  let head = ref [fsrc origin; MODULE; SP; IDENT f] in
+  let delim = ref LPAREN in
   List.iter (fun (io, (origin, idx, dir, kind', lst)) -> 
     head := !head @ iolst delim dir idx io;
-    delim := [COMMA];
+    delim := COMMA;
     ) (List.rev !(modul.io));
   head := !head @ [RPAREN;SEMI;NL];
-  List.iter (fun (id, (origin, idx, kind', n)) -> append (fsrc origin :: varlst modul (ref []) idx id @ SEMI :: NL :: []);
+  List.iter (fun (id, (origin, idx, kind', n)) -> append (fsrc origin :: varlst modul (ref SP) idx id @ SEMI :: NL :: []);
                  ) (List.rev !(modul.v));
   List.iter (fun nam ->
     print_endline nam;
@@ -1295,8 +1296,8 @@ let dump f (origin, modul) =
         List.assoc nam !(modul.func)
     else
         Hashtbl.find functable nam in
-    let lst = fsrc origin :: (varlst modul (ref (SEMI :: NL :: FUNCTION :: SP :: [])) idx nam) @
-    List.flatten (List.map (fnstmt modul false nam (ref [LPAREN])) (List.tl lst)) @ [ENDFUNCTION] in
+    let lst = fsrc origin :: SEMI :: NL :: FUNCTION :: SP :: (varlst modul (ref SP) idx nam) @
+    List.flatten (List.map (fnstmt modul false (ref FIRSTG)) (List.tl lst)) @ [ENDFUNCTION] in
     append lst
   ) (List.rev !(modul.needed));
   List.iter (fun (origin, nam, lst, itms') ->
