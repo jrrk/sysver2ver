@@ -300,7 +300,7 @@ val cexp : string -> int * cexp
 val expr : rw -> token list
 val ewidth : rw -> int
 val optitm : rw list -> rw list
-val simplify_exp : rw list ref -> rw -> rw
+val simplify_exp : string -> rw list ref -> rw -> rw
 val simplify_asgn : bool -> string -> rw -> rw -> rw
 val jump_opt : string -> rw list -> rw
 val fortailmatch : string -> rw list -> bool
