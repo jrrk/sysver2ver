@@ -95,6 +95,7 @@ type cexp =
 | SHEX of int
 | STRING of string
 | FLT of float
+| BIGINT of Big_int.big_int
 
 type rw =
 | UNKNOWN
@@ -339,25 +340,35 @@ let chkvif nam =
        (vif, if vif then String.sub nam 0 (l-lm) else nam)
 
 let dbg i ch h = if false then print_endline (string_of_int i^":"^String.make 1 ch^":"^string_of_int h)
-       
-let decode str =
+
+let hex_to_bigint s = let rslt = ref Big_int.zero_big_int in String.iter (function
+| '0'..'9' as ch -> rslt := Big_int.add_int_big_int (int_of_char ch - int_of_char '0') (Big_int.mult_int_big_int 16 !rslt)
+| 'a'..'f' as ch -> rslt := Big_int.add_int_big_int (int_of_char ch - int_of_char 'a' + 10) (Big_int.mult_int_big_int 16 !rslt)
+| ch -> failwith (String.make 1 ch)) s; !rslt
+
+let rec hex_of_bigint w n =
+let (q,r) = Big_int.quomod_big_int n (Big_int.big_int_of_int 16) in
+(if (w > 4) then hex_of_bigint (w-4) q else "")^String.make 1 ("0123456789abcdef".[Big_int.int_of_big_int r])
+
+let decode str = try
   let h = ref 0 and str' = Bytes.make (String.length str / 2) ' ' in
+  let mychar_of_int x = if x >= 32 && x <= 127 then char_of_int x else failwith "ascii" in
   String.iteri (fun ix -> function
     | '0'..'9' as ch -> dbg ix ch !h;
         h := !h * 16 + (int_of_char ch - int_of_char '0');
-        if ix land 1 = 1 then begin Bytes.set str' (ix/2) (char_of_int !h); h := 0; dbg ix ch !h;end
+        if ix land 1 = 1 then begin Bytes.set str' (ix/2) (mychar_of_int !h); h := 0; dbg ix ch !h;end
     | 'a'..'f' as ch -> dbg ix ch !h;
         h := !h * 16 + (int_of_char ch - int_of_char 'a' + 10);
-        if ix land 1 = 1 then begin Bytes.set str' (ix/2) (char_of_int !h); h := 0; dbg ix ch !h; end
+        if ix land 1 = 1 then begin Bytes.set str' (ix/2) (mychar_of_int !h); h := 0; dbg ix ch !h; end
     | _ -> h := -1) str;
-  STRING (Bytes.to_string str')
+  STRING (Bytes.to_string str') with err -> BIGINT (hex_to_bigint str)
 
 let cexp exp = match exp.[0] with
 | '"' -> let n = String.length exp - 2 in let s = String.sub exp 1 n in (n, STRING s)
 | _ -> try Scanf.sscanf exp "%d'h%x" (fun b n -> (b, HEX n)) with err ->
     try Scanf.sscanf exp "%d'sh%x" (fun b n -> (b, SHEX n)) with err ->
     try Scanf.sscanf exp "%d'bx" (fun b -> (b, BIN 'x')) with err ->
-    try Scanf.sscanf exp "%d'h%s" (fun b n -> (b, decode n)) with err ->
+    try Scanf.sscanf exp "%d'h%s" (fun b s -> (b, decode s)) with err ->
     try Scanf.sscanf exp "%f" (fun f -> (64, FLT f)) with err -> (-1,ERR exp)
 
 let rec typmap = function
@@ -670,13 +681,17 @@ let rec cadd = function
 | FLT f :: [] -> FLT f
 | FLT f :: _ -> ERR "addflt"
 | STRING _ :: tl -> ERR "addstr"
+| BIGINT n :: [] -> BIGINT n
+| BIGINT n :: BIGINT m :: tl -> cadd (BIGINT (Big_int.add_big_int n m) :: tl)
+| (HEX n | SHEX n) :: BIGINT m :: tl -> cadd (BIGINT (Big_int.add_big_int (Big_int.big_int_of_int n) m) :: tl)
+| BIGINT n :: (HEX m | SHEX m) :: tl -> cadd (BIGINT (Big_int.add_big_int n (Big_int.big_int_of_int m)) :: tl)
 | BIN 'x' :: tl -> cadd (BIN 'x' :: tl)
 | BIN _ :: tl -> cadd (BIN 'x' :: tl)
 | HEX n :: HEX m :: tl -> cadd (HEX (n+m) :: tl)
 | SHEX n :: HEX m :: tl -> cadd (HEX (n+m) :: tl)
 | HEX n :: SHEX m :: tl -> cadd (HEX (n+m) :: tl)
 | SHEX n :: SHEX m :: tl -> cadd (SHEX (n+m) :: tl)
-| (HEX _ | SHEX _) ::(ERR _|BIN _|STRING _|FLT _):: tl -> ERR "cadd"
+| (HEX _ | SHEX _ | BIGINT _) ::(ERR _|BIN _|STRING _|FLT _):: tl -> ERR "cadd"
 
 let avoid_dollar_unsigned = true
 
@@ -694,16 +709,14 @@ let rec expr = function
     LPAREN :: expr (UNRY (Uextends, expr1 :: [])) @ (IDENT (logopv op) :: expr expr2) @[RPAREN]
 | LOGIC (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ (IDENT (logopv op) :: expr expr2) @[RPAREN]
 | ARITH (op, expr1 :: expr2 :: []) -> LPAREN :: expr expr1 @ (IDENT (arithopv op) :: expr expr2) @[RPAREN]
-| SEL (origin, ((VRF _ | XRF _) as expr1) :: (CNST((szlo,lo'),_,_)) :: (CNST((szw,wid'),_,_)) :: []) ->
+| SEL (origin, ((VRF _ | XRF _ | ASEL _) as expr1) :: (CNST((szlo,lo'),_,_)) :: (CNST((szw,wid'),_,_)) :: []) ->
     expr expr1 @ (match wid' with HEX 1 | SHEX 1 -> LBRACK :: NUM lo' :: RBRACK :: []
     | _ -> LBRACK :: NUM (cadd [lo';wid';SHEX (-1)]) :: COLON :: NUM lo' :: RBRACK :: [])
-| SEL (origin, VRF(id1,_) :: expr2 :: CNST((szw,wid'),_,_) :: []) ->
-    IDENT id1 :: (match wid' with HEX 1 | SHEX 1 -> LBRACK :: expr expr2 @ [RBRACK]
+| SEL (origin, ((VRF _ | XRF _ | ASEL _) as expr1) :: expr2 :: CNST((szw,wid'),_,_) :: []) ->
+    expr expr1 @ (match wid' with HEX 1 | SHEX 1 -> LBRACK :: expr expr2 @ [RBRACK]
     | _ -> LBRACK :: expr expr2 @ [PLUS;COLON] @ (NUM wid' :: RBRACK :: []))
 | SEL (origin, expr1 :: CNST ((32,(HEX 0 | SHEX 0)), idx, []) :: (CNST((szw,HEX wid'),_,_)) :: []) ->
     expr (LOGIC (Land, expr1 :: CNST ((wid', HEX ((1 lsl wid') -1)), idx, []) :: []))
-| SEL (_, ((XRF _|ASEL _) as lval1) :: expr2 :: CNST ((szw,wid'), _, []) :: []) ->
-    expr lval1 @ LBRACK :: expr expr2 @ [PLUS;COLON] @ (NUM wid' :: RBRACK :: [])
 | SEL (o, CND (origin, expr1 :: lft :: rght :: []) :: expr2 :: expr3 :: []) ->
     LPAREN :: expr expr1 @ [QUERY] @ expr (SEL (o, lft :: expr2 :: expr3 :: [])) @ [COLON] @ expr (SEL (o, rght :: expr2 :: expr3 :: [])) @ [RPAREN]
 | SEL (orig, (UNRY (Uextend, VRF (id, []) :: []) :: (CNST _ as expr2) :: (CNST _ as expr3) :: [])) ->
@@ -782,6 +795,7 @@ let rec tokenout fd indent = function
 | NUM (BIN n) -> output_string fd (String.make 1 n)
 | NUM (HEX n) -> output_string fd (string_of_int n)
 | NUM (SHEX n) -> output_string fd (string_of_int n)
+| NUM (BIGINT n) -> output_string fd (Big_int.string_of_big_int n)
 | NUM (STRING s) -> output_string fd ("\""^String.escaped s^"\"")
 | NUM (FLT f) -> output_string fd (string_of_float f)
 | NUM (ERR err) -> output_string fd ("NumberError:"^err)
@@ -789,6 +803,7 @@ let rec tokenout fd indent = function
         | BIN b -> string_of_int w^"'b"^String.make w b
 	| HEX n -> Printf.sprintf "%d'h%x" w n
 	| SHEX n -> Printf.sprintf "%d'sh%x" w n
+	| BIGINT n -> Printf.sprintf "%d'h%s" w (hex_of_bigint w n)
 	| STRING s -> "\""^String.escaped s^"\""
 	| FLT f -> string_of_float f
         | ERR err -> ("NumberError:"^err)) n)

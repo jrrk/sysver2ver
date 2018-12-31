@@ -95,6 +95,7 @@ type cexp =
 | SHEX of int
 | STRING of string
 | FLT of float
+| BIGINT of Big_int.big_int
 
 type rw =
 | UNKNOWN
@@ -273,6 +274,8 @@ val typetable : (int, typetable_t) Hashtbl.t
 
 val top : (string * string) list ref
 
+val hex_of_bigint : int -> Big_int.big_int -> string
+val hex_to_bigint : string -> Big_int.big_int
 val decode : string -> cexp
 val cadd : cexp list -> cexp
 val cexp : string -> int * cexp
