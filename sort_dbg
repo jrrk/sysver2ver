@@ -1,0 +1,5 @@
+env VXML_DEBUGTREE=1 ./vxmlmain $1
+mkdir -p debug debugopt
+rm -f debug/*.debug debugopt/*.debug
+for i in *_opt.debug; do mv $i `echo debugopt/$i|sed s=_opt==`;done
+mv *.debug debug

@@ -36,18 +36,20 @@ let xmlf = "../ariane/obj_dir/Vstd_icache.xml";;
 let xmlf = "obj_dir/Vbigint.xml";;
 let xmlf = "obj_dir/Vdebug_rom.xml";;
 let xmlf = "obj_dir/Vcaseinside.xml";;
+let xmlf = "../ariane/obj_dir/Vdm_top.xml";;
+let xmlf = "obj_dir/Vaxi_slave_connect_example.xml";;
+let xmlf = "obj_dir/Vsimple.xml";;
 *)
 
 let xmlf = "../ariane/obj_dir/Variane_testharness.xml";;
-let xmlf = "../ariane/obj_dir/Vdm_top.xml";;
-let xmlf = "obj_dir/Vsimple.xml";;
+let xmlf = "obj_dir/Vaxi_slave_connect_example.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml,mods) = Vxml.translate errlst xmlf;;
 
 let f k = Hashtbl.find Vxml.modules_opt k;;
 let p k = Hashtbl.find Vxml.packages k;;
-let d f = Vxml.dump f (Hashtbl.find Vxml.modules f)
+let d f = Vxml.debug f (Hashtbl.find Vxml.modules_opt f)
 let h k = Hashtbl.find Vxml.hierarchy k;;
 
 let othcnt = (

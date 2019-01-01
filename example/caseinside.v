@@ -48,6 +48,8 @@ module caseinside (
         return 32'h00000013;
     endfunction
    
+    logic [6:0] 		   addr2;
+
     always_comb begin : csr_read_write
             unique case ({1'b0, addr}) inside
                 [(Data0):DataEnd]: begin
@@ -56,7 +58,8 @@ module caseinside (
                 end
                 Command:
                   rslt = nop();
-                default:;
+                default:
+                  addr2 = addr;
             endcase
         end
 
