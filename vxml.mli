@@ -142,7 +142,7 @@ type rw =
 | LOGIC of logop * rw list
 | CMP of cmpop * rw list
 | FRF of string * string * rw list
-| XRF of string * string * string * string * dirop ref
+| XRF of string * string * string * string * dirop
 | PKG of string * string * rw list
 | CAT of string * rw list
 | CPS of string * rw list
@@ -255,6 +255,12 @@ type itms = {
   needed: string list ref;
 }
 
+type xmlattr = {
+    anchor: string;
+    errlst: Xml.xml list ref;
+    names: (string*int) list ref;
+    }
+
 val exprothlst : rw list ref
 val stmtothlst : rw list ref
 val portothlst : rw list ref
@@ -299,6 +305,9 @@ val cadd : cexp list -> cexp
 val cexp : string -> int * cexp
 val expr : rw -> token list
 val ewidth : rw -> int
+val cntmembers : typmap -> int list
+val findmembers : int -> int list
+val findmembers' : int -> int list * bool * bool
 val optitm : rw list -> rw list
 val simplify_exp : string -> rw list ref -> rw -> rw
 val simplify_asgn : bool -> string -> rw -> rw -> rw

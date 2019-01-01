@@ -149,7 +149,7 @@ type rw =
 | LOGIC of logop * rw list
 | CMP of cmpop * rw list
 | FRF of string * string * rw list
-| XRF of string * string * string * string * dirop ref
+| XRF of string * string * string * string * dirop
 | PKG of string * string * rw list
 | CAT of string * rw list
 | CPS of string * rw list
@@ -262,6 +262,12 @@ type itms = {
   needed: string list ref;
 }
 
+type xmlattr = {
+    anchor: string;
+    errlst: Xml.xml list ref;
+    names: (string*int) list ref;
+    }
+    
 let modules = Hashtbl.create 255
 let modules_opt = Hashtbl.create 255
 let packages = Hashtbl.create 255
@@ -312,6 +318,21 @@ let dirop = function
 | "out" -> Doutput
 | "in" -> Dinput
 | oth -> failwith oth
+
+let typdump = function
+| UNKDTYP -> "UNKDTYP"
+| PACKADTYP -> "PACKADTYP"
+| UNPACKADTYP -> "UNPACKADTYP"
+| CNSTDTYP -> "CNSTDTYP"
+| BASDTYP -> "BASDTYP"
+| STRDTYP -> "STRDTYP"
+| UNIDTYP -> "UNIDTYP"
+| REFDTYP -> "REFDTYP"
+| ENUMDTYP -> "ENUMDTYP"
+| MEMBDTYP -> "MEMBDTYP"
+| PARMTDTYP -> "PARMTDTYP"
+| IFCRFDTYP str -> "IFCRFDTYP "^str
+| TYPDF str -> "TYPDF "^str
 
 let unaryop = function
 |"not" -> Unot
@@ -514,86 +535,110 @@ let simplify_asgn dly' anchor dst = function
                             TMPVAR(anchor, t', idx', ASGN(false, anchor, smpl' :: tmp' :: []) :: []) :: ASGN(dly', anchor, src' :: dst' :: []) :: [])
             | _ -> failwith "simplify_asgn"
 
-let rec rw' anchor errlst = function
-| Xml.Element ("verilator_xml", [], xlst) -> XML (List.map (rw' anchor errlst) xlst)
-| Xml.Element ("files"|"module_files" as fils, [], xlst) -> FILS (fils, List.map (rw' anchor errlst) xlst)
+let rec rw' attr = function
+| Xml.Element ("verilator_xml", [], xlst) -> XML (List.map (rw' attr) xlst)
+| Xml.Element ("files"|"module_files" as fils, [], xlst) -> FILS (fils, List.map (rw' attr) xlst)
 | Xml.Element ("file", [("id", encoding); ("filename", nam); ("language", "1800-2017")], []) -> FIL (encoding, nam)
-| Xml.Element ("netlist", [], xlst) -> NTL (List.rev(List.map (rw' anchor errlst) xlst))
+| Xml.Element ("netlist", [], xlst) -> NTL (List.map (rw' attr) (List.rev xlst))
 | Xml.Element ("var", [("fl", origin); ("name", nam); ("dtype_id", tid); ("dir", dir); ("vartype", typ); ("origName", nam')], xlst) ->
-               IO (origin, nam, int_of_string tid, dirop dir, typ, List.map (rw' anchor errlst) xlst)
+    IO (origin, nam, int_of_string tid, dirop dir, typ, List.map (rw' attr) xlst)
 | Xml.Element ("var", [("fl", origin); ("name", nam); ("dtype_id", tid); ("vartype", ("ifaceref" as typ)); ("origName", nam')], []) ->
-	       let (vif, sub) = chkvif nam in
-	       if vif then
-	       VAR (origin, sub, int_of_string tid, typ)
-	       else
-	       IO (origin, nam, int_of_string tid, Dunknown, typ, [])
+    let (vif, sub) = chkvif nam in
+    if vif then
+       VAR (origin, sub, int_of_string tid, typ)
+       else
+       begin
+           let idx = int_of_string tid in
+           let found = Hashtbl.mem typetable idx in
+           print_endline (typ^":"^nam^":"^string_of_bool found);
+           let (dtype, dir, _, _) = Hashtbl.find typetable idx in
+           attr.names := (nam, idx) :: !(attr.names);
+	   IO (origin, nam, idx, Dinam dir, "logic", [])
+       end
 | Xml.Element ("var", [("fl", origin); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')], []) ->
                VAR (origin, nam, int_of_string tid, typ)
 | Xml.Element ("var", [("fl", origin); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')],
                [Xml.Element ("const", [("fl", _); ("name", _); ("dtype_id", cid)], []) as lev]) ->
-                             IVAR (origin, nam, int_of_string tid, [rw' anchor errlst lev], int_of_string cid)
+                             IVAR (origin, nam, int_of_string tid, [rw' attr lev], int_of_string cid)
 | Xml.Element ("var", [("fl", origin); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')],
+
 	       [Xml.Element ("initarray", [("fl", _); ("dtype_id", cid)], initlst)]) ->
-                             IVAR (origin, nam, int_of_string tid, List.map (rw' anchor errlst) initlst, int_of_string cid)
+                             IVAR (origin, nam, int_of_string tid, List.map (rw' attr) initlst, int_of_string cid)
 | Xml.Element ("const", [("fl", _); ("name", value); ("dtype_id", tid)], xlst) ->
                
-               CNST (cexp value, int_of_string tid, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("contassign", [("fl", origin); ("dtype_id", tid)], xlst) -> CA (origin, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("not"|"negate"|"extend"|"extends"|"lognot" as op, [("fl", origin); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (snd (chkvif nam), List.map (rw' anchor errlst) xlst)
+               CNST (cexp value, int_of_string tid, List.map (rw' attr) xlst)
+| Xml.Element ("contassign", [("fl", origin); ("dtype_id", tid)], xlst) -> CA (origin, List.map (rw' attr) xlst)
+| Xml.Element ("not"|"negate"|"extend"|"extends"|"lognot" as op, [("fl", origin); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' attr) xlst)
+| Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (snd (chkvif nam), List.map (rw' attr) xlst)
 | Xml.Element ("instance", [("fl", origin); ("name", nam); ("defName", dnam); ("origName", nam')], xlst) ->
-               INST (origin, nam, (dnam, List.map (rw' anchor errlst) xlst))
-| Xml.Element ("range", [("fl", _)], xlst) -> RNG (List.map (rw' anchor errlst) xlst)
+               INST (origin, nam, (dnam, List.map (rw' attr) xlst))
+| Xml.Element ("range", [("fl", _)], xlst) -> RNG (List.map (rw' attr) xlst)
 | Xml.Element ("port", [("fl", origin); ("name", nam); ("direction", dir); ("portIndex", idx)], xlst) ->
-               PORT (origin, nam, dirop dir, int_of_string idx, List.map (rw' anchor errlst) xlst)
+               PORT (origin, nam, dirop dir, int_of_string idx, List.map (rw' attr) xlst)
 | Xml.Element ("port", [("fl", origin); ("name", nam); ("portIndex", idx)], xlst) -> let (vif,sub) = chkvif nam in
-               PORT (origin, sub, Dvif, int_of_string idx, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("sel", [("fl", origin); ("dtype_id", tid)], xlst) -> SEL (origin, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("arraysel", [("fl", origin); ("dtype_id", tid)], xlst) -> ASEL (List.map (rw' anchor errlst) xlst)
-| Xml.Element ("always", [("fl", origin)], xlst) -> ALWYS (origin, List.map (rw' origin errlst) xlst)
-| Xml.Element ("sentree", [("fl", origin)], xlst) -> SNTRE (List.map (rw' anchor errlst) xlst)
-| Xml.Element ("senitem", [("fl", origin); ("edgeType", etyp)], xlst) -> SNITM (etyp, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("begin", [("fl", origin); ("name", namedblk)], xlst) -> while_opt origin (Some namedblk) (List.map (rw' anchor errlst) xlst)
-| Xml.Element ("begin", [("fl", origin)], xlst) -> while_opt origin None (List.map (rw' anchor errlst) xlst)
+               PORT (origin, sub, Dvif, int_of_string idx, List.map (rw' attr) xlst)
+| Xml.Element ("sel", [("fl", origin); ("dtype_id", tid)], xlst) -> SEL (origin, List.map (rw' attr) xlst)
+| Xml.Element ("arraysel", [("fl", origin); ("dtype_id", tid)], xlst) -> ASEL (List.map (rw' attr) xlst)
+| Xml.Element ("always", [("fl", origin)], xlst) -> ALWYS (origin, List.map (rw' {attr with anchor=origin}) xlst)
+| Xml.Element ("sentree", [("fl", origin)], xlst) -> SNTRE (List.map (rw' attr) xlst)
+| Xml.Element ("senitem", [("fl", origin); ("edgeType", etyp)], xlst) -> SNITM (etyp, List.map (rw' attr) xlst)
+| Xml.Element ("begin", [("fl", origin); ("name", namedblk)], xlst) -> while_opt origin (Some namedblk) (List.map (rw' attr) xlst)
+| Xml.Element ("begin", [("fl", origin)], xlst) -> while_opt origin None (List.map (rw' attr) xlst)
 | Xml.Element (("assign"|"assigndly") as dly, [("fl", origin); ("dtype_id", tid)], hd::tl::[]) ->
-    let src = rw' anchor errlst hd and dst = rw' anchor errlst tl in
-    simplify_asgn (dlyenc dly) anchor dst src
-| Xml.Element ("if", [("fl", origin)], xlst) -> IF (origin, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("add"|"sub"|"mul"|"muls" as op, [("fl", _); ("dtype_id", tid)], xlst) -> ARITH (arithop op, List.map (rw' anchor errlst) xlst)
+    let src = rw' attr hd and dst = rw' attr tl in
+    simplify_asgn (dlyenc dly) attr.anchor dst src
+| Xml.Element ("if", [("fl", origin)], xlst) -> IF (origin, List.map (rw' attr) xlst)
+| Xml.Element ("add"|"sub"|"mul"|"muls" as op, [("fl", _); ("dtype_id", tid)], xlst) -> ARITH (arithop op, List.map (rw' attr) xlst)
 | Xml.Element ("and"|"redand"|"or"|"redor"|"xor"|"redxor"|"xnor"|"redxnor"|"shiftl"|"shiftr"|"shiftrs" as log,
-               [("fl", _); ("dtype_id", tid)], xlst) -> LOGIC (logop log, List.map (rw' anchor errlst) xlst)
+               [("fl", _); ("dtype_id", tid)], xlst) -> LOGIC (logop log, List.map (rw' attr) xlst)
 | Xml.Element ("eq"|"neq"|"gt"|"gts"|"gte"|"gtes"|"eqwild"|"neqwild"|"ltes"|"lte"|"lt"|"lts" as cmp, [("fl", _); ("dtype_id", tid)], xlst) ->
-    CMP (cmpop cmp, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("initial"|"final" as action, [("fl", origin)], xlst) -> INIT (origin, action, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("package", [("fl", orig); ("name", nam); ("origName", nam')], xlst) -> PKG (orig, nam, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("typedef", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> let idx = int_of_string tid in TYP (TYPDF nam, idx, idx, List.map (rw' anchor errlst) xlst)
+    CMP (cmpop cmp, List.map (rw' attr) xlst)
+| Xml.Element ("initial"|"final" as action, [("fl", origin)], xlst) -> INIT (origin, action, List.map (rw' attr) xlst)
+| Xml.Element ("package", [("fl", orig); ("name", nam); ("origName", nam')], xlst) -> PKG (orig, nam, List.map (rw' attr) xlst)
+| Xml.Element ("typedef", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> let idx = int_of_string tid in TYP (TYPDF nam, idx, idx, List.map (rw' attr) xlst)
 | Xml.Element ("func", [("fl", origin); ("name", nam); ("dtype_id", tid)], xlst) ->
-    FNC (origin, nam, int_of_string tid, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("jumplabel", [("fl", origin)], xlst) -> jump_opt origin (List.map (rw' anchor errlst) xlst)
-| Xml.Element ("jumpgo", [("fl", origin)], xlst) -> JMPG (origin, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("concat", [("fl", origin); ("dtype_id", tid)], xlst) -> CAT (origin, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("cvtpackstring", [("fl", origin); ("dtype_id", tid)], xlst) -> CPS (origin, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("cond", [("fl", origin); ("dtype_id", tid)], xlst) -> CND (origin, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("sformatf", [("fl", _); ("name", fmt); ("dtype_id", tid)], xlst) -> SFMT (fmt, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("module", ("fl", origin) :: ("name", nam) :: ("origName", nam') :: attr, xlst) -> MODUL (origin, nam, nam', List.map (rw' origin errlst) xlst)
-| Xml.Element ("case", [("fl", origin)], xlst) -> CS (origin, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("caseitem", [("fl", origin)], xlst) -> CSITM (origin, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("while", [("fl", _)], xlst) -> WHL (List.map (rw' anchor errlst) xlst)
-| Xml.Element ("insiderange", [("fl", origin); ("dtype_id", tid)], xlst) -> IRNG (origin, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("funcref", [("fl", origin); ("name", nam); ("dtype_id", tid)], xlst) -> FRF (origin, nam, List.map (rw' anchor errlst) xlst)
+    FNC (origin, nam, int_of_string tid, List.map (rw' attr) xlst)
+| Xml.Element ("jumplabel", [("fl", origin)], xlst) -> jump_opt origin (List.map (rw' attr) xlst)
+| Xml.Element ("jumpgo", [("fl", origin)], xlst) -> JMPG (origin, List.map (rw' attr) xlst)
+| Xml.Element ("concat", [("fl", origin); ("dtype_id", tid)], xlst) -> CAT (origin, List.map (rw' attr) xlst)
+| Xml.Element ("cvtpackstring", [("fl", origin); ("dtype_id", tid)], xlst) -> CPS (origin, List.map (rw' attr) xlst)
+| Xml.Element ("cond", [("fl", origin); ("dtype_id", tid)], xlst) -> CND (origin, List.map (rw' attr) xlst)
+| Xml.Element ("sformatf", [("fl", _); ("name", fmt); ("dtype_id", tid)], xlst) -> SFMT (fmt, List.map (rw' attr) xlst)
+| Xml.Element ("module", ("fl", origin) :: ("name", nam) :: ("origName", nam') :: attr', xlst) ->
+    MODUL (origin, nam, nam', List.map (rw' {attr with anchor=origin;names=ref []}) xlst)
+| Xml.Element ("case", [("fl", origin)], xlst) -> CS (origin, List.map (rw' attr) xlst)
+| Xml.Element ("caseitem", [("fl", origin)], xlst) -> CSITM (origin, List.map (rw' attr) xlst)
+| Xml.Element ("while", [("fl", _)], xlst) -> WHL (List.map (rw' attr) xlst)
+| Xml.Element ("insiderange", [("fl", origin); ("dtype_id", tid)], xlst) -> IRNG (origin, List.map (rw' attr) xlst)
+| Xml.Element ("funcref", [("fl", origin); ("name", nam); ("dtype_id", tid)], xlst) -> FRF (origin, nam, List.map (rw' attr) xlst)
 | Xml.Element ("varxref", [("fl", origin); ("name", nam); ("dtype_id", tid); ("dotted", dotted)], []) ->
-    XRF (origin, nam, tid, dotted, ref Dunknown)
-| Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' anchor errlst) xlst)
-| Xml.Element ("initarray"|"streaml"|"powsu"|"realtobits"|"itord"|"rand" as op, [("fl", origin); ("dtype_id", tid)], xlst) -> SYS (origin, "$"^op, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("replicate", [("fl", origin); ("dtype_id", tid)], xlst) -> REPL (origin, int_of_string tid, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("iface", [("fl", origin); ("name", bus); ("origName", bus')], xlst) -> IFC (origin, bus, List.map (rw' anchor errlst) xlst)
+    let dirop = if List.mem_assoc dotted !(attr.names) then
+        begin
+        let idx = List.assoc dotted !(attr.names) in
+        let (dtype, _, _, _) = Hashtbl.find typetable idx in
+        match dtype with
+            | IFCRFDTYP ifc -> print_endline ifc; Dinam ifc
+(* *)
+            | oth -> print_endline (typdump oth); Dunknown
+(* *)
+        end
+    else
+        begin
+        print_endline (dotted^" is not io");
+        Dunknown
+        end in
+    XRF (origin, nam, tid, dotted, dirop)
+| Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' attr) xlst)
+| Xml.Element ("initarray"|"streaml"|"powsu"|"realtobits"|"itord"|"rand" as op, [("fl", origin); ("dtype_id", tid)], xlst) -> SYS (origin, "$"^op, List.map (rw' attr) xlst)
+| Xml.Element ("replicate", [("fl", origin); ("dtype_id", tid)], xlst) -> REPL (origin, int_of_string tid, List.map (rw' attr) xlst)
+| Xml.Element ("iface", [("fl", origin); ("name", bus); ("origName", bus')], xlst) -> IFC (origin, bus, List.map (rw' attr) xlst)
 | Xml.Element ("ifacerefdtype", [("fl", _); ("id", num); ("modportname", nam)], xlst) ->
-    let xlst' = List.map (rw' anchor errlst) xlst and idx = int_of_string num in
+    let xlst' = List.map (rw' attr) xlst and idx = int_of_string num in
     Hashtbl.add typetable idx (IFCRFDTYP nam, nam, TYPNONE, List.map subtypmap xlst'); TYP (IFCRFDTYP nam, idx, 0, xlst')
-| Xml.Element ("modport", [("fl", origin); ("name", port)], xlst) -> IMP (origin, port, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("modportvarref", [("fl", origin); ("name", member); ("direction", dir)], xlst) -> IMRF (origin, member, dir, List.map (rw' anchor errlst) xlst)
+| Xml.Element ("modport", [("fl", origin); ("name", port)], xlst) -> IMP (origin, port, List.map (rw' attr) xlst)
+| Xml.Element ("modportvarref", [("fl", origin); ("name", member); ("direction", dir)], xlst) -> IMRF (origin, member, dir, List.map (rw' attr) xlst)
 | Xml.Element ("basicdtype"|"structdtype"|"uniondtype" as dtyp', ("fl", _) :: ("id", num) :: rnglst, xlst) ->
-    let xlst' = List.map (rw' anchor errlst) xlst and idx = int_of_string num and dtyp = typenc dtyp' in
+    let xlst' = List.map (rw' attr) xlst and idx = int_of_string num and dtyp = typenc dtyp' in
     (match rnglst with
       | ("name", nam) :: tl ->
           Hashtbl.add typetable idx (dtyp,nam,typmap tl,List.map subtypmap xlst')
@@ -601,26 +646,26 @@ let rec rw' anchor errlst = function
       Hashtbl.add typetable idx (dtyp,"",typmap rnglst,List.map subtypmap xlst'));
     TYP(dtyp, idx, idx, xlst')
 | Xml.Element ("refdtype"|"enumdtype"|"memberdtype"|"paramtypedtype" as dtyp', [("fl", origin); ("id", num); ("name", nam); ("sub_dtype_id", subtype)], xlst) ->
-    let xlst' = List.map (rw' anchor errlst) xlst and idx = int_of_string num and sub = int_of_string subtype and dtyp = typenc dtyp' in
+    let xlst' = List.map (rw' attr) xlst and idx = int_of_string num and sub = int_of_string subtype and dtyp = typenc dtyp' in
     Hashtbl.add typetable idx (dtyp,nam,SUBTYP sub,List.map subtypmap xlst');
     TYP(dtyp, sub, idx, xlst')
 | Xml.Element ("packarraydtype"|"unpackarraydtype"|"constdtype" as dtyp', [("fl", origin); ("id", num); ("sub_dtype_id", subtype)], xlst) ->
-    let xlst' = List.map (rw' anchor errlst) xlst and idx = int_of_string num and sub = int_of_string subtype and typid = typenc dtyp' in    
+    let xlst' = List.map (rw' attr) xlst and idx = int_of_string num and sub = int_of_string subtype and typid = typenc dtyp' in    
     Hashtbl.add typetable idx (typid,"",SUBTYP sub,List.map subtypmap xlst');
     TYP(typid, sub, idx, xlst')
-| Xml.Element ("enumitem" as dtyp, [("fl", origin); ("name", nam); ("dtype_id", num)], xlst) -> EITM (dtyp, nam, "", int_of_string num, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("cells", [], xlst) -> CELLS(List.map (rw' anchor errlst) xlst)
+| Xml.Element ("enumitem" as dtyp, [("fl", origin); ("name", nam); ("dtype_id", num)], xlst) -> EITM (dtyp, nam, "", int_of_string num, List.map (rw' attr) xlst)
+| Xml.Element ("cells", [], xlst) -> CELLS(List.map (rw' attr) xlst)
 | Xml.Element ("cell", [("fl", origin); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
-    CELL(origin, nam, subnam, hier, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("display", [("fl", origin); ("displaytype", nam)], xlst) -> DSPLY (origin, nam, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("readmem", [("fl", origin)], xlst) -> SYS (origin, "$readmemh", List.map (rw' anchor errlst) xlst)
-| Xml.Element (("fopen"|"fclose"|"typetable"|"finish"|"stop" as sys), [("fl", origin)], xlst) -> SYS (origin, "$"^sys, List.map (rw' anchor errlst) xlst)
-| Xml.Element (("task"|"taskref") as tsk, [("fl", origin); ("name", nam)], xlst) -> TASK(origin, tsk, nam, List.map (rw' anchor errlst) xlst)
-| Xml.Element ("valueplusargs", [("fl", origin); ("dtype_id", tid)], xlst) -> VPLSRGS(origin, int_of_string tid, List.map (rw' anchor errlst) xlst)
+    CELL(origin, nam, subnam, hier, List.map (rw' attr) xlst)
+| Xml.Element ("display", [("fl", origin); ("displaytype", nam)], xlst) -> DSPLY (origin, nam, List.map (rw' attr) xlst)
+| Xml.Element ("readmem", [("fl", origin)], xlst) -> SYS (origin, "$readmemh", List.map (rw' attr) xlst)
+| Xml.Element (("fopen"|"fclose"|"typetable"|"finish"|"stop" as sys), [("fl", origin)], xlst) -> SYS (origin, "$"^sys, List.map (rw' attr) xlst)
+| Xml.Element (("task"|"taskref") as tsk, [("fl", origin); ("name", nam)], xlst) -> TASK(origin, tsk, nam, List.map (rw' attr) xlst)
+| Xml.Element ("valueplusargs", [("fl", origin); ("dtype_id", tid)], xlst) -> VPLSRGS(origin, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("testplusargs", [("fl", origin); ("name", nam); ("dtype_id", tid)], xlst) ->
-    TPLSRGS(origin, nam, int_of_string tid, List.map (rw' anchor errlst) xlst)
+    TPLSRGS(origin, nam, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("modportftaskref", [("fl", origin); ("name", nam)], []) -> MODPORTFTR (origin, nam)
-| (Xml.Element (str, _, _) | Xml.PCData str) as err -> errlst := err :: !errlst; failwith ("XML element "^str^" not supported")
+| (Xml.Element (str, _, _) | Xml.PCData str) as err -> attr.errlst := err :: !(attr.errlst); failwith ("XML element "^str^" not supported")
 
 let top = ref []
 let empty_itms () = {
@@ -772,7 +817,9 @@ let rec expr = function
     lst @ (if !delim = LPAREN then [LPAREN;RPAREN] else [RPAREN])
 | REPL (origin, tid, arg :: CNST ((sz,n'),_,_) :: []) -> LCURLY :: NUM n' :: LCURLY :: expr arg @ [RCURLY;RCURLY]
 | IRNG (origin, expr2 :: expr1 :: []) -> LBRACK :: expr expr1 @ [COLON] @ expr expr2 @ [RBRACK]
-| XRF (origin, id, tid, dotted, dirop) as xrf -> xrflst := xrf :: !xrflst; IDENT (dotted^(match !dirop with Dinam _ -> "_" | _ -> ".")^id) :: []
+| XRF (origin, id, tid, dotted, dirop) as xrf ->
+    xrflst := xrf :: !xrflst;
+    IDENT (dotted^(match dirop with Dinam _ -> "_" | _ -> ".")^id) :: []
 | TPLSRGS (origin, id, tid, []) -> IDENT "$test$plusargs" :: LPAREN :: DQUOTE :: IDENT id :: DQUOTE :: RPAREN :: []
 | VPLSRGS (origin, tid, CNST ((len, fmt), _, []) :: VRF (arg, []) :: []) -> IDENT "$value$plusargs" :: LPAREN :: NUM fmt :: COMMA :: IDENT arg :: RPAREN :: []
 | SYS (origin, fn, arglst) -> IDENT fn :: LPAREN :: eiter SP arglst @ [RPAREN]
@@ -927,17 +974,18 @@ and cntmembers = function
 | TYPMEMBER (idx1, idx2) -> findmembers idx2
 | oth -> memothlst := oth :: !memothlst; failwith "memothlst"
 
-and findmembers idx = if Hashtbl.mem typetable idx then
-    cntbasic (Hashtbl.find typetable idx) else []
+and findmembers' idx = if Hashtbl.mem typetable idx then
+        let (t,s,m1,ml) as tab = Hashtbl.find typetable idx in
+        (cntbasic tab, List.mem TYPCONST ml, match m1 with TYPRNG _ -> true | _ -> false) else ([], false, false)
+
+and findmembers idx = let (widlst,cnst,rng) = findmembers' idx in widlst
 
 let varlst modul delim idx id =
-    let (widlst,cnst) = if Hashtbl.mem typetable idx then
-        let (t,s,m1,ml) as tab = Hashtbl.find typetable idx in
-        (cntbasic tab, List.mem TYPCONST ml) else ([], false) in
+    let (widlst,cnst,rng) = findmembers' idx in
     let expand delim = fun w -> let lst = !delim :: num w :: [] in delim := STAR; lst in
     let decl = !delim :: (if cnst then WIRE else LOGIC) :: SP :: match widlst with
                 | [] -> IDENT id :: []
-                | 1 :: [] when idx >= 0 -> IDENT id :: []
+                | 1 :: [] when idx >= 0 && not rng -> IDENT id :: []
                 | n :: [] -> LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: []
                 | n :: m :: [] -> LBRACK :: num (m-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: SP :: LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: []
                 | oth -> let delim = ref LBRACK in List.flatten (List.map (expand delim) widlst) @ MINUS :: num 1 :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: [] in
@@ -1102,9 +1150,6 @@ let optitm lst =
     lst''
 
 let rec catitm (pth:string option) itms = function
-| IO(origin, str1, int1, Dunknown, "ifaceref", []) ->
-    let (dtype, dir, _, _) = Hashtbl.find typetable int1 in
-    itms.io := (str1, (origin, int1, Dinam dir, "logic", [])) :: !(itms.io)
 | IO(origin, str1, int1, dir, str3, clst) -> itms.io := (str1, (origin, int1, dir, str3, List.map ioconn clst)) :: !(itms.io)
 | VAR(origin, str1, int1, "ifaceref") -> itms.ir := (origin, str1, int1) :: !(itms.ir)
 | VAR(origin, str1, int1, str2) -> itms.v := (str1, (origin, int1, str2, -1)) :: !(itms.v)
@@ -1213,14 +1258,7 @@ let rec catitm (pth:string option) itms = function
     print_endline ("Func: "^nam);
     if not (List.mem nam !(itms.needed)) then
         itms.needed := nam :: !(itms.needed);
-| XRF(origin, str1, str2, str3, dirop) ->
-    if List.mem_assoc str3 !(itms.io) then
-        begin
-        match List.assoc str3 !(itms.io) with
-         | (_, int1, dir, logic, _) -> dirop := dir
-        end
-    else
-    print_endline (str3^" is not io");
+| XRF(origin, str1, str2, str3, dirop) -> ()
 | MODUL(origin, str1, str2, rw_lst) ->
     let itms = empty_itms () in
     List.iter (catitm None itms) rw_lst;
@@ -1244,9 +1282,10 @@ let rec catitm (pth:string option) itms = function
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
 
 let iolst delim dir idx io =
-    let wid = fold1 ( * ) (findmembers idx) in
+    let (widlst,cnst,rng) = findmembers' idx in
+    let wid = fold1 ( * ) widlst in
     !delim :: (DIR dir :: SP :: LOGIC ::
-	     (if wid > 1 then LBRACK :: num (wid-1) :: COLON :: num 0 :: RBRACK :: [] else []) @ [SP; IDENT io])
+	     (if wid > 1 || rng then LBRACK :: num (wid-1) :: COLON :: num 0 :: RBRACK :: [] else []) @ [SP; IDENT io])
 	     
 let rec fnstmt modul dly stg = function
 | IO (origin, io, idx, dir, _, lst) ->
@@ -1296,7 +1335,7 @@ let dump f (origin, modul) =
         List.assoc nam !(modul.func)
     else
         Hashtbl.find functable nam in
-    let lst = fsrc origin :: SEMI :: NL :: FUNCTION :: SP :: (varlst modul (ref SP) idx nam) @
+    let lst = fsrc origin :: NL :: FUNCTION :: SP :: (varlst modul (ref SP) idx nam) @
     List.flatten (List.map (fnstmt modul false (ref FIRSTG)) (List.tl lst)) @ [ENDFUNCTION] in
     append lst
   ) (List.rev !(modul.needed));
@@ -1428,7 +1467,7 @@ let translate errlst xmlf =
     let xmlerr = ref None in
     let xml = try Xml.parse_file xmlf with Xml.Error err -> xmlerr := Some err; Xml.PCData "Xml.Error" in
     let (line,range) = match !xmlerr with Some (_, errpos) -> (Xml.line errpos, Xml.range errpos) | None -> (0, (0,0)) in
-    let rwxml = rw' "a1" errlst xml in
+    let rwxml = rw' {anchor="a1";errlst=errlst;names=ref []} xml in
     catitm None (empty_itms ()) rwxml;
     let top = snd(List.hd !top) in
     print_endline ("toplevel is "^top);
