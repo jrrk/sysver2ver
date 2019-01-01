@@ -772,15 +772,6 @@ let diropv = function
 | Dport _ -> "ifport"
 | Dunknown -> "inout"
 
-let diropdbg = function
-| Dinput -> "Dinput"
-| Doutput -> "Doutput"
-| Dinout -> "Dinout"
-| Dvif -> "Dvif"
-| Dinam str -> "Dinam "^str
-| Dport _ -> "Dport"
-| Dunknown -> "Dunknown"
-
 let rec cadd = function
 | [] -> HEX 0
 | ERR err :: tl -> ERR err
@@ -1496,7 +1487,6 @@ let dumpform f f' separate =
 
 let dumps s = "\""^s^"\""
 let dumpi n = string_of_int n
-let dumpdir d = diropdbg d
 let dumpcnst (w,n) = dumpsized w n
 
 let dumpu = function
@@ -1544,6 +1534,17 @@ let dumpcmp = function
 | Clts -> "Clts"
 
 let dumpb b = string_of_bool b
+let dumpstrlst lst = "["^String.concat ";\n\t" (List.map dumps lst)^"]"
+
+let rec dumpdir = function
+| Dinput -> "Dinput"
+| Doutput -> "Doutput"
+| Dinout -> "Dinout"
+| Dvif -> "Dvif"
+| Dinam str -> "Dinam \""^str^"\""
+| Dport(str1, int1, dirop, str2, str_lst) ->
+     "Dport("^dumps str1 ^", "^ dumpi int1 ^", "^ dumpdir dirop ^", "^ dumps str2 ^", "^ dumpstrlst str_lst^")"
+| Dunknown -> "Dunknown"
 
 let rec dumpitm = function
 | VRF (id, []) -> "VRF (\""^id^"\", [])"
@@ -1575,7 +1576,7 @@ let rec dumpitm = function
 | LOGIC (logop, rw_lst) -> "LOGIC("^dumplog logop^", "^dumplst rw_lst^")"
 | CMP (cmpop, rw_lst) -> "CMP("^dumpcmp cmpop^", "^dumplst rw_lst^")"
 | FRF (str1, str2, rw_lst) -> "FRF("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
-| XRF (str1, str2, str3, str4, dirop) -> "XRF("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumps str4^", "^diropdbg dirop^")"
+| XRF (str1, str2, str3, str4, dirop) -> "XRF("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumps str4^", "^dumpdir dirop^")"
 | PKG (str1, str2, rw_lst) -> "PKG("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
 | CAT (str1, rw_lst) -> "CAT("^dumps str1^", "^dumplst rw_lst^")"
 | CPS (str1, rw_lst) -> "CPS("^dumps str1^", "^dumplst rw_lst^")"
@@ -1622,7 +1623,7 @@ and dumpitms fd modul =
   Printf.fprintf fd "  {io =\n";
   Printf.fprintf fd "  {contents =\n    [";
   List.iter (fun (a,(b,c,d,e,lst)) ->
-    Printf.fprintf fd "(%s, (%s, %d, %s, %s, %s));\n" (dumps a) (dumps b) c (diropdbg d) (dumps e) (dumpcstlst lst)) !(modul.io);
+    Printf.fprintf fd "(%s, (%s, %d, %s, %s, %s));\n" (dumps a) (dumps b) c (dumpdir d) (dumps e) (dumpcstlst lst)) !(modul.io);
   Printf.fprintf fd "     ]};\n";
   Printf.fprintf fd " v = {contents = [";
   List.iter (fun (a,(b,c,d,e)) -> Printf.fprintf fd "(%s, (%s, %d, %s, %d));\n" (dumps a) (dumps b) c d e) !(modul.v);
