@@ -133,7 +133,7 @@ type rw =
 | TYP of typenc * int * int * rw list
 | FNC of string * string * int * rw list
 | TASK of string * string * string * rw list
-| INST of string * string * (string * rw list)
+| INST of string * string list * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * string * rw list
 | TPLSRGS of string * string * int * rw list
@@ -298,6 +298,7 @@ let xrflst = ref []
 let smplopt = ref None
 let selopt = ref None
 let optopt = ref None
+let rngopt = ref None
 let forlst = ref []
 let ternlst = ref []
 let ternothlst = ref []
@@ -571,7 +572,15 @@ let rec rw' attr = function
 | Xml.Element ("not"|"negate"|"extend"|"extends"|"lognot" as op, [("fl", origin); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' attr) xlst)
 | Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (snd (chkvif nam), List.map (rw' attr) xlst)
 | Xml.Element ("instance", [("fl", origin); ("name", nam); ("defName", dnam); ("origName", nam')], xlst) ->
-               INST (origin, nam, (dnam, List.map (rw' attr) xlst))
+	       let rnglst, attrlst = List.partition (function RNG _ -> true | _ -> false) (List.map (rw' attr) xlst) in
+               let inst = match rnglst with
+                   | RNG (CNST ((_, (HEX hi|SHEX hi)), _, []) :: CNST ((_, (HEX lo|SHEX lo)), _, []) :: []) :: [] ->
+                       begin
+                       INST (origin, Array.to_list (Array.init (hi-lo+1) (fun ix -> nam^"__BRA__"^string_of_int ix^"__KET__")), (dnam, attrlst))
+                       end
+                   | [] -> INST (origin, nam :: [], (dnam, attrlst))
+                   | oth -> rngopt := Some oth; failwith "rngopt" in
+               inst
 | Xml.Element ("range", [("fl", _)], xlst) -> RNG (List.map (rw' attr) xlst)
 | Xml.Element ("port", [("fl", origin); ("name", nam); ("direction", dir); ("portIndex", idx)], xlst) ->
                PORT (origin, nam, dirop dir, int_of_string idx, List.map (rw' attr) xlst)
@@ -1183,9 +1192,11 @@ let rec catitm (pth:string option) itms = function
         let (t,s,m1,ml) = Hashtbl.find typetable int1 in
         print_endline (string_of_int int1^":"^string_of_int int2^":"^s);
         Hashtbl.replace typetable int1 (t,s,m1,ml@[TYPCONST])
-| INST(origin, str1, (str2, port_lst)) ->
-    let pth' = match lcombine(pth,Some str1) with Some s -> s | None -> failwith "lcombine" in
-    itms.inst := (pth', (origin, str2, port_lst)) :: !(itms.inst)
+| INST(origin, str1lst, (str2, port_lst)) ->
+    List.iter (fun str1 ->
+        let pth' = match lcombine(pth,Some str1) with Some s -> s | None -> failwith "lcombine" in
+        itms.inst := (pth', (origin, str2, port_lst)) :: !(itms.inst)
+        ) str1lst
 | ALWYS(origin, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("POS", [VRF (rst, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     itms.alwys := (origin, POSPOS(ck,rst), optitm rw_lst) :: !(itms.alwys)    
@@ -1560,7 +1571,7 @@ let rec dumpitm = function
 | TYP (typenc, int1, int2, rw_lst) -> "TYP("^dumptyp typenc^", "^dumpi int1^", "^dumpi int2^", "^dumplst rw_lst^")"
 | FNC (str1, str2, int2, rw_lst) -> "FNC("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^")"
 | TASK (str1, str2, str3, rw_lst) -> "TASK("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumplst rw_lst^")"
-| INST (str1, str2, (str3, rw_lst)) -> "INST("^dumps str1^", "^dumps str2^"("^", "^dumps str3^", "^", "^dumplst rw_lst^"))"
+| INST (str1, str2lst, (str3, rw_lst)) -> "INST("^dumps str1^", "^dumpstrlst str2lst^"("^", "^dumps str3^", "^", "^dumplst rw_lst^"))"
 | SFMT (str1, rw_lst) -> "SFMT("^dumps str1^", "^dumplst rw_lst^")"
 | SYS (str1, str2, rw_lst) -> "SYS("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
 | TPLSRGS (str1, str2, int2, rw_lst) -> "TPLSRGS("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^")"

@@ -126,7 +126,7 @@ type rw =
 | TYP of typenc * int * int * rw list
 | FNC of string * string * int * rw list
 | TASK of string * string * string * rw list
-| INST of string * string * (string * rw list)
+| INST of string * string list * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * string * rw list
 | TPLSRGS of string * string * int * rw list
@@ -280,6 +280,7 @@ val optothlst : rw list ref
 val xrflst : rw list ref
 val smplopt : rw option ref
 val selopt : rw option ref
+val rngopt : rw list option ref
 val optopt : (rw list * rw list) option ref
 val forlst : (rw * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
