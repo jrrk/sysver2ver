@@ -125,7 +125,7 @@ type rw =
 | XML of rw list
 | EITM of string * string * string * int * rw list
 | IO of string * string list * int * dirop * string * rw list
-| VAR of string * string * int * string
+| VAR of string * string list * int * string
 | IVAR of string * string * int * rw list * int
 | TMPVAR of string * string * int * rw list
 | CNST of (int * cexp) * int * rw list
@@ -452,13 +452,13 @@ let rec jump_opt origin = function
 | tl -> JMPL (origin, tl)
 
 let while_opt origin lbl = function
-| VAR (_, ix'', _, ("int"|"integer"|"logic" as kind)) :: ASGN(dly, _, CNST (strt, _, []) :: VRF (ix, []) :: []) ::
+| VAR (_, [ix''], _, ("int"|"integer"|"logic" as kind)) :: ASGN(dly, _, CNST (strt, _, []) :: VRF (ix, []) :: []) ::
         JMPL (_, 
            (WHL
             (CMP (cmpop, CNST (stop, _, []) :: VRF (ix', []) :: []) ::
              stmtlst)) :: []) :: [] when (ix=ix') && (ix'=ix'') && fortailmatch ix (List.rev stmtlst) ->
                let (inc,stmts) = forinc (List.rev stmtlst) in FORSTMT (origin,kind,cmpop,ix,strt,stop,inc,stmts)
-| VAR (_, ix'', _, ("int"|"integer"|"logic" as kind)) :: ASGN(dly,_, CNST (strt, _, []) :: VRF (ix, []) :: []) ::
+| VAR (_, [ix''], _, ("int"|"integer"|"logic" as kind)) :: ASGN(dly,_, CNST (strt, _, []) :: VRF (ix, []) :: []) ::
            WHL
             (CMP (cmpop, CNST (stop, _, []) :: VRF (ix', []) :: []) ::
              stmtlst) :: [] when (ix=ix') && (ix'=ix'') && fortailmatch ix (List.rev stmtlst) ->
@@ -553,27 +553,36 @@ let rec rw' attr = function
     let (vif, sub) = chkvif nam in
     if vif then
        begin
-       print_endline ("@"^sub);
-       attr.names := (sub, idx) :: !(attr.names);
-       VAR (origin, sub, idx, typ)
+       match Hashtbl.find typetable idx with
+               | (UNPACKADTYP, "", SUBTYP idx', [TYPRNG (hi, lo)]) ->
+                   (match Hashtbl.find typetable idx' with
+                       | (IFCRFDTYP _, dir, TYPNONE, []) ->
+                           attr.names := expandbraket lo hi (fun istr -> let nam' = sub^istr in print_endline ("@"^nam'); (nam', idx')) @ !(attr.names);
+	                   VAR (origin, expandbraket lo hi (fun istr -> sub^istr), idx', typ)
+                       | oth -> typopt := Some oth; failwith "typopt;;562")
+               | (IFCRFDTYP _, dir, TYPNONE, []) ->
+                   print_endline ("@"^sub);
+                   attr.names := (sub, idx) :: !(attr.names);
+                   VAR (origin, [sub], idx, typ)
+               | oth -> typopt := Some oth; failwith "typopt;;567"
        end
     else
        begin
-           match Hashtbl.find typetable idx with
+       match Hashtbl.find typetable idx with
                | (UNPACKADTYP, "", SUBTYP idx', [TYPRNG (hi, lo)]) ->
                    (match Hashtbl.find typetable idx' with
                        | (IFCRFDTYP _, dir, TYPNONE, []) ->
                            attr.names := expandbraket lo hi (fun istr -> let nam' = nam^istr in print_endline ("@"^nam'); (nam', idx')) @ !(attr.names);
 	                   IO (origin, expandbraket lo hi (fun istr -> nam^istr), idx', Dinam dir, "logic", [])
-                       | oth -> typopt := Some oth; failwith "typopt;;568")
+                       | oth -> typopt := Some oth; failwith "typopt;;577")
                | (IFCRFDTYP _, dir, TYPNONE, []) ->
                    print_endline ("@"^nam);
                    attr.names := (nam, idx) :: !(attr.names);
                    IO (origin, [nam], idx, Dinam dir, "logic", [])
-               | oth -> typopt := Some oth; failwith "typopt;;564"
+               | oth -> typopt := Some oth; failwith "typopt;;582"
        end
 | Xml.Element ("var", [("fl", origin); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')], []) ->
-               VAR (origin, nam, int_of_string tid, typ)
+               VAR (origin, [nam], int_of_string tid, typ)
 | Xml.Element ("var", [("fl", origin); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')],
                [Xml.Element ("const", [("fl", _); ("name", _); ("dtype_id", cid)], []) as lev]) ->
                              IVAR (origin, nam, int_of_string tid, [rw' attr lev], int_of_string cid)
@@ -1105,7 +1114,7 @@ and cstmt modul dly = function
     expr dst @ stmtdly dly @ expr src
 | CS (origin, sel :: lst) -> CASE :: LPAREN :: expr sel @ (RPAREN :: NL :: List.flatten (List.map (csitm modul dly) lst)) @ [NL;ENDCASE]
 | CA(origin, rght::lft::[]) -> ASSIGN :: SP :: expr lft @ stmtdly dly @ expr rght
-| VAR (origin, id, idx, _) -> varlst modul (ref SP) idx id
+| VAR (origin, idlst, idx, _) -> List.flatten (List.map (fun id -> varlst modul (ref SP) idx id) idlst)
 | FORSTMT (o,kind,cnd,ix,strt,stop,inc,stmts) ->
     FOR :: LPAREN :: (if kind <> "" then IDENT kind :: SP :: [] else []) @
     IDENT ix :: ASSIGNMENT :: SIZED strt :: SEMI ::
@@ -1217,8 +1226,8 @@ let optitm lst =
 
 let rec catitm (pth:string option) itms = function
 | IO(origin, str1lst, int1, dir, str3, clst) -> List.iter (fun str1 -> itms.io := (str1, (origin, int1, dir, str3, List.map ioconn clst)) :: !(itms.io)) str1lst
-| VAR(origin, str1, int1, "ifaceref") -> itms.ir := (origin, str1, int1) :: !(itms.ir)
-| VAR(origin, str1, int1, str2) -> itms.v := (str1, (origin, int1, str2, -1)) :: !(itms.v)
+| VAR(origin, str1lst, int1, "ifaceref") -> List.iter (fun str1 -> itms.ir := (origin, str1, int1) :: !(itms.ir)) str1lst
+| VAR(origin, str1lst, int1, str2) -> List.iter (fun str1 -> itms.v := (str1, (origin, int1, str2, -1)) :: !(itms.v)) str1lst
 | IVAR(origin, str1, int1, rwlst, int2) -> itms.iv := (str1, (origin, int1, rwlst, int2)) :: !(itms.iv)
 | TMPVAR(origin, str1, int1, stmtlst) ->
     List.iter (catitm pth itms) stmtlst;
@@ -1361,10 +1370,10 @@ let rec fnstmt modul dly stg = function
     let lst = List.flatten (List.map (fun io -> iolst (ref (if !stg = FIRSTG then LPAREN else COMMA)) dir idx io) iolst') in
     stg := IOSTG;
     lst
-| VAR (origin, id, idx, _) -> 
+| VAR (origin, idlst, idx, _) -> 
     let dlm = match !stg with FIRSTG -> LPAREN::RPAREN::SEMI::[] | IOSTG -> RPAREN::SEMI::[] | VARSTG | JMPSTG | BDYSTG -> [] in
     stg := VARSTG;
-    dlm @ varlst modul (ref NL) idx id
+    dlm @ List.flatten (List.map (fun id -> varlst modul (ref NL) idx id) idlst)
 | JMPL(origin, rw_lst) ->
     let dlm = match !stg with FIRSTG -> LPAREN::RPAREN::SEMI::[] | IOSTG -> RPAREN::SEMI::[] | VARSTG -> SEMI::[] | JMPSTG | BDYSTG -> [] in
     stg := JMPSTG;
@@ -1601,7 +1610,7 @@ let rec dumpitm = function
 | XML (rw_lst) -> "XML("^dumplst rw_lst^")"
 | EITM (str1, str2, str3, int2, rw_lst) -> "EITM("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumpi int2^", "^dumplst rw_lst^")"
 | IO (str1, str2lst, int2, dirop, str3, rw_lst) -> "IO("^dumps str1^", "^dumpstrlst str2lst^", "^dumpi int2^", "^dumpdir dirop^", "^dumps str3^", "^dumplst rw_lst^")"
-| VAR (str1, str2, int2, str3) -> "VAR"^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumps str3^")"
+| VAR (str1, str2lst, int2, str3) -> "VAR"^dumps str1^", "^dumpstrlst str2lst^", "^dumpi int2^", "^dumps str3^")"
 | IVAR (str1, str2, int2, rw_lst, int3) -> "IVAR("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^", "^dumpi int3^")"
 | TMPVAR (str1, str2, int2, rw_lst) -> "TMPVAR("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^")"
 | CNST ((int, cexp), int2, rw_lst) -> "CNST("^dumpcnst (int, cexp)^", "^dumpi int2^", "^dumplst rw_lst^")"

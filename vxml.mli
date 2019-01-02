@@ -118,7 +118,7 @@ type rw =
 | XML of rw list
 | EITM of string * string * string * int * rw list
 | IO of string * string list * int * dirop * string * rw list
-| VAR of string * string * int * string
+| VAR of string * string list * int * string
 | IVAR of string * string * int * rw list * int
 | TMPVAR of string * string * int * rw list
 | CNST of (int * cexp) * int * rw list

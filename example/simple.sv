@@ -1,6 +1,6 @@
 // Cut down system verilog test
 
-module test (input clk, input rst);
+module test (input clk, input rst, output [31:0] test1);
 
    // interface instance
    handshake inf1 (), inf2[1:0]();
@@ -21,6 +21,8 @@ module test (input clk, input rst);
       .inf2 (inf2)
    );
 
+   assign test1 = inf1.port1 ^ inf2[0].port1;
+   
 endmodule
 
 interface handshake #(parameter int unsigned WIDTH = 32)();
