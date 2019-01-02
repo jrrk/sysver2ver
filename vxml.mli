@@ -117,7 +117,7 @@ type rw =
 | UNKNOWN
 | XML of rw list
 | EITM of string * string * string * int * rw list
-| IO of string * string * int * dirop * string * rw list
+| IO of string * string list * int * dirop * string * rw list
 | VAR of string * string * int * string
 | IVAR of string * string * int * rw list * int
 | TMPVAR of string * string * int * rw list
@@ -131,7 +131,7 @@ type rw =
 | SYS of string * string * rw list
 | TPLSRGS of string * string * int * rw list
 | VPLSRGS of string * int * rw list
-| PORT of string * string * dirop * int * rw list
+| PORT of string * string * dirop * rw list
 | CA of string * rw list
 | UNRY of unaryop * rw list
 | SEL of string * rw list
@@ -281,6 +281,8 @@ val xrflst : rw list ref
 val smplopt : rw option ref
 val selopt : rw option ref
 val rngopt : rw list option ref
+val typopt : typetable_t option ref
+val portopt : rw option ref
 val optopt : (rw list * rw list) option ref
 val forlst : (rw * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
@@ -290,6 +292,7 @@ val smpothlst : rw list ref
 val optitmlst : (rw list * rw list) list ref
 
 val modules : (string, string * itms * rw list) Hashtbl.t
+val modulexml : (string, Xml.xml list) Hashtbl.t
 val modules_opt : (string, string * itms * rw list) Hashtbl.t
 val packages : (string, string * itms) Hashtbl.t
 val interfaces : (string, string * itms * rw list) Hashtbl.t
@@ -314,6 +317,8 @@ val simplify_exp : string -> rw list ref -> rw -> rw
 val simplify_asgn : bool -> string -> rw -> rw -> rw
 val jump_opt : string -> rw list -> rw
 val fortailmatch : string -> rw list -> bool
+val readxml : string -> int * (int * int) * Xml.xml
+val rw' : xmlattr -> Xml.xml -> rw
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list) list
 val dump : string -> string * itms * rw list -> token list
 val debug : string -> string * itms * rw list -> unit

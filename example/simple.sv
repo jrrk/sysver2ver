@@ -3,7 +3,7 @@
 module test (input clk, input rst);
 
    // interface instance
-   handshake inf1 (), inf2();
+   handshake inf1 (), inf2[1:0]();
 
    // source instance
    source source0 (
@@ -45,10 +45,10 @@ module source (
    input logic    clk,
    input logic    rst,
    handshake.dir1 inf1,
-   handshake.dir2 inf2
+   handshake.dir2 inf2[1:0]
 );
 
-   assign inf1.port1 = inf2.port1;
+   assign inf1.port1 = inf2[0].port1;
 
 endmodule
 
@@ -58,9 +58,9 @@ module drain (
    input logic    clk,
    input logic    rst,
    handshake.dir2 inf1,
-   handshake.dir1 inf2
+   handshake.dir1 inf2[1:0]
 );
 
-   assign inf2.port1 = inf1.port1;
+   assign inf2[0].port1 = inf1.port1;
 
 endmodule
