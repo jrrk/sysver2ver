@@ -187,6 +187,7 @@ type rw =
 | NEGEDGE of string
 | COMB
 | MODPORTFTR of string * string
+| TYPETABLE of typetable_t array
 
 type token =
 | SP
@@ -245,6 +246,14 @@ type token =
 | INITIAL
 | FINAL
 
+type xmlattr = {
+    anchor: string;
+    errlst: Xml.xml list ref;
+    names: (string*typetable_t) list ref;
+    typetable : typetable_t array ref;
+    intf: (string*string) list ref;
+    }
+    
 type itms = { 
   io: (string*(string*int*dirop*string*(int*cexp) list)) list ref;
   v: (string*(string*int*string*int)) list ref;
@@ -260,17 +269,10 @@ type itms = {
   imp : (string*string*string) list list ref;
   inst: (string*(string*string*rw list)) list ref;
   cnst: (string*(int*cexp)) list ref;
+  attr: xmlattr;
   needed: string list ref;
 }
 
-type xmlattr = {
-    anchor: string;
-    errlst: Xml.xml list ref;
-    names: (string*typetable_t) list ref;
-    typetable: (int*typetable_t) list ref;
-    intf: (string*string) list ref;
-    }
-    
 let modules = Hashtbl.create 255
 let modulexml = Hashtbl.create 255
 let modules_opt = Hashtbl.create 255
@@ -281,7 +283,7 @@ let intfhier = Hashtbl.create 255
 let files = Hashtbl.create 255
 let hierarchy = Hashtbl.create 255
 let functable = Hashtbl.create 255
-let (typetable : (int, typetable_t) Hashtbl.t) = Hashtbl.create 255
+let (typetable_ : (int, typetable_t) Hashtbl.t) = Hashtbl.create 255
 
 let exprothlst = ref []
 let stmtothlst = ref []
@@ -529,7 +531,7 @@ let rec simplify_exp anchor tmpl = function
         let uniq = 1000000 + List.length !tmpl * 1000 + idx' in
         let t = "__tmp"^string_of_int uniq in
         let tmp = VRF (t, []) and idx = -uniq in
-        Hashtbl.replace typetable idx (BASDTYP, "logic", TYPRNG(idx'-1,0), []); 
+        Hashtbl.replace typetable_ idx (BASDTYP, "logic", TYPRNG(idx'-1,0), []); 
         let smpl = simplify_exp anchor tmpl oth in
         tmpl := !tmpl @ TMPVAR(anchor, t, idx, []) :: ASGN(false, orig, smpl :: tmp :: []) :: [];
         SEL (orig, tmp :: lo :: wid :: [])
@@ -570,9 +572,9 @@ let rec rw' attr = function
     let (vif, sub) = chkvif nam in
     if vif then
        begin
-       match Hashtbl.find typetable idx with
+       match !(attr.typetable).(idx) with
                | (UNPACKADTYP, "", SUBTYP idx', [TYPRNG (hi, lo)]) ->
-                   (match Hashtbl.find typetable idx' with
+                   (match !(attr.typetable).(idx') with
                        | (IFCRFDTYP _, dir, TYPNONE, []) as typ' ->
                            attr.names := expandbraket lo hi (fun istr ->
                                let nam' = sub^istr in print_endline ("@"^nam'); (nam', typ')) @ !(attr.names);
@@ -586,9 +588,9 @@ let rec rw' attr = function
        end
     else
        begin
-       match Hashtbl.find typetable idx with
+       match !(attr.typetable).(idx) with
                | (UNPACKADTYP, "", SUBTYP idx', [TYPRNG (hi, lo)]) ->
-                   (match Hashtbl.find typetable idx' with
+                   (match !(attr.typetable).(idx') with
                        | (IFCRFDTYP _, dir, TYPNONE, []) as typ' ->
                            attr.names := expandbraket lo hi (fun istr ->
                                let nam' = nam^istr in print_endline ("@"^nam'); (nam', typ')) @ !(attr.names);
@@ -768,14 +770,14 @@ let rec rw' attr = function
     TPLSRGS(origin, nam, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("modportftaskref", [("fl", origin); ("name", nam)], []) -> MODPORTFTR (origin, nam)
 | Xml.Element ("typetable", [("fl", origin)], xlst) ->
-    let types = List.map (rw' attr) xlst in
-    let max = fold1 (max) (List.map (function TYP (ix,_) -> ix | _ -> 0) types) in
-    let typarr = Array.init max (fun ix -> if List.mem_assoc ix types then List.assoc ix types else (UNKDTYP,"",TYPNONE,[])) in
+    let types = List.map (fun itm -> (function TYP(ix,t) -> (ix,t) | _ -> (0,(UNKDTYP,"",TYPNONE,[]))) (rw' attr itm)) xlst in
+    let max = fold1 (max) (List.map (function (ix,_) -> ix) types) in
+    let typarr = Array.init (max+1) (fun ix -> if List.mem_assoc ix types then List.assoc ix types else (UNKDTYP,"",TYPNONE,[])) in
     attr.typetable := typarr;
     TYPETABLE typarr
 | (Xml.Element (str, _, _) | Xml.PCData str) as err -> attr.errlst := err :: !(attr.errlst); failwith ("XML element "^str^" not supported")
 
-let empty_itms () = {
+let empty_itms errlst = {
 io=ref [];
 v=ref [];
 iv=ref [];
@@ -790,6 +792,7 @@ gen=ref [];
 imp=ref [];
 inst=ref [];
 cnst=ref [];
+attr={anchor="a1";errlst=errlst;names=ref [];intf=ref [];typetable=ref [||]};
 needed=ref [] }
 
 let rev_itms prev = {
@@ -807,6 +810,7 @@ gen=ref (List.rev !(prev.gen));
 imp=ref (List.rev !(prev.imp));
 inst=ref (List.rev !(prev.inst));
 cnst=ref (List.rev !(prev.cnst));
+attr=prev.attr;
 needed=ref (List.rev !(prev.needed)) }
 
 let copy_itms prev = {
@@ -824,6 +828,7 @@ gen=ref !(prev.gen);
 imp=ref !(prev.imp);
 inst=ref !(prev.inst);
 cnst=ref !(prev.cnst);
+attr=prev.attr;
 needed=ref !(prev.needed) }
 
 let unaryopv = function
@@ -1083,31 +1088,31 @@ let reviter lst =
 
 let num x = NUM (HEX x)
 
-let rec cntbasic = function
-| (STRDTYP,_,typmap,rw_lst) -> fold1 (+) (List.flatten (List.map cntmembers rw_lst)) :: []
-| (UNIDTYP,_,typmap,rw_lst) -> fold1 (max) (List.flatten (List.map cntmembers rw_lst)) :: []
+let rec cntbasic attr = function
+| (STRDTYP,_,typmap,rw_lst) -> fold1 (+) (List.flatten (List.map (cntmembers attr) rw_lst)) :: []
+| (UNIDTYP,_,typmap,rw_lst) -> fold1 (max) (List.flatten (List.map (cntmembers attr) rw_lst)) :: []
 | (BASDTYP, ("logic"|"integer"|"int"|"bit"), TYPRNG(hi, lo), []) -> hi - lo + 1 :: []
 | (BASDTYP, ("logic"|"bit"), TYPNONE, []) -> 1 :: []
 | (BASDTYP, ("real"), TYPNONE, []) -> 64 :: []
 | (BASDTYP, ("string"), TYPNONE, []) -> 1 :: []
 | (IFCRFDTYP _, _, TYPNONE, []) -> 0 :: []
-| (PACKADTYP, "", SUBTYP subtyp, TYPRNG(n,n')::_) -> List.map (fun itm -> itm * (n - n' + 1)) (findmembers subtyp)
-| (UNPACKADTYP, "", SUBTYP subtyp, TYPRNG (n,n')::_) -> (n - n' + 1) :: findmembers subtyp
+| (PACKADTYP, "", SUBTYP subtyp, TYPRNG(n,n')::_) -> List.map (fun itm -> itm * (n - n' + 1)) (findmembers attr subtyp)
+| (UNPACKADTYP, "", SUBTYP subtyp, TYPRNG (n,n')::_) -> (n - n' + 1) :: findmembers attr subtyp
 | (MEMBDTYP, id, SUBTYP subtyp, []) -> 1 :: []
 | oth -> typothlst := oth :: !typothlst; failwith "typothlst"
 
-and cntmembers = function
-| TYPMEMBER (idx1, idx2) -> findmembers idx2
+and cntmembers attr = function
+| TYPMEMBER (idx1, idx2) -> findmembers attr idx2
 | oth -> memothlst := oth :: !memothlst; failwith "memothlst"
 
-and findmembers' idx = if Hashtbl.mem typetable idx then
-        let (t,s,m1,ml) as tab = Hashtbl.find typetable idx in
-        (cntbasic tab, List.mem TYPCONST ml, match m1 with TYPRNG _ -> true | _ -> false) else ([], false, false)
+and findmembers' attr idx = if idx < Array.length !(attr.typetable) then
+        let (t,s,m1,ml) as tab = !(attr.typetable).(idx) in
+        (cntbasic attr tab, List.mem TYPCONST ml, match m1 with TYPRNG _ -> true | _ -> false) else ([], false, false)
 
-and findmembers idx = let (widlst,cnst,rng) = findmembers' idx in widlst
+and findmembers attr idx = let (widlst,cnst,rng) = findmembers' attr idx in widlst
 
 let varlst modul delim idx id =
-    let (widlst,cnst,rng) = findmembers' idx in
+    let (widlst,cnst,rng) = findmembers' modul.attr idx in
     let expand delim = fun w -> let lst = !delim :: num w :: [] in delim := STAR; lst in
     let decl = !delim :: (if cnst then WIRE else LOGIC) :: SP :: match widlst with
                 | [] -> IDENT id :: []
@@ -1279,7 +1284,7 @@ let rec catitm (pth:string option) itms = function
 (*
  | TYP(id1, int1, int2, []) ->
     if id1 = CNSTDTYP then
-        let (t,s,m1,ml) = Hashtbl.find typetable int1 in
+        let (t,s,m1,ml) = !(attr.typetable).(int1) in
         print_endline (string_of_int int1^":"^string_of_int int2^":"^s);
         Hashtbl.replace typetable int1 (t,s,m1,ml@[TYPCONST])
 *)
@@ -1322,7 +1327,7 @@ let rec catitm (pth:string option) itms = function
 | BGN(pth', rw_lst) ->
     List.iter (catitm (lcombine (pth,pth')) itms) rw_lst
 | FNC(origin, nam, idx1, rw_lst) ->
-    let itms' = empty_itms () in
+    let itms' = empty_itms (ref []) in
     List.iter (catitm pth itms') rw_lst;
     let fn = (origin, idx1, rw_lst, itms') in
     itms.func := (nam, fn) :: !(itms.func);
@@ -1337,7 +1342,7 @@ let rec catitm (pth:string option) itms = function
     | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst") rw_lst) :: !(itms.imp)
 | IMRF(origin, str1, str2, []) -> ()
 | TASK (origin, "task", str1, rw_lst) ->
-    let itms' = empty_itms () in
+    let itms' = empty_itms (ref []) in
     List.iter (catitm pth itms') rw_lst;
     itms.task := (origin, str1, rw_lst, itms') :: !(itms.task)
 | NTL(rw_lst)
@@ -1381,38 +1386,36 @@ let rec catitm (pth:string option) itms = function
         itms.needed := nam :: !(itms.needed);
 | XRF(origin, str1, str2, str3, dirop) -> ()
 | MODUL(origin, str1, str2, rw_lst) ->
-    let itms = empty_itms () in
+    let itms = empty_itms (ref []) in
     List.iter (catitm None itms) rw_lst;
     let itms' = rev_itms itms in
     if Hashtbl.mem hierarchy str1 then Hashtbl.add modules str1 (origin, itms', rw_lst)
     else if Hashtbl.mem hierarchy str2 then Hashtbl.add modules str2 (origin, itms', rw_lst)
     else print_endline ("Module "^str1^"/"^str2^" not in cell hierarchy");
 | PKG(origin, str1, rw_lst) ->
-    let itms = empty_itms () in
+    let itms = empty_itms (ref []) in
     List.iter (catitm (Some str1) itms) rw_lst;
     Hashtbl.add packages str1 (origin, itms)
 | IFC(origin, str1, rw_lst) ->
-    let itms = empty_itms () in
+    let itms = empty_itms (ref []) in
     List.iter (catitm (Some str1) itms) rw_lst;
     Hashtbl.add interfaces str1 (origin, itms, rw_lst)
 | FIL(enc, fil) ->
     Hashtbl.add files enc fil
 | CELLS(rw_lst) -> ()
 | TPLSRGS (_, id, tid, []) -> ()
-(*
-| TYP (dtyp, subtype, idx, lst) -> ()
-*)
+| TYPETABLE _ -> ()
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
 
-let iolst delim dir idx io =
-    let (widlst,cnst,rng) = findmembers' idx in
+let iolst modul delim dir idx io =
+    let (widlst,cnst,rng) = findmembers' modul.attr idx in
     let wid = fold1 ( * ) widlst in
     !delim :: (DIR dir :: SP :: LOGIC ::
 	     (if wid > 1 || rng then LBRACK :: num (wid-1) :: COLON :: num 0 :: RBRACK :: [] else []) @ [SP; IDENT io])
 	     
 let rec fnstmt modul dly stg = function
 | IO (origin, iolst', idx, dir, _, lst) ->
-    let lst = List.flatten (List.map (fun io -> iolst (ref (if !stg = FIRSTG then LPAREN else COMMA)) dir idx io) iolst') in
+    let lst = List.flatten (List.map (fun io -> iolst modul (ref (if !stg = FIRSTG then LPAREN else COMMA)) dir idx io) iolst') in
     stg := IOSTG;
     lst
 | VAR (origin, idlst, idx, _) -> 
@@ -1445,7 +1448,7 @@ let dump f (origin, modul, _) =
   let head = ref [fsrc origin; MODULE; SP; IDENT f] in
   let delim = ref LPAREN in
   List.iter (fun (io, (origin, idx, dir, kind', lst)) -> 
-    head := !head @ iolst delim dir idx io;
+    head := !head @ iolst modul delim dir idx io;
     delim := COMMA;
     ) (List.rev !(modul.io));
   head := !head @ [RPAREN;SEMI;NL];
@@ -1569,7 +1572,7 @@ let dumpform f f' separate =
     Printf.fprintf fd "read_sverilog -container r -libname WORK -12 { \\\n";
     let plst = ref [] in Hashtbl.iter (fun _ (s,_) -> plst := fst (find_source s) :: !plst) packages;
     let iflst = List.map snd (if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else []) in
-    let hlst = List.sort_uniq compare (List.map (fun k -> let (s, _, _) = if Hashtbl.mem modules k then Hashtbl.find modules k else (k, empty_itms (), []) in fst (find_source s)) (f::iflst)) in
+    let hlst = List.sort_uniq compare (List.map (fun k -> let (s, _, _) = if Hashtbl.mem modules k then Hashtbl.find modules k else (k, empty_itms (ref []), []) in fst (find_source s)) (f::iflst)) in
     let slst = !plst @ hlst in
     List.iter (fun src -> if src.[0] == '/' then Printf.fprintf fd "%s \\\n" src else Printf.fprintf fd "%s/%s \\\n" srcpath src) slst;
     Printf.fprintf fd "}\n";
@@ -1720,6 +1723,7 @@ let rec dumpitm = function
 | NEGEDGE (str1) -> "NEGEDGE"^dumps str1^")"
 | COMB -> "COMB"
 | MODPORTFTR (str1, str2) -> "MODPORTFTR("^dumps str1^", "^dumps str2^")"
+| TYPETABLE arr -> "[|"^String.concat ";\n\t" (Array.to_list (Array.mapi (fun idx (typenc, str1, typmap, typ_lst) -> string_of_int idx^": TYP("^dumptyp typenc^", "^dumps str1^", "^dumpm typmap^", "^dumpmlst typ_lst^")") arr))^"|]"
  
 and dumplst lst = "["^String.concat ";\n\t" (List.map dumpitm lst)^"]"
 and dumpcstlst lst = "["^String.concat ";\n\t" (List.map dumpcnst lst)^"]"
@@ -1790,8 +1794,9 @@ let readxml xmlf =
 
 let translate errlst xmlf =
     let (line,range,xml) = readxml xmlf in
-    let rwxml = rw' {anchor="a1";errlst=errlst;names=ref [];intf=ref [];typetable=ref []} xml in
-    catitm None (empty_itms ()) rwxml;
+    let empty = empty_itms errlst in
+    let rwxml = rw' empty.attr xml in
+    catitm None empty rwxml;
     let top = snd(List.hd !top) in
     print_endline ("toplevel is "^top);
     let tophash = Hashtbl.find modules top in

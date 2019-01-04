@@ -180,6 +180,7 @@ type rw =
 | NEGEDGE of string
 | COMB
 | MODPORTFTR of string * string
+| TYPETABLE of typetable_t array
 
 type token =
 | SP
@@ -238,6 +239,14 @@ type token =
 | INITIAL
 | FINAL
 
+type xmlattr = {
+    anchor: string;
+    errlst: Xml.xml list ref;
+    names: (string*typetable_t) list ref;
+    typetable : typetable_t array ref;
+    intf : (string * string) list ref;
+     }
+
 type itms = { 
   io: (string*(string*int*dirop*string*(int*cexp) list)) list ref;
   v: (string*(string*int*string*int)) list ref;
@@ -253,16 +262,9 @@ type itms = {
   imp : (string*string*string) list list ref;
   inst: (string*(string*string*rw list)) list ref;
   cnst: (string*(int*cexp)) list ref;
+  attr : xmlattr;
   needed: string list ref;
 }
-
-type xmlattr = {
-    anchor: string;
-    errlst: Xml.xml list ref;
-    names: (string*typetable_t) list ref;
-    typetable : (int * typetable_t) list ref;
-    intf : (string * string) list ref;
-     }
 
 val exprothlst : rw list ref
 val stmtothlst : rw list ref
@@ -304,7 +306,6 @@ val interfacexml : (string, string * string * rw list) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
 val intfhier : (string * string, int) Hashtbl.t
 val functable : (string, string * int * rw list * itms) Hashtbl.t
-val typetable : (int, typetable_t) Hashtbl.t
 
 val top : (string * string) list ref
 
@@ -315,9 +316,9 @@ val cadd : cexp list -> cexp
 val cexp : string -> int * cexp
 val expr : rw -> token list
 val ewidth : rw -> int
-val cntmembers : typmap -> int list
-val findmembers : int -> int list
-val findmembers' : int -> int list * bool * bool
+val cntmembers : xmlattr -> typmap -> int list
+val findmembers : xmlattr -> int -> int list
+val findmembers' : xmlattr -> int -> int list * bool * bool
 val optitm : rw list -> rw list
 val simplify_exp : string -> rw list ref -> rw -> rw
 val simplify_asgn : bool -> string -> rw -> rw -> rw
