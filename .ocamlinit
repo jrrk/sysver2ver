@@ -38,11 +38,12 @@ let xmlf = "obj_dir/Vdebug_rom.xml";;
 let xmlf = "obj_dir/Vcaseinside.xml";;
 let xmlf = "../ariane/obj_dir/Vdm_top.xml";;
 let xmlf = "obj_dir/Vaxi_slave_connect_example.xml";;
+let xmlf = "obj_dir/Vinterface_array.xml";;
 let xmlf = "obj_dir/Vsimple.xml";;
 *)
 
 let xmlf = "../ariane/obj_dir/Variane_testharness.xml";;
-let xmlf = "obj_dir/Vinterface_array.xml";;
+let xmlf = "obj_dir/Vsimple.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml,mods) = Vxml.translate errlst xmlf;;
@@ -70,3 +71,11 @@ List.length !memothlst
 let oldmod = ref [];;
 Hashtbl.iter (fun k _ -> oldmod := k :: !oldmod) Vxml.modules;;
 let oldmod = !oldmod;;
+
+let ihier = ref [];;
+Hashtbl.iter (fun k x -> ihier := (k,Hashtbl.find typetable x) :: !ihier) Vxml.intfhier;;
+let ihier = !ihier;;
+
+let maxidx = ref 0;;
+Hashtbl.iter (fun k _ -> maxidx := max !maxidx k) typetable;;
+let typearr = Array.init (1 + !maxidx) (fun ix -> if Hashtbl.mem typetable ix then Hashtbl.find typetable ix else (UNKDTYP,"",TYPNONE,[]));;

@@ -75,7 +75,7 @@ type dirop =
 | Dinput
 | Doutput
 | Dinout
-| Dvif
+| Dvif of string
 | Dinam of string 
 | Dport of (string * int * dirop * string * string list)
 
@@ -86,6 +86,7 @@ type typmap =
 | TYPMEMBER of int*int
 | TYPENUM of string * int * (int*int)
 | TYPCONST
+| TYPDEF
 
 type typenc =
 | UNKDTYP
@@ -130,7 +131,7 @@ type rw =
 | TMPVAR of string * string * int * rw list
 | CNST of (int * cexp) * int * rw list
 | VRF of string * rw list
-| TYP of typenc * int * int * rw list
+| TYP of int * typetable_t
 | FNC of string * string * int * rw list
 | TASK of string * string * string * rw list
 | INST of string * string list * (string * rw list)
@@ -265,7 +266,9 @@ type itms = {
 type xmlattr = {
     anchor: string;
     errlst: Xml.xml list ref;
-    names: (string*int) list ref;
+    names: (string*typetable_t) list ref;
+    typetable: (int*typetable_t) list ref;
+    intf: (string*string) list ref;
     }
     
 let modules = Hashtbl.create 255
@@ -273,6 +276,8 @@ let modulexml = Hashtbl.create 255
 let modules_opt = Hashtbl.create 255
 let packages = Hashtbl.create 255
 let interfaces = Hashtbl.create 255
+let interfacexml = Hashtbl.create 255
+let intfhier = Hashtbl.create 255
 let files = Hashtbl.create 255
 let hierarchy = Hashtbl.create 255
 let functable = Hashtbl.create 255
@@ -302,6 +307,7 @@ let optopt = ref None
 let rngopt = ref None
 let typopt = ref None
 let portopt = ref None
+let cellopt = ref None
 let forlst = ref []
 let ternlst = ref []
 let ternothlst = ref []
@@ -309,6 +315,7 @@ let optitmlst = ref []
 let widthlst = ref []
 
 let matchcnt = ref 0
+let top = ref []
 
 let constnet = function
 | "1'h1" -> "supply1"
@@ -431,7 +438,7 @@ let rec typmap = function
 let rec subtypmap = function
 | RNG [CNST ((b,(HEX n|SHEX n)), _, []); CNST ((b',(HEX n'|SHEX n')), _, [])] -> TYPRNG(n,n')
 | EITM ("enumitem", itm, "", n, [CNST ((w',(HEX n'|SHEX n')), _, [])]) -> TYPENUM(itm, n, (w',n'))
-| TYP (MEMBDTYP, sub, idx, []) -> TYPMEMBER(idx, sub)
+| TYP (idx, (MEMBDTYP, id, SUBTYP sub, [])) -> TYPMEMBER(idx, sub)
 | oth -> subothlst := oth :: !subothlst; failwith "subothlst"
 
 let fortailmatch ix' = function
@@ -490,6 +497,14 @@ let typenc = function
 | "paramtypedtype" -> PARMTDTYP
 | _ -> failwith "typenc"
 
+let rec cell_hier = function
+| CELL (_, nam, subnam, hier, rw_lst) ->
+   let hier_lst = List.flatten (List.map cell_hier rw_lst) in
+   print_endline ("Cell: "^subnam);
+   Hashtbl.replace hierarchy subnam hier_lst;
+   (nam,subnam) :: hier_lst
+| oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
+
 let rec simplify_exp anchor tmpl = function
 | VRF (_, []) as vrf -> vrf
 | CNST _ as cst -> cst
@@ -542,7 +557,9 @@ let simplify_asgn dly' anchor dst = function
             | _ -> failwith "simplify_asgn"
 
 let rec rw' attr = function
-| Xml.Element ("verilator_xml", [], xlst) -> XML (List.map (rw' attr) xlst)
+| Xml.Element ("verilator_xml", [], xlst) ->
+    let decl,hier = List.partition (function Xml.Element (("files"|"module_files"|"netlist"), _, _) -> true | _ -> false) xlst in
+    XML (List.map (rw' attr) (decl@hier))
 | Xml.Element ("files"|"module_files" as fils, [], xlst) -> FILS (fils, List.map (rw' attr) xlst)
 | Xml.Element ("file", [("id", encoding); ("filename", nam); ("language", "1800-2017")], []) -> FIL (encoding, nam)
 | Xml.Element ("netlist", [], xlst) -> NTL (List.map (rw' attr) (List.rev xlst))
@@ -556,13 +573,14 @@ let rec rw' attr = function
        match Hashtbl.find typetable idx with
                | (UNPACKADTYP, "", SUBTYP idx', [TYPRNG (hi, lo)]) ->
                    (match Hashtbl.find typetable idx' with
-                       | (IFCRFDTYP _, dir, TYPNONE, []) ->
-                           attr.names := expandbraket lo hi (fun istr -> let nam' = sub^istr in print_endline ("@"^nam'); (nam', idx')) @ !(attr.names);
+                       | (IFCRFDTYP _, dir, TYPNONE, []) as typ' ->
+                           attr.names := expandbraket lo hi (fun istr ->
+                               let nam' = sub^istr in print_endline ("@"^nam'); (nam', typ')) @ !(attr.names);
 	                   VAR (origin, expandbraket lo hi (fun istr -> sub^istr), idx', typ)
                        | oth -> typopt := Some oth; failwith "typopt;;562")
-               | (IFCRFDTYP _, dir, TYPNONE, []) ->
+               | (IFCRFDTYP _, dir, TYPNONE, []) as typ' ->
                    print_endline ("@"^sub);
-                   attr.names := (sub, idx) :: !(attr.names);
+                   attr.names := (sub, typ') :: !(attr.names);
                    VAR (origin, [sub], idx, typ)
                | oth -> typopt := Some oth; failwith "typopt;;567"
        end
@@ -571,13 +589,14 @@ let rec rw' attr = function
        match Hashtbl.find typetable idx with
                | (UNPACKADTYP, "", SUBTYP idx', [TYPRNG (hi, lo)]) ->
                    (match Hashtbl.find typetable idx' with
-                       | (IFCRFDTYP _, dir, TYPNONE, []) ->
-                           attr.names := expandbraket lo hi (fun istr -> let nam' = nam^istr in print_endline ("@"^nam'); (nam', idx')) @ !(attr.names);
+                       | (IFCRFDTYP _, dir, TYPNONE, []) as typ' ->
+                           attr.names := expandbraket lo hi (fun istr ->
+                               let nam' = nam^istr in print_endline ("@"^nam'); (nam', typ')) @ !(attr.names);
 	                   IO (origin, expandbraket lo hi (fun istr -> nam^istr), idx', Dinam dir, "logic", [])
                        | oth -> typopt := Some oth; failwith "typopt;;577")
-               | (IFCRFDTYP _, dir, TYPNONE, []) ->
+               | (IFCRFDTYP _, dir, TYPNONE, []) as typ' ->
                    print_endline ("@"^nam);
-                   attr.names := (nam, idx) :: !(attr.names);
+                   attr.names := (nam, typ') :: !(attr.names);
                    IO (origin, [nam], idx, Dinam dir, "logic", [])
                | oth -> typopt := Some oth; failwith "typopt;;582"
        end
@@ -600,14 +619,13 @@ let rec rw' attr = function
 	       let rnglst, attrlst = List.partition (function RNG _ -> true | _ -> false) (List.map (rw' attr) xlst) in
                let exportlst = ref [] in
                List.iter (function
-                   | PORT (orig, nam, Dvif, [VRF (nam', [])]) as port when List.mem_assoc nam' !(attr.names) -> 
-                       let idx = List.assoc nam' !(attr.names) in
-                       (match Hashtbl.find typetable idx with
-                           | (IFCRFDTYP nam, dnam, TYPRNG(hi,lo), []) ->
-                               exportlst := expandbraket lo hi (fun istr -> PORT (orig, nam^istr, Dvif, [VRF (nam'^istr, [])])) @ !exportlst
+                   | PORT (orig, nam, Dvif _, [VRF (nam', [])]) as port when List.mem_assoc nam' !(attr.names) -> 
+                       (match List.assoc nam' !(attr.names) with
+                           | (IFCRFDTYP _, dir, TYPRNG(hi,lo), []) ->
+                               exportlst := expandbraket lo hi (fun istr -> PORT (orig, nam^istr, Dvif dir, [VRF (nam'^istr, [])])) @ !exportlst
                            | (IFCRFDTYP _, dir, TYPNONE, []) -> exportlst := port :: !exportlst
                            | oth -> typopt := Some oth; failwith "typopt;;599")
-                   | PORT (orig, nam, Dvif, [VRF (nam', [])]) ->
+                   | PORT (orig, nam, Dvif _, [VRF (nam', [])]) ->
                        print_endline ("vif interface "^nam'^" not found: ["^String.concat ";" (List.map (fun (k,_) -> k) !(attr.names))^"] ?")
                    | PORT (orig, nam, dir, connlst) as port -> exportlst := port :: !exportlst
                    | oth -> portopt := Some oth; failwith "portopt") attrlst;
@@ -615,10 +633,8 @@ let rec rw' attr = function
                let inst = match rnglst with
                    | RNG (CNST ((_, (HEX hi|SHEX hi)), _, []) :: CNST ((_, (HEX lo|SHEX lo)), _, []) :: []) :: [] ->
                        begin
-                       let idx = Hashtbl.hash nam in
                        print_endline ("@"^nam);
-                       attr.names := (nam, idx) :: !(attr.names);
-                       Hashtbl.replace typetable idx (IFCRFDTYP nam, dnam, TYPRNG(hi,lo), []); 
+                       attr.names := (nam, (IFCRFDTYP nam, dnam, TYPRNG(hi,lo), [])) :: !(attr.names);
                        INST (origin, expandbraket lo hi (fun istr -> nam^istr), (dnam, attrlst))
                        end
                    | [] -> INST (origin, nam :: [], (dnam, attrlst))
@@ -628,7 +644,7 @@ let rec rw' attr = function
 | Xml.Element ("port", [("fl", origin); ("name", nam); ("direction", dir); ("portIndex", idx)], xlst) ->
                PORT (origin, nam, dirop dir, List.map (rw' attr) xlst)
 | Xml.Element ("port", [("fl", origin); ("name", nam); ("portIndex", idx)], xlst) -> let (vif,sub) = chkvif nam in
-               PORT (origin, sub, Dvif, List.map (rw' attr) xlst)
+               PORT (origin, sub, Dvif idx, List.map (rw' attr) xlst)
 | Xml.Element ("sel", [("fl", origin); ("dtype_id", tid)], xlst) -> SEL (origin, List.map (rw' attr) xlst)
 | Xml.Element ("arraysel", [("fl", origin); ("dtype_id", tid)], xlst) -> ASEL (List.map (rw' attr) xlst)
 | Xml.Element ("always", [("fl", origin)], xlst) -> ALWYS (origin, List.map (rw' {attr with anchor=origin}) xlst)
@@ -647,7 +663,8 @@ let rec rw' attr = function
     CMP (cmpop cmp, List.map (rw' attr) xlst)
 | Xml.Element ("initial"|"final" as action, [("fl", origin)], xlst) -> INIT (origin, action, List.map (rw' attr) xlst)
 | Xml.Element ("package", [("fl", orig); ("name", nam); ("origName", nam')], xlst) -> PKG (orig, nam, List.map (rw' attr) xlst)
-| Xml.Element ("typedef", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> let idx = int_of_string tid in TYP (TYPDF nam, idx, idx, List.map (rw' attr) xlst)
+| Xml.Element ("typedef", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) ->
+    let idx = int_of_string tid in TYP (idx, (TYPDF nam, "", TYPNONE, List.map (fun arg -> subtypmap (rw' attr arg)) xlst))
 | Xml.Element ("func", [("fl", origin); ("name", nam); ("dtype_id", tid)], xlst) ->
     FNC (origin, nam, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("jumplabel", [("fl", origin)], xlst) -> jump_opt origin (List.map (rw' attr) xlst)
@@ -660,8 +677,9 @@ let rec rw' attr = function
     print_endline ("empty names: "^nam);
     let decl,content = List.partition (function Xml.Element ("var", _, _) -> true | _ -> false) xlst in
     let xlst' = decl@content in
-    Hashtbl.replace modulexml nam xlst';
-    MODUL (origin, nam, nam', List.map (rw' {attr with anchor=origin;names=ref []}) xlst')
+    let xlst'' = List.map (rw' {attr with anchor=origin;names=ref []}) xlst' in
+    Hashtbl.replace modulexml nam (origin, nam', xlst',xlst'');
+    MODUL (origin, nam, nam', xlst'')
 | Xml.Element ("case", [("fl", origin)], xlst) -> CS (origin, List.map (rw' attr) xlst)
 | Xml.Element ("caseitem", [("fl", origin)], xlst) -> CSITM (origin, List.map (rw' attr) xlst)
 | Xml.Element ("while", [("fl", _)], xlst) -> WHL (List.map (rw' attr) xlst)
@@ -670,8 +688,7 @@ let rec rw' attr = function
 | Xml.Element ("varxref", [("fl", origin); ("name", nam); ("dtype_id", tid); ("dotted", dotted)], []) ->
     let dirop = if List.mem_assoc dotted !(attr.names) then
         begin
-        let idx = List.assoc dotted !(attr.names) in
-        let (dtype, _, _, _) = Hashtbl.find typetable idx in
+        let (dtype, _, _, _) = List.assoc dotted !(attr.names) in
         match dtype with
             | IFCRFDTYP ifc -> print_endline ifc; Dinam ifc
 (* *)
@@ -687,43 +704,77 @@ let rec rw' attr = function
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' attr) xlst)
 | Xml.Element ("initarray"|"streaml"|"powsu"|"realtobits"|"itord"|"rand" as op, [("fl", origin); ("dtype_id", tid)], xlst) -> SYS (origin, "$"^op, List.map (rw' attr) xlst)
 | Xml.Element ("replicate", [("fl", origin); ("dtype_id", tid)], xlst) -> REPL (origin, int_of_string tid, List.map (rw' attr) xlst)
-| Xml.Element ("iface", [("fl", origin); ("name", bus); ("origName", bus')], xlst) -> IFC (origin, bus, List.map (rw' attr) xlst)
+| Xml.Element ("iface", [("fl", origin); ("name", bus); ("origName", bus')], xlst) ->
+    let xlst' = List.map (rw' attr) xlst in
+    Hashtbl.add interfacexml bus (origin, bus', xlst');
+    IFC (origin, bus, xlst')
 | Xml.Element ("ifacerefdtype", [("fl", _); ("id", num); ("modportname", nam)], xlst) ->
     let xlst' = List.map (rw' attr) xlst and idx = int_of_string num in
-    Hashtbl.add typetable idx (IFCRFDTYP nam, nam, TYPNONE, List.map subtypmap xlst'); TYP (IFCRFDTYP nam, idx, 0, xlst')
+    TYP(idx,(IFCRFDTYP nam, nam, TYPNONE, List.map subtypmap xlst'))
 | Xml.Element ("modport", [("fl", origin); ("name", port)], xlst) -> IMP (origin, port, List.map (rw' attr) xlst)
 | Xml.Element ("modportvarref", [("fl", origin); ("name", member); ("direction", dir)], xlst) -> IMRF (origin, member, dir, List.map (rw' attr) xlst)
 | Xml.Element ("basicdtype"|"structdtype"|"uniondtype" as dtyp', ("fl", _) :: ("id", num) :: rnglst, xlst) ->
     let xlst' = List.map (rw' attr) xlst and idx = int_of_string num and dtyp = typenc dtyp' in
     (match rnglst with
       | ("name", nam) :: tl ->
-          Hashtbl.add typetable idx (dtyp,nam,typmap tl,List.map subtypmap xlst')
-      | _ ->
-      Hashtbl.add typetable idx (dtyp,"",typmap rnglst,List.map subtypmap xlst'));
-    TYP(dtyp, idx, idx, xlst')
+          TYP(idx, (dtyp,nam,typmap tl,List.map subtypmap xlst'))
+      | _ -> TYP(idx, (dtyp,"",typmap rnglst,List.map subtypmap xlst')));
 | Xml.Element ("refdtype"|"enumdtype"|"memberdtype"|"paramtypedtype" as dtyp', [("fl", origin); ("id", num); ("name", nam); ("sub_dtype_id", subtype)], xlst) ->
     let xlst' = List.map (rw' attr) xlst and idx = int_of_string num and sub = int_of_string subtype and dtyp = typenc dtyp' in
-    Hashtbl.add typetable idx (dtyp,nam,SUBTYP sub,List.map subtypmap xlst');
-    TYP(dtyp, sub, idx, xlst')
+    TYP(idx, (dtyp,nam,SUBTYP sub,List.map subtypmap xlst'))
 | Xml.Element ("packarraydtype"|"unpackarraydtype"|"constdtype" as dtyp', [("fl", origin); ("id", num); ("sub_dtype_id", subtype)], xlst) ->
     let xlst' = List.map (rw' attr) xlst and idx = int_of_string num and sub = int_of_string subtype and typid = typenc dtyp' in    
-    Hashtbl.add typetable idx (typid,"",SUBTYP sub,List.map subtypmap xlst');
-    TYP(typid, sub, idx, xlst')
+    TYP(idx, (typid,"",SUBTYP sub,List.map subtypmap xlst'))
 | Xml.Element ("enumitem" as dtyp, [("fl", origin); ("name", nam); ("dtype_id", num)], xlst) -> EITM (dtyp, nam, "", int_of_string num, List.map (rw' attr) xlst)
-| Xml.Element ("cells", [], xlst) -> CELLS(List.map (rw' attr) xlst)
+| Xml.Element ("cells", [], xlst) ->
+    attr.intf := [];
+    let xlst' = List.map (rw' attr) xlst in
+    top := List.flatten(List.map cell_hier xlst');
+    CELLS(xlst')
 | Xml.Element ("cell", [("fl", origin); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
-    CELL(origin, nam, subnam, hier, List.map (rw' attr) xlst)
+    let (_, _, _, crntlst) = if Hashtbl.mem modulexml subnam then Hashtbl.find modulexml subnam else (origin, subnam, [], []) in
+    let xlst' = List.map (rw' attr) xlst in
+    List.iter (function CELL (origin, nam, subnam, hier, xlst'') ->
+        if Hashtbl.mem interfacexml subnam then
+            let (orig', orignam', xlst'') = Hashtbl.find interfacexml subnam in
+                begin
+                attr.intf := (nam,subnam) :: !(attr.intf);
+                print_endline ("Found interface: "^nam^":"^subnam^":"^orignam');
+                end
+        else if Hashtbl.mem modulexml subnam then
+            let (orig', orignam', xlst'', xlst''') = Hashtbl.find modulexml subnam in
+                begin
+                print_endline ("Found module: "^orignam');
+                List.iter (function
+                    | IO _ -> ()
+                    | VAR (_, inflst, idx, "ifaceref") -> List.iter print_endline inflst
+                    | CA _ -> ()
+                    | INST (_, _, (kind, portlst)) when kind=subnam -> List.iter (function
+                        | PORT (_, formal, Dvif _, [VRF (actual, [])]) ->
+                            print_endline ("formal: "^formal^", actual: "^actual);
+                        | _ -> ()) portlst
+                    | INST (_, _, (kind, _)) -> ()
+                    | oth -> cellopt := Some oth; failwith "cellopt") crntlst
+                end
+        else print_endline (subnam^":missing");
+        | _ -> ()) xlst';
+    CELL(origin, nam, subnam, hier, xlst')
 | Xml.Element ("display", [("fl", origin); ("displaytype", nam)], xlst) -> DSPLY (origin, nam, List.map (rw' attr) xlst)
 | Xml.Element ("readmem", [("fl", origin)], xlst) -> SYS (origin, "$readmemh", List.map (rw' attr) xlst)
-| Xml.Element (("fopen"|"fclose"|"typetable"|"finish"|"stop" as sys), [("fl", origin)], xlst) -> SYS (origin, "$"^sys, List.map (rw' attr) xlst)
+| Xml.Element (("fopen"|"fclose"|"finish"|"stop" as sys), [("fl", origin)], xlst) -> SYS (origin, "$"^sys, List.map (rw' attr) xlst)
 | Xml.Element (("task"|"taskref") as tsk, [("fl", origin); ("name", nam)], xlst) -> TASK(origin, tsk, nam, List.map (rw' attr) xlst)
 | Xml.Element ("valueplusargs", [("fl", origin); ("dtype_id", tid)], xlst) -> VPLSRGS(origin, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("testplusargs", [("fl", origin); ("name", nam); ("dtype_id", tid)], xlst) ->
     TPLSRGS(origin, nam, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("modportftaskref", [("fl", origin); ("name", nam)], []) -> MODPORTFTR (origin, nam)
+| Xml.Element ("typetable", [("fl", origin)], xlst) ->
+    let types = List.map (rw' attr) xlst in
+    let max = fold1 (max) (List.map (function TYP (ix,_) -> ix | _ -> 0) types) in
+    let typarr = Array.init max (fun ix -> if List.mem_assoc ix types then List.assoc ix types else (UNKDTYP,"",TYPNONE,[])) in
+    attr.typetable := typarr;
+    TYPETABLE typarr
 | (Xml.Element (str, _, _) | Xml.PCData str) as err -> attr.errlst := err :: !(attr.errlst); failwith ("XML element "^str^" not supported")
 
-let top = ref []
 let empty_itms () = {
 io=ref [];
 v=ref [];
@@ -823,7 +874,7 @@ let diropv = function
 | Dinput -> "input"
 | Doutput -> "output"
 | Dinout -> "inout"
-| Dvif -> "vif"
+| Dvif _ -> "vif"
 | Dinam str -> str
 | Dport _ -> "ifport"
 | Dunknown -> "inout"
@@ -1156,15 +1207,6 @@ let find_source origin =
     (source, try int_of_string line with err -> 0)
 
 let fsrc src = SRC (find_source src)
-
-let rec cell_hier = function
-| CELL (_, nam, subnam, hier, rw_lst) ->
-   let hier_lst = List.flatten (List.map cell_hier rw_lst) in
-   print_endline ("Cell: "^subnam);
-   Hashtbl.replace hierarchy subnam hier_lst;
-   (nam,subnam) :: hier_lst
-| oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
-
 let catch_escapes = ref true
 
 let rec optim2 = function
@@ -1234,11 +1276,13 @@ let rec catitm (pth:string option) itms = function
     if not (List.mem_assoc str1 !(itms.v)) then
         itms.v := (str1, (origin, int1, str1, -1)) :: !(itms.v)
 | CA(origin, rght::lft::[]) -> itms.ca := (origin, lft, rght) :: !(itms.ca)
-| TYP(id1, int1, int2, []) ->
+(*
+ | TYP(id1, int1, int2, []) ->
     if id1 = CNSTDTYP then
         let (t,s,m1,ml) = Hashtbl.find typetable int1 in
         print_endline (string_of_int int1^":"^string_of_int int2^":"^s);
         Hashtbl.replace typetable int1 (t,s,m1,ml@[TYPCONST])
+*)
 | INST(origin, str1lst, (str2, port_lst)) ->
     List.iter (fun str1 ->
         let pth' = match lcombine(pth,Some str1) with Some s -> s | None -> failwith "lcombine" in
@@ -1353,10 +1397,11 @@ let rec catitm (pth:string option) itms = function
     Hashtbl.add interfaces str1 (origin, itms, rw_lst)
 | FIL(enc, fil) ->
     Hashtbl.add files enc fil
-| CELLS(rw_lst) ->
-    top := List.flatten(List.map cell_hier rw_lst)
+| CELLS(rw_lst) -> ()
 | TPLSRGS (_, id, tid, []) -> ()
+(*
 | TYP (dtyp, subtype, idx, lst) -> ()
+*)
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst"
 
 let iolst delim dir idx io =
@@ -1469,7 +1514,7 @@ let rec iterate f (modorig, modul, xml) =
 		       | VRF (id, []) ->
                            newiolst := PORT(origin, id, idir, [VRF(id, [])]) :: !newiolst;
                            newinnerlst := inr :: !newinnerlst;
-		       | PORT (origin, id_i, Dvif, VRF (id, []) :: []) as pat ->
+		       | PORT (origin, id_i, Dvif _, VRF (id, []) :: []) as pat ->
                            if List.mem_assoc id !(modul.inst) then
 			       let (_,inam,_) = List.assoc id !(modul.inst) in
 			       if Hashtbl.mem interfaces inam then (match idir with Dinam iport ->
@@ -1593,13 +1638,15 @@ let dumpcmp = function
 
 let dumpb b = string_of_bool b
 let dumpstrlst lst = "["^String.concat ";\n\t" (List.map dumps lst)^"]"
+let dumpm _ = "typmap"
+let dumpmlst lst = "["^String.concat ";\n\t" (List.map dumpm lst)^"]"
 
 let rec dumpdir = function
 | Dinput -> "Dinput"
 | Doutput -> "Doutput"
 | Dinout -> "Dinout"
-| Dvif -> "Dvif"
-| Dinam str -> "Dinam \""^str^"\""
+| Dvif s -> "Dvif "^dumps s
+| Dinam str -> "Dinam "^dumps str
 | Dport(str1, int1, dirop, str2, str_lst) ->
      "Dport("^dumps str1 ^", "^ dumpi int1 ^", "^ dumpdir dirop ^", "^ dumps str2 ^", "^ dumpstrlst str_lst^")"
 | Dunknown -> "Dunknown"
@@ -1615,7 +1662,7 @@ let rec dumpitm = function
 | TMPVAR (str1, str2, int2, rw_lst) -> "TMPVAR("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^")"
 | CNST ((int, cexp), int2, rw_lst) -> "CNST("^dumpcnst (int, cexp)^", "^dumpi int2^", "^dumplst rw_lst^")"
 | VRF (str1, rw_lst) -> "VRF("^dumps str1^", "^dumplst rw_lst^")"
-| TYP (typenc, int1, int2, rw_lst) -> "TYP("^dumptyp typenc^", "^dumpi int1^", "^dumpi int2^", "^dumplst rw_lst^")"
+| TYP (idx, (typenc, str1, typmap, typ_lst)) -> "TYP("^dumptyp typenc^", "^dumps str1^", "^dumpm typmap^", "^dumpmlst typ_lst^")"
 | FNC (str1, str2, int2, rw_lst) -> "FNC("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^")"
 | TASK (str1, str2, str3, rw_lst) -> "TASK("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumplst rw_lst^")"
 | INST (str1, str2lst, (str3, rw_lst)) -> "INST("^dumps str1^", "^dumpstrlst str2lst^"("^", "^dumps str3^", "^", "^dumplst rw_lst^"))"
@@ -1743,7 +1790,7 @@ let readxml xmlf =
 
 let translate errlst xmlf =
     let (line,range,xml) = readxml xmlf in
-    let rwxml = rw' {anchor="a1";errlst=errlst;names=ref []} xml in
+    let rwxml = rw' {anchor="a1";errlst=errlst;names=ref [];intf=ref [];typetable=ref []} xml in
     catitm None (empty_itms ()) rwxml;
     let top = snd(List.hd !top) in
     print_endline ("toplevel is "^top);

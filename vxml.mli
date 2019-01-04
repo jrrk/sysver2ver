@@ -75,7 +75,7 @@ type dirop =
 | Dinput
 | Doutput
 | Dinout
-| Dvif
+| Dvif of string
 | Dinam of string 
 | Dport of (string * int * dirop * string * string list)
 
@@ -86,6 +86,7 @@ type typmap =
 | TYPMEMBER of int*int
 | TYPENUM of string * int * (int*int)
 | TYPCONST
+| TYPDEF
 
 type typenc =
 | UNKDTYP
@@ -123,7 +124,7 @@ type rw =
 | TMPVAR of string * string * int * rw list
 | CNST of (int * cexp) * int * rw list
 | VRF of string * rw list
-| TYP of typenc * int * int * rw list
+| TYP of int * typetable_t
 | FNC of string * string * int * rw list
 | TASK of string * string * string * rw list
 | INST of string * string list * (string * rw list)
@@ -258,8 +259,10 @@ type itms = {
 type xmlattr = {
     anchor: string;
     errlst: Xml.xml list ref;
-    names: (string*int) list ref;
-    }
+    names: (string*typetable_t) list ref;
+    typetable : (int * typetable_t) list ref;
+    intf : (string * string) list ref;
+     }
 
 val exprothlst : rw list ref
 val stmtothlst : rw list ref
@@ -283,6 +286,7 @@ val selopt : rw option ref
 val rngopt : rw list option ref
 val typopt : typetable_t option ref
 val portopt : rw option ref
+val cellopt : rw option ref
 val optopt : (rw list * rw list) option ref
 val forlst : (rw * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
@@ -292,11 +296,13 @@ val smpothlst : rw list ref
 val optitmlst : (rw list * rw list) list ref
 
 val modules : (string, string * itms * rw list) Hashtbl.t
-val modulexml : (string, Xml.xml list) Hashtbl.t
+val modulexml : (string, string * string * Xml.xml list * rw list) Hashtbl.t
 val modules_opt : (string, string * itms * rw list) Hashtbl.t
 val packages : (string, string * itms) Hashtbl.t
 val interfaces : (string, string * itms * rw list) Hashtbl.t
+val interfacexml : (string, string * string * rw list) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
+val intfhier : (string * string, int) Hashtbl.t
 val functable : (string, string * int * rw list * itms) Hashtbl.t
 val typetable : (int, typetable_t) Hashtbl.t
 

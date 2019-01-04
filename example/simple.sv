@@ -42,6 +42,23 @@ interface handshake #(parameter int unsigned WIDTH = 32)();
 
 endinterface
 
+interface simple #(parameter int unsigned WIDTH = 32)();
+
+   // modport signals
+   logic [WIDTH-1:0] simple1, simple2;
+
+   modport dir1 (
+      output simple1,
+      input  simple2
+   );
+
+   modport dir2 (
+      input  simple1,
+      output simple2
+   );
+
+endinterface
+
 // source module
 module source (
    input logic    clk,
@@ -52,6 +69,10 @@ module source (
 
    assign inf1.port1 = inf2[0].port1;
 
+   simple simon ();
+
+   dummy dum0 (.dm(inf2[1]), .simon(simon));
+   
 endmodule
 
 
@@ -64,5 +85,15 @@ module drain (
 );
 
    assign inf2[0].port1 = inf1.port1;
+
+endmodule
+
+// dummy module
+module dummy (
+   handshake.dir1 dm,
+   simple.dir1 simon
+);
+
+   assign dm.port1 = simon.simple1;
 
 endmodule
