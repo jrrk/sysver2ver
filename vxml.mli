@@ -119,8 +119,8 @@ type rw =
 | UNKNOWN
 | XML of rw list
 | EITM of string * string * string * int * rw list
-| IO of string * string list * typetable_t * dirop * string * rw list
-| VAR of string * string list * typetable_t * string
+| IO of string * string list * typetable_t ref * dirop * string * rw list
+| VAR of string * string list * typetable_t ref * string
 | IVAR of string * string * int * rw list * int
 | TMPVAR of string * string * typetable_t * rw list
 | CNST of (int * cexp) * int * rw list
@@ -243,7 +243,7 @@ type token =
 type xmlattr = {
     anchor: string;
     errlst: Xml.xml list ref;
-    names: (string*typetable_t) list ref;
+    names: (string*typetable_t ref) list ref;
     typetable : typetable_t array ref;
     intf : (string * string) list ref;
      }
@@ -263,7 +263,6 @@ type itms = {
   imp : (string*string*string) list list ref;
   inst: (string*(string*string*rw list)) list ref;
   cnst: (string*(int*cexp)) list ref;
-  attr : xmlattr;
   needed: string list ref;
 }
 
@@ -299,7 +298,7 @@ val smpothlst : rw list ref
 val optitmlst : (rw list * rw list) list ref
 
 val modules : (string, string * itms * rw list) Hashtbl.t
-val modulexml : (string, string * string * Xml.xml list * rw list) Hashtbl.t
+val modulexml : (string, string * string * Xml.xml list * rw list * (string * typetable_t ref) list) Hashtbl.t
 val modules_opt : (string, string * itms * rw list) Hashtbl.t
 val packages : (string, string * itms) Hashtbl.t
 val interfaces : (string, string * itms * rw list) Hashtbl.t
@@ -317,9 +316,9 @@ val cadd : cexp list -> cexp
 val cexp : string -> int * cexp
 val expr : rw -> token list
 val ewidth : rw -> int
-val cntmembers : xmlattr -> typmap -> int list
-val findmembers : xmlattr -> typetable_t -> int list
-val findmembers' : xmlattr -> typetable_t -> int list * bool * bool
+val cntmembers : typmap -> int list
+val findmembers : typetable_t -> int list
+val findmembers' : typetable_t -> int list * bool * bool
 val optitm : rw list -> rw list
 val simplify_exp : string -> rw list ref -> rw -> rw
 val simplify_asgn : bool -> string -> rw -> rw -> rw

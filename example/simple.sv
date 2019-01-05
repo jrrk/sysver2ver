@@ -7,10 +7,10 @@ module test (input clk, input rst, output [31:0] test1);
 
    // source instance
    source source0 (
-      .clk  (clk),
-      .rst  (rst),
       .inf1 (inf1),
-      .inf2 (inf2)
+      .inf2 (inf2),
+      .clk  (clk),
+      .rst  (rst)
    );
 
    // drain instance
