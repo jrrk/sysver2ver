@@ -79,15 +79,6 @@ type dirop =
 | Dinam of string 
 | Dport of (string * int * dirop * string * string list)
 
-type typmap =
-| TYPNONE
-| SUBTYP of int
-| TYPRNG of int*int
-| TYPMEMBER of int*int
-| TYPENUM of string * int * (int*int)
-| TYPCONST
-| TYPDEF
-
 type typenc =
 | UNKDTYP
 | PACKADTYP
@@ -103,7 +94,17 @@ type typenc =
 | IFCRFDTYP of string
 | TYPDF of string
 
-type typetable_t = typenc*string*typmap*typmap list
+type typmap =
+| TYPNONE
+| SUBTYP of int
+| TYPRNG of int*int
+| TYPMEMBER of int*typetable_t
+| TYPENUM of string * int * (int*int)
+| TYPCONST
+| TYPDEF
+| RECTYP of typetable_t
+
+and typetable_t = typenc*string*typmap*typmap list
 
 type cexp =
 | ERR of string
@@ -118,14 +119,14 @@ type rw =
 | UNKNOWN
 | XML of rw list
 | EITM of string * string * string * int * rw list
-| IO of string * string list * int * dirop * string * rw list
-| VAR of string * string list * int * string
+| IO of string * string list * typetable_t * dirop * string * rw list
+| VAR of string * string list * typetable_t * string
 | IVAR of string * string * int * rw list * int
-| TMPVAR of string * string * int * rw list
+| TMPVAR of string * string * typetable_t * rw list
 | CNST of (int * cexp) * int * rw list
 | VRF of string * rw list
 | TYP of int * typetable_t
-| FNC of string * string * int * rw list
+| FNC of string * string * typetable_t * rw list
 | TASK of string * string * string * rw list
 | INST of string * string list * (string * rw list)
 | SFMT of string * rw list
@@ -248,15 +249,15 @@ type xmlattr = {
      }
 
 type itms = { 
-  io: (string*(string*int*dirop*string*(int*cexp) list)) list ref;
-  v: (string*(string*int*string*int)) list ref;
+  io: (string*(string*typetable_t*dirop*string*(int*cexp) list)) list ref;
+  v: (string*(string*typetable_t*string*typetable_t)) list ref;
   iv: (string*(string*int*rw list*int)) list ref;
-  ir: (string*string*int) list ref;
+  ir: (string*string*typetable_t) list ref;
   ca: (string*rw*rw) list ref;
   typ: (string*int*int) list ref;
   alwys: (string*rw*rw list) list ref;
   init: (string*token*rw list) list ref;
-  func: (string*(string*int*rw list*itms)) list ref;
+  func: (string*(string*typetable_t*rw list*itms)) list ref;
   task: (string*string*rw list*itms) list ref;
   gen: (string*rw list) list ref;
   imp : (string*string*string) list list ref;
@@ -305,7 +306,7 @@ val interfaces : (string, string * itms * rw list) Hashtbl.t
 val interfacexml : (string, string * string * rw list) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
 val intfhier : (string * string, int) Hashtbl.t
-val functable : (string, string * int * rw list * itms) Hashtbl.t
+val functable : (string, string * typetable_t * rw list * itms) Hashtbl.t
 
 val top : (string * string) list ref
 
@@ -317,8 +318,8 @@ val cexp : string -> int * cexp
 val expr : rw -> token list
 val ewidth : rw -> int
 val cntmembers : xmlattr -> typmap -> int list
-val findmembers : xmlattr -> int -> int list
-val findmembers' : xmlattr -> int -> int list * bool * bool
+val findmembers : xmlattr -> typetable_t -> int list
+val findmembers' : xmlattr -> typetable_t -> int list * bool * bool
 val optitm : rw list -> rw list
 val simplify_exp : string -> rw list ref -> rw -> rw
 val simplify_asgn : bool -> string -> rw -> rw -> rw

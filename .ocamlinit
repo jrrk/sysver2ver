@@ -71,11 +71,3 @@ List.length !memothlst
 let oldmod = ref [];;
 Hashtbl.iter (fun k _ -> oldmod := k :: !oldmod) Vxml.modules;;
 let oldmod = !oldmod;;
-
-let ihier = ref [];;
-Hashtbl.iter (fun k x -> ihier := (k,Hashtbl.find typetable x) :: !ihier) Vxml.intfhier;;
-let ihier = !ihier;;
-
-let maxidx = ref 0;;
-Hashtbl.iter (fun k _ -> maxidx := max !maxidx k) typetable;;
-let typearr = Array.init (1 + !maxidx) (fun ix -> if Hashtbl.mem typetable ix then Hashtbl.find typetable ix else (UNKDTYP,"",TYPNONE,[]));;
