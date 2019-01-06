@@ -641,34 +641,48 @@ let rec dumpdir = function
 | Dunknown -> "Dunknown"
 
 let rec cell_traverse (nam, subnam) =
-    print_endline ("Cell traverse: "^nam);
-    let (_, _, _, crntlst, names') = if Hashtbl.mem modulexml subnam then Hashtbl.find modulexml subnam else ("a0", subnam, [], [], []) in
-    if Hashtbl.mem interfacexml subnam then
-            let (orig', orignam', xlst'') = Hashtbl.find interfacexml subnam in
+    if Hashtbl.mem modulexml subnam then
+            let (orig', orignam, xlst, xlst', names') = Hashtbl.find modulexml subnam in
                 begin
-                print_endline ("Found interface: "^nam^":"^subnam^":"^orignam');
-                end
-    else if Hashtbl.mem modulexml subnam then
-            let (orig', orignam', xlst'', xlst''', names'') = Hashtbl.find modulexml subnam in
-                begin
-                print_endline ("Found module: "^orignam');
+                print_endline ("Cell traverse: "^nam);
+                print_endline ("Found module: "^orignam);
                 List.iter (function
                     | IO _ -> ()
-                    | VAR (_, inflst, idx, "ifaceref") -> List.iter print_endline inflst
+                    | VAR (_, inflst, typ', "ifaceref") -> List.iter (fun itm -> print_endline ("Ifaceref: "^itm^":"^dumptab !typ')) inflst
                     | CA _ -> ()
-                    | INST (_, _, (kind, portlst)) when kind=subnam -> List.iter (function
+                    | INST (_, _, (kind, [])) -> print_endline ("Interface: "^kind)
+                    | INST (_, _, (kind, portlst)) ->
+                         let (orig', orignam', xlst'', xlst''', names'') = Hashtbl.find modulexml kind in
+                         List.iter (function
                         | PORT (_, formal, Dvif _, [VRF (actual, [])]) ->
-			    let formtyp = List.assoc formal names' in
-			    let actualtyp = List.assoc actual names'' in
-			    if !formtyp <> !actualtyp then
+			if List.mem_assoc formal names'' then
+			    begin
+			    let formtyp = List.assoc formal names'' in
+			    if List.mem_assoc actual names' then
 			        begin
-                                print_endline ("formal: "^formal^", actual: "^actual);
-                                print_endline ("formaltype: "^dumptab !formtyp^", actualtype: "^dumptab !actualtyp);
-				formtyp := !actualtyp;
-				end;
+				let actualtyp = List.assoc actual names' in
+				(*
+				 if !formtyp <> !actualtyp then
+				 *)
+				    begin
+				    print_endline ("formal: "^formal^", actual: "^actual);
+				    print_endline ("formaltype: "^dumptab !formtyp^", actualtype: "^dumptab !actualtyp);
+				    formtyp := !actualtyp;
+				    end;
+				end
+			    else
+				begin
+				print_endline ("Actual "^actual^" not found");
+				List.iter (fun (k,_) -> print_endline ("List: "^k)) names'
+				end
+			    end    
+			else
+			    begin
+			    print_endline ("Formal "^formal^" not found");
+			    List.iter (fun (k,_) -> print_endline ("List: "^k)) names''
+			    end
                         | _ -> ()) portlst
-                    | INST (_, _, (kind, _)) -> ()
-                    | oth -> cellopt := Some oth; failwith "cellopt") crntlst
+                    | oth -> cellopt := Some oth; failwith "cellopt") xlst'
                 end
         else print_endline (subnam^":missing")
 
@@ -697,7 +711,8 @@ let rec rw' attr = function
                        | oth -> typopt := Some oth; failwith "typopt;;582")
                | (IFCRFDTYP _, dir, TYPNONE, []) as typ' ->
                    print_endline ("@"^nam');
-                   attr.names := (sub, ref typ') :: !(attr.names);
+                   if not (List.mem_assoc nam' !(attr.names)) then
+                       attr.names := (nam', ref typ') :: !(attr.names);
                    if vif then VAR (origin, [sub], ref typ', typ) else IO (origin, [nam], ref typ', Dinam dir, "logic", [])
                | oth -> typopt := Some oth; failwith "typopt;;587" in rslt
 | Xml.Element ("var", [("fl", origin); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')], []) ->
@@ -733,11 +748,12 @@ let rec rw' attr = function
                let inst = match rnglst with
                    | RNG (CNST ((_, (HEX hi|SHEX hi)), _, []) :: CNST ((_, (HEX lo|SHEX lo)), _, []) :: []) :: [] ->
                        begin
-                       print_endline ("@"^nam);
+                       print_endline ("@"^nam^"["^string_of_int hi^":"^string_of_int lo^"]");
                        attr.names := (nam, ref (IFCRFDTYP nam, dnam, TYPRNG(hi,lo), [])) :: !(attr.names);
                        INST (origin, expandbraket lo hi (fun istr -> nam^istr), (dnam, attrlst))
                        end
-                   | [] -> INST (origin, nam :: [], (dnam, attrlst))
+                   | [] -> attr.names := (nam, ref (IFCRFDTYP nam, dnam, TYPNONE, [])) :: !(attr.names);
+		           INST (origin, nam :: [], (dnam, attrlst))
                    | oth -> rngopt := Some oth; failwith "rngopt" in
                inst
 | Xml.Element ("range", [("fl", _)], xlst) -> RNG (List.map (rw' attr) xlst)
@@ -776,7 +792,7 @@ let rec rw' attr = function
 | Xml.Element ("module", ("fl", origin) :: ("name", nam) :: ("origName", nam') :: attr', xlst) ->
     let attr' = {attr with anchor=origin;names=ref []} in
     let decl,content = List.partition (function Xml.Element ("var", _, _) -> true | _ -> false) xlst in
-    let xlst' = decl@content in
+    let xlst' = if false then decl@content else xlst in
     let xlst'' = List.map (rw' attr') xlst' in
     Hashtbl.replace modulexml nam (origin, nam', xlst', xlst'', !(attr'.names));
     MODUL (origin, nam, nam', xlst'')
@@ -830,7 +846,8 @@ let rec rw' attr = function
     attr.intf := [];
     let xlst' = List.map (rw' attr) xlst in
     top := List.flatten(List.map cell_hier xlst');
-    List.iter cell_traverse !top;    
+    let topmod = List.filter (fun (_,kind) -> Hashtbl.mem modulexml kind) !top in
+    List.iter cell_traverse topmod;    
     CELLS(xlst')
 | Xml.Element ("cell", [("fl", origin); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
     CELL(origin, nam, subnam, hier, List.map (rw' attr) xlst)

@@ -4,6 +4,7 @@ module test (input clk, input rst, output [31:0] test1);
 
    // interface instance
    handshake inf1 (), inf2[1:0]();
+   simple simon1[3:0]();
 
    // source instance
    source source0 (
