@@ -75,8 +75,8 @@ type dirop =
 | Dinput
 | Doutput
 | Dinout
-| Dvif of string
-| Dinam of string 
+| Dvif of string ref
+| Dinam of string ref
 | Dport of (string * int * dirop * string * string list)
 
 type typenc =
@@ -104,7 +104,7 @@ type typmap =
 | TYPDEF
 | RECTYP of typetable_t
 
-and typetable_t = typenc*string*typmap*typmap list
+and typetable_t = typenc*string ref*typmap*typmap list
 
 type cexp =
 | ERR of string
@@ -119,8 +119,8 @@ type rw =
 | UNKNOWN
 | XML of rw list
 | EITM of string * string * string * int * rw list
-| IO of string * string list * typetable_t ref * dirop * string * rw list
-| VAR of string * string list * typetable_t ref * string
+| IO of string * string list * typetable_t * dirop * string * rw list
+| VAR of string * string list * typetable_t * string
 | IVAR of string * string * int * rw list * int
 | TMPVAR of string * string * typetable_t * rw list
 | CNST of (int * cexp) * int * rw list
@@ -243,7 +243,7 @@ type token =
 type xmlattr = {
     anchor: string;
     errlst: Xml.xml list ref;
-    names: (string*typetable_t ref) list ref;
+    names: (string*typetable_t) list ref;
     typetable : typetable_t array ref;
     intf : (string * string) list ref;
      }
@@ -298,7 +298,7 @@ val smpothlst : rw list ref
 val optitmlst : (rw list * rw list) list ref
 
 val modules : (string, string * itms * rw list) Hashtbl.t
-val modulexml : (string, string * string * Xml.xml list * rw list * (string * typetable_t ref) list) Hashtbl.t
+val modulexml : (string, string * string * Xml.xml list * rw list * (string * typetable_t) list) Hashtbl.t
 val modules_opt : (string, string * itms * rw list) Hashtbl.t
 val packages : (string, string * itms) Hashtbl.t
 val interfaces : (string, string * itms * rw list) Hashtbl.t
