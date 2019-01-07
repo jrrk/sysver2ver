@@ -1599,6 +1599,7 @@ let rec iterate f (modorig, modul, xml) =
     let newitms = copy_itms modul in
     newitms.ir := [];
     newitms.inst := [];
+    print_endline ("Scanning instances of "^f);
     List.iter (fun (inst, (origin, kind, iolst)) ->
         if Hashtbl.mem interfaces kind then
            begin
@@ -1610,38 +1611,46 @@ let rec iterate f (modorig, modul, xml) =
            end
         else if Hashtbl.mem modules kind then
            begin
+           print_endline ("Iterating: "^kind);
            let (kindorig, itms, _) = Hashtbl.find modules kind in
            let newiolst = ref [] in
            let newinnerlst = ref [] in
 	   let previolst = !(itms.io) in
-           List.iter2 (fun ((_, (origin, ix, idir, typ, ilst)) as inr) -> function
+           List.iter2 (fun ((_, (origin, typ', idir', typ'', ilst)) as inr) -> function
 		       | VRF (id, []) ->
-                           newiolst := PORT(origin, id, idir, [VRF(id, [])]) :: !newiolst;
+                           newiolst := PORT(origin, id, idir', [VRF(id, [])]) :: !newiolst;
                            newinnerlst := inr :: !newinnerlst;
 		       | PORT (origin, id_i, Dvif _, VRF (id, []) :: []) as pat ->
                            if List.mem_assoc id !(modul.inst) then
-			       let (_,inam,_) = List.assoc id !(modul.inst) in
-			       if Hashtbl.mem interfaces inam then (match idir with Dinam iport ->
+                               let (_,inam,_) = List.assoc id !(modul.inst) in
+                               print_endline (id^" maps to "^inam);
+			       if Hashtbl.mem interfaces inam then (match typ' with (IFCRFDTYP iport, simple, TYPNONE, []) ->
 				  begin
+                                  print_endline (iport^" matched");
 				  let (_, intf, imp) = Hashtbl.find interfaces inam in
 				  let imp' = List.filter (function IMP _ -> true | _ -> false) imp in 
                                   let imp'' = List.map (function IMP(_, str, lst) -> (str,lst) | _ -> ("",[])) imp' in
-                                  if List.mem_assoc !iport imp'' then
+                                  print_endline ("Searching for "^ iport);
+                                  if List.mem_assoc iport imp'' then
 				  List.iter (function IMRF (origin, nam, dir, []) ->
                                         (* print_endline (inam^":"^iport^":"^nam^":"^id_i); *)
                                         let (_, typ', kind, _) = List.assoc nam !(intf.v) in
 					newiolst := PORT(origin, id_i^"_"^nam, dir, [VRF(id^"_"^nam, [])]) :: !newiolst;
-				        newinnerlst := (id_i^"_"^nam, (origin, typ', dir, typ, ilst)) :: !newinnerlst;
-				       | _ -> ()) (List.assoc !iport imp'')
+				        newinnerlst := (id_i^"_"^nam, (origin, typ', dir, typ'', ilst)) :: !newinnerlst;
+				       | _ -> ()) (List.assoc iport imp'')
+                                  else print_endline ("Direction "^ iport ^" not found");
 				  end
-                               | _ -> newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst)
+                               | _ ->
+                                  print_endline (dumptab typ'^" did not match");
+                                  newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst)
 			       else
 			          begin
 			          newiolst := pat :: !newiolst;
 				  newinnerlst := inr :: !newinnerlst;
 				  end
 			    else
-			       begin
+                               begin
+                               print_endline (id^" not found in modul.inst");
 			       newiolst := pat :: !newiolst;
 			       newinnerlst := inr :: !newinnerlst;
 			       end
