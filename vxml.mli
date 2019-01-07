@@ -160,7 +160,7 @@ type rw =
 | IRNG of string * rw list
 | IFC of string * string * rw list
 | IMP of string * string * rw list
-| IMRF of string * string * string * rw list
+| IMRF of string * string * dirop * rw list
 | JMPL of string * rw list
 | JMPG of string * rw list
 | CS of string * rw list
@@ -239,6 +239,9 @@ type token =
 | ENDMODULE
 | INITIAL
 | FINAL
+| INTERFACE
+| ENDINTERFACE
+| MODPORT
 
 type xmlattr = {
     anchor: string;
@@ -260,10 +263,12 @@ type itms = {
   func: (string*(string*typetable_t*rw list*itms)) list ref;
   task: (string*string*rw list*itms) list ref;
   gen: (string*rw list) list ref;
-  imp : (string*string*string) list list ref;
+  imp: (string*string*(string*dirop) list) list ref;
   inst: (string*(string*string*rw list)) list ref;
   cnst: (string*(int*cexp)) list ref;
   needed: string list ref;
+  avoid_dollar_unsigned: bool;
+  remove_interfaces: bool;
 }
 
 val exprothlst : rw list ref
@@ -306,6 +311,7 @@ val interfacexml : (string, string * string * rw list) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
 val intfhier : (string * string, int) Hashtbl.t
 val functable : (string, string * typetable_t * rw list * itms) Hashtbl.t
+val modtokens : (string, token list * token list) Hashtbl.t
 
 val top : (string * string) list ref
 
@@ -314,7 +320,7 @@ val hex_to_bigint : string -> Big_int.big_int
 val decode : string -> cexp
 val cadd : cexp list -> cexp
 val cexp : string -> int * cexp
-val expr : rw -> token list
+val expr : itms -> rw -> token list
 val ewidth : rw -> int
 val cntmembers : typmap -> int list
 val findmembers : typetable_t -> int list
@@ -326,6 +332,6 @@ val jump_opt : string -> rw list -> rw
 val fortailmatch : string -> rw list -> bool
 val readxml : string -> int * (int * int) * Xml.xml
 val rw' : xmlattr -> Xml.xml -> rw
-val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list) list
-val dump : string -> string * itms * rw list -> token list
+val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list * token list) list
+val dump : bool -> string -> string * itms * rw list -> token list
 val debug : string -> string * itms * rw list -> unit
