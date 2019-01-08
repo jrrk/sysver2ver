@@ -1160,6 +1160,7 @@ let rec reformat1 = function
 | (BEGIN _|END|ELSE as tok) :: post :: tl when post <> NL && post <> COLON -> NL :: tok :: NL :: post :: reformat1 tl
 | DIR dir :: tl -> NL :: DIR dir :: reformat1 tl
 | SP :: DOT :: tl -> NL :: DOT :: reformat1 tl
+| COMMA :: DOT :: tl -> COMMA :: NL :: DOT :: reformat1 tl
 | SEMI :: IFF :: tl -> SEMI :: NL :: IFF :: reformat1 tl
 | NL :: NL :: tl -> reformat1 (NL :: tl)
 | oth :: tl -> oth :: reformat1 tl
@@ -1483,8 +1484,8 @@ let rec catitm (pth:string option) itms = function
     let itms = empty_itms () in
     List.iter (catitm None itms) rw_lst;
     let itms' = rev_itms itms in
-    if Hashtbl.mem hierarchy str1 then Hashtbl.add modules str1 (origin, itms', rw_lst)
-    else if Hashtbl.mem hierarchy str2 then Hashtbl.add modules str2 (origin, itms', rw_lst)
+    if Hashtbl.mem hierarchy str1 then Hashtbl.add modules str1 (origin, itms')
+    else if Hashtbl.mem hierarchy str2 then Hashtbl.add modules str2 (origin, itms')
     else print_endline ("Module "^str1^"/"^str2^" not in cell hierarchy");
 | PKG(origin, str1, rw_lst) ->
     let itms = empty_itms () in
@@ -1537,7 +1538,7 @@ let outnamopt f = let l = String.length f in f^(if l < 4 || String.sub f (l-4) 4
 let outtok f = f^"_tokens.txt"
 let outtcl f = "./"^f^"_fm.tcl"
 
-let dump intf f (origin, modul, _) =
+let dump intf f (origin, modul) =
   let appendlst = ref [] in
   let append lst = appendlst := lst :: !appendlst in
   if true then print_endline ("f \""^f^"\";; /* "^outnam f^" : "^outtcl f ^" */");
@@ -1595,7 +1596,7 @@ let dump intf f (origin, modul, _) =
                  ) !(modul.init);
   !head @ List.flatten (List.sort compare !appendlst) @ [NL;if intf then ENDINTERFACE else ENDMODULE;NL;NL]
 
-let rec iterate f (modorig, modul, xml) =
+let rec iterate f (modorig, modul) =
     let newitms = copy_itms modul in
     newitms.ir := [];
     newitms.inst := [];
@@ -1612,7 +1613,7 @@ let rec iterate f (modorig, modul, xml) =
         else if Hashtbl.mem modules kind then
            begin
            print_endline ("Iterating: "^kind);
-           let (kindorig, itms, _) = Hashtbl.find modules kind in
+           let (kindorig, itms) = Hashtbl.find modules kind in
            let newiolst = ref [] in
            let newinnerlst = ref [] in
 	   let previolst = !(itms.io) in
@@ -1664,14 +1665,14 @@ let rec iterate f (modorig, modul, xml) =
                begin
                let newinneritms = copy_itms itms in
                newinneritms.io := newinnerlst;
-               let newhash = (kindorig, newinneritms, xml) in
+               let newhash = (kindorig, newinneritms) in
 	       iterate kind newhash
                end;
            newitms.inst := (inst, (origin, kind_opt, newiolst)) :: !(newitms.inst);
            end
         ) !(modul.inst);
     newitms.inst := List.rev (!(newitms.inst));
-    Hashtbl.replace modules_opt (f^"_opt") (modorig, newitms, xml);
+    Hashtbl.replace modules_opt (f^"_opt") (modorig, newitms);
     print_endline (f^" done")
 
 let dumpform f f' separate = 
@@ -1682,7 +1683,7 @@ let dumpform f f' separate =
     Printf.fprintf fd "read_sverilog -container r -libname WORK -12 { \\\n";
     let plst = ref [] in Hashtbl.iter (fun _ (s,_) -> plst := fst (find_source s) :: !plst) packages;
     let iflst = List.map snd (if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else []) in
-    let hlst = List.sort_uniq compare (List.map (fun k -> let (s, _, _) = if Hashtbl.mem modules k then Hashtbl.find modules k else (k, empty_itms (), []) in fst (find_source s)) (f::iflst)) in
+    let hlst = List.sort_uniq compare (List.map (fun k -> let (s, _) = if Hashtbl.mem modules k then Hashtbl.find modules k else (k, empty_itms ()) in fst (find_source s)) (f::iflst)) in
     let slst = !plst @ hlst in
     List.iter (fun src -> if src.[0] == '/' then Printf.fprintf fd "%s \\\n" src else Printf.fprintf fd "%s/%s \\\n" srcpath src) slst;
     Printf.fprintf fd "}\n";
@@ -1833,7 +1834,7 @@ and dumpitms fd modul =
   Printf.fprintf fd "]}}\n";
   Printf.fprintf fd "  \n"
     
-let rec debug f (origin, modul, xml) =
+let rec debug f (origin, modul) =
   let fd = open_out (f^".debug") in
   dumpitms fd modul;
   close_out fd
@@ -1860,15 +1861,15 @@ let translate errlst xmlf =
     let debugtree = try int_of_string (Sys.getenv "VXML_DEBUGTREE") > 0 with _ -> true in
     if debugtree then
         begin
-        Hashtbl.iter (fun k x -> debug k x) interfaces;
+        Hashtbl.iter (fun k (a,b,c) -> debug k (a,b)) interfaces;
         Hashtbl.iter (fun k x -> debug k x) modules;
         Hashtbl.iter (fun k x -> debug k x) modules_opt;
         end;
-    Hashtbl.iter (fun k x -> let d = reformat0 (dump true k x) in
+    Hashtbl.iter (fun k (a,b,c) -> let d = reformat0 (dump true k (a,b)) in
         mods := (k, d, reformat2 (reformat1 d)) :: !mods) interfaces;
     Hashtbl.iter (fun k x -> let d = reformat0 (dump false k x) in
         mods := (k, d, reformat2 (reformat1 d)) :: !mods) modules;
-    Hashtbl.iter (fun k (o, m, x) -> let d = reformat0 (dump false k (o, {m with remove_interfaces=true}, x)) in
+    Hashtbl.iter (fun k (o, m) -> let d = reformat0 (dump false k (o, {m with remove_interfaces=true})) in
         mods := (k, d, reformat2 (reformat1 d)) :: !mods) modules_opt;
     let mods = List.sort compare !mods in
     let indent = ref 0 in

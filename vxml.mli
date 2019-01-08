@@ -302,9 +302,9 @@ val widthlst : rw list ref
 val smpothlst : rw list ref
 val optitmlst : (rw list * rw list) list ref
 
-val modules : (string, string * itms * rw list) Hashtbl.t
+val modules : (string, string * itms) Hashtbl.t
 val modulexml : (string, string * string * Xml.xml list * rw list * (string * typetable_t) list) Hashtbl.t
-val modules_opt : (string, string * itms * rw list) Hashtbl.t
+val modules_opt : (string, string * itms) Hashtbl.t
 val packages : (string, string * itms) Hashtbl.t
 val interfaces : (string, string * itms * rw list) Hashtbl.t
 val interfacexml : (string, string * string * rw list) Hashtbl.t
@@ -333,5 +333,5 @@ val fortailmatch : string -> rw list -> bool
 val readxml : string -> int * (int * int) * Xml.xml
 val rw' : xmlattr -> Xml.xml -> rw
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list * token list) list
-val dump : bool -> string -> string * itms * rw list -> token list
-val debug : string -> string * itms * rw list -> unit
+val dump : bool -> string -> string * itms -> token list
+val debug : string -> string * itms -> unit
