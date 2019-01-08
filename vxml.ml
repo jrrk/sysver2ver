@@ -270,7 +270,7 @@ type itms = {
   func: (string*(string*typetable_t*rw list*itms)) list ref;
   task: (string*string*rw list*itms) list ref;
   gen: (string*rw list) list ref;
-  imp: (string*string*(string*dirop) list) list ref;
+  imp: (string*(string*(string*dirop) list)) list ref;
   inst: (string*(string*string*rw list)) list ref;
   cnst: (string*(int*cexp)) list ref;
   needed: string list ref;
@@ -283,7 +283,6 @@ let modulexml = Hashtbl.create 255
 let modules_opt = Hashtbl.create 255
 let packages = Hashtbl.create 255
 let interfaces = Hashtbl.create 255
-let interfacexml = Hashtbl.create 255
 let intfhier = Hashtbl.create 255
 let files = Hashtbl.create 255
 let hierarchy = Hashtbl.create 255
@@ -828,7 +827,6 @@ let rec rw' attr = function
 | Xml.Element ("replicate", [("fl", origin); ("dtype_id", tid)], xlst) -> REPL (origin, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("iface", [("fl", origin); ("name", bus); ("origName", bus')], xlst) ->
     let xlst' = List.map (rw' attr) xlst in
-    Hashtbl.add interfacexml bus (origin, bus', xlst');
     IFC (origin, bus, xlst')
 | Xml.Element ("ifacerefdtype", [("fl", _); ("id", num); ("modportname", nam)], xlst) ->
     let xlst' = List.map (rw' attr) xlst and idx = int_of_string num in
@@ -1431,10 +1429,10 @@ let rec catitm (pth:string option) itms = function
     List.iter (catitm pth itms) rw_lst;
     itms.gen := (origin,rw_lst) :: !(itms.gen)
 | IMP(origin, nam, rw_lst) ->
-    itms.imp := (origin, nam, List.map (function
+    itms.imp := (nam, (origin, List.map (function
     | IMRF(_, str1, dir, []) -> (str1, dir)
     | MODPORTFTR (_,str1) -> (str1, Dunknown)
-    | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst") rw_lst) :: !(itms.imp)
+    | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst") rw_lst)) :: !(itms.imp)
 | IMRF(origin, str1, str2, []) -> ()
 | TASK (origin, "task", str1, rw_lst) ->
     let itms' = empty_itms () in
@@ -1494,7 +1492,7 @@ let rec catitm (pth:string option) itms = function
 | IFC(origin, str1, rw_lst) ->
     let itms = empty_itms () in
     List.iter (catitm (Some str1) itms) rw_lst;
-    Hashtbl.add interfaces str1 (origin, itms, rw_lst)
+    Hashtbl.add interfaces str1 (origin, itms)
 | FIL(enc, fil) ->
     Hashtbl.add files enc fil
 | CELLS(rw_lst) -> ()
@@ -1566,7 +1564,7 @@ let dump intf f (origin, modul) =
 		 let lst = List.flatten (List.map (taskstmt modul false nam) lst) in
 		 append (fsrc origin :: TASK :: SP :: IDENT nam :: SEMI :: NL :: BEGIN None :: lst @ END :: ENDTASK :: NL :: []);
                  ) (List.rev !(modul.task));
-  List.iter (fun (origin, a, lst) -> let delim = ref LPAREN in
+  List.iter (fun (a, (origin, lst)) -> let delim = ref LPAREN in
     let lst = MODPORT :: SP :: IDENT a ::
     List.flatten (List.map (fun (nam',dir') -> let lst = !delim :: DIR dir' :: SP :: IDENT nam' :: [] in delim := COMMA; lst) lst) @
     [RPAREN; SEMI] in
@@ -1604,7 +1602,7 @@ let rec iterate f (modorig, modul) =
     List.iter (fun (inst, (origin, kind, iolst)) ->
         if Hashtbl.mem interfaces kind then
            begin
-           let (_, intf, _) = Hashtbl.find interfaces kind in
+           let (_, intf) = Hashtbl.find interfaces kind in
            List.iter (fun (nam, (origin, typ', kind, n)) ->
                  let pth = inst^"_"^nam in
                  newitms.v := (pth, (modorig, typ', kind, n)) :: !(newitms.v);
@@ -1628,17 +1626,15 @@ let rec iterate f (modorig, modul) =
 			       if Hashtbl.mem interfaces inam then (match typ' with (IFCRFDTYP iport, simple, TYPNONE, []) ->
 				  begin
                                   print_endline (iport^" matched");
-				  let (_, intf, imp) = Hashtbl.find interfaces inam in
-				  let imp' = List.filter (function IMP _ -> true | _ -> false) imp in 
-                                  let imp'' = List.map (function IMP(_, str, lst) -> (str,lst) | _ -> ("",[])) imp' in
+				  let (_, intf) = Hashtbl.find interfaces inam in
                                   print_endline ("Searching for "^ iport);
-                                  if List.mem_assoc iport imp'' then
-				  List.iter (function IMRF (origin, nam, dir, []) ->
+                                  if List.mem_assoc iport !(intf.imp) then
+                                  let (origin, lst) = List.assoc iport !(intf.imp) in
+				  List.iter (fun (nam, dir) ->
                                         (* print_endline (inam^":"^iport^":"^nam^":"^id_i); *)
                                         let (_, typ', kind, _) = List.assoc nam !(intf.v) in
 					newiolst := PORT(origin, id_i^"_"^nam, dir, [VRF(id^"_"^nam, [])]) :: !newiolst;
-				        newinnerlst := (id_i^"_"^nam, (origin, typ', dir, typ'', ilst)) :: !newinnerlst;
-				       | _ -> ()) (List.assoc iport imp'')
+				        newinnerlst := (id_i^"_"^nam, (origin, typ', dir, typ'', ilst)) :: !newinnerlst) lst
                                   else print_endline ("Direction "^ iport ^" not found");
 				  end
                                | _ ->
@@ -1816,7 +1812,7 @@ and dumpitms fd modul =
   Printf.fprintf fd " gen = {contents = [";
   Printf.fprintf fd "]};\n";
   Printf.fprintf fd " imp = {contents = [";
-  List.iter (fun (a,b,lst) ->
+  List.iter (fun (a,(b,lst)) ->
     Printf.fprintf fd "     (%s,%s, " (dumps a)  (dumps b);
     List.iter (fun (c,d) -> Printf.fprintf fd "     (%s, %s)\n" (dumps c) (dumpdir d)) lst;
   Printf.fprintf fd "         ));\n" ) !(modul.imp);
@@ -1861,11 +1857,11 @@ let translate errlst xmlf =
     let debugtree = try int_of_string (Sys.getenv "VXML_DEBUGTREE") > 0 with _ -> true in
     if debugtree then
         begin
-        Hashtbl.iter (fun k (a,b,c) -> debug k (a,b)) interfaces;
-        Hashtbl.iter (fun k x -> debug k x) modules;
-        Hashtbl.iter (fun k x -> debug k x) modules_opt;
+        Hashtbl.iter debug interfaces;
+        Hashtbl.iter debug modules;
+        Hashtbl.iter debug modules_opt;
         end;
-    Hashtbl.iter (fun k (a,b,c) -> let d = reformat0 (dump true k (a,b)) in
+    Hashtbl.iter (fun k x -> let d = reformat0 (dump true k x) in
         mods := (k, d, reformat2 (reformat1 d)) :: !mods) interfaces;
     Hashtbl.iter (fun k x -> let d = reformat0 (dump false k x) in
         mods := (k, d, reformat2 (reformat1 d)) :: !mods) modules;

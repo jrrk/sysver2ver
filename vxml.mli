@@ -263,7 +263,7 @@ type itms = {
   func: (string*(string*typetable_t*rw list*itms)) list ref;
   task: (string*string*rw list*itms) list ref;
   gen: (string*rw list) list ref;
-  imp: (string*string*(string*dirop) list) list ref;
+  imp: (string*(string*(string*dirop) list)) list ref;
   inst: (string*(string*string*rw list)) list ref;
   cnst: (string*(int*cexp)) list ref;
   needed: string list ref;
@@ -306,8 +306,7 @@ val modules : (string, string * itms) Hashtbl.t
 val modulexml : (string, string * string * Xml.xml list * rw list * (string * typetable_t) list) Hashtbl.t
 val modules_opt : (string, string * itms) Hashtbl.t
 val packages : (string, string * itms) Hashtbl.t
-val interfaces : (string, string * itms * rw list) Hashtbl.t
-val interfacexml : (string, string * string * rw list) Hashtbl.t
+val interfaces : (string, string * itms) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
 val intfhier : (string * string, int) Hashtbl.t
 val functable : (string, string * typetable_t * rw list * itms) Hashtbl.t
