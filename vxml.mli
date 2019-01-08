@@ -94,6 +94,15 @@ type typenc =
 | IFCRFDTYP of string
 | TYPDF of string
 
+type cexp =
+| ERR of string
+| BIN of char
+| HEX of int
+| SHEX of int
+| STRING of string
+| FLT of float
+| BIGINT of Big_int.big_int
+
 type typmap =
 | TYPNONE
 | SUBTYP of int
@@ -105,17 +114,8 @@ type typmap =
 | RECTYP of typetable_t
 
 and typetable_t = typenc*string ref*typmap*typmap list
-
-type cexp =
-| ERR of string
-| BIN of char
-| HEX of int
-| SHEX of int
-| STRING of string
-| FLT of float
-| BIGINT of Big_int.big_int
-
-type rw =
+and typ_t = typenc*string ref*typmap*rw list
+and rw =
 | UNKNOWN
 | XML of rw list
 | EITM of string * string * string * int * rw list
@@ -125,7 +125,7 @@ type rw =
 | TMPVAR of string * string * typetable_t * rw list
 | CNST of (int * cexp) * int * rw list
 | VRF of string * rw list
-| TYP of int * typetable_t
+| TYP of int * typ_t
 | FNC of string * string * typetable_t * rw list
 | TASK of string * string * string * rw list
 | INST of string * string list * (string * rw list)
@@ -249,7 +249,8 @@ type xmlattr = {
     names: (string*typetable_t) list ref;
     typetable : typetable_t array ref;
     intf : (string * string) list ref;
-     }
+    modulexml: (string*(rw list*(string*typetable_t) list)) list ref;
+}
 
 type itms = { 
   io: (string*(string*typetable_t*dirop*string*(int*cexp) list)) list ref;
@@ -303,12 +304,10 @@ val smpothlst : rw list ref
 val optitmlst : (rw list * rw list) list ref
 
 val modules : (string, string * itms) Hashtbl.t
-val modulexml : (string, string * string * Xml.xml list * rw list * (string * typetable_t) list) Hashtbl.t
 val modules_opt : (string, string * itms) Hashtbl.t
 val packages : (string, string * itms) Hashtbl.t
 val interfaces : (string, string * itms) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
-val intfhier : (string * string, int) Hashtbl.t
 val functable : (string, string * typetable_t * rw list * itms) Hashtbl.t
 val modtokens : (string, token list * token list) Hashtbl.t
 
