@@ -114,7 +114,7 @@ type typmap =
 | TYPNONE
 | SUBTYP of int
 | TYPRNG of int*int
-| TYPMEMBER of int*typetable_t
+| TYPMEMBER of typetable_t
 | TYPENUM of string * int * (int*int)
 | TYPDEF
 | RECTYP of typetable_t
@@ -615,7 +615,7 @@ let rec dumpmap = function
 | TYPNONE -> "TYPNONE"
 | SUBTYP int1 -> "SUBTYP "^string_of_int int1
 | TYPRNG(int1,int2) -> "TYPRNG("^string_of_int int1^", "^string_of_int int2^")"
-| TYPMEMBER (int1,tab) -> "TYPMEMBER("^string_of_int int1^", "^dumptab tab^")"
+| TYPMEMBER (tab) -> "TYPMEMBER"^dumptab tab
 | TYPENUM(str1, int1, (int2,int3)) -> "TYPENUM("^dumps str1^", "^string_of_int int1^", ("^string_of_int int2^", "^string_of_int int3^"))"
 | TYPDEF -> "TYPDEF"
 | RECTYP tab -> "RECTYP"^dumptab tab
@@ -863,16 +863,19 @@ let rec rw' attr = function
 | Xml.Element ("typetable", [("fl", origin)], xlst) ->
     let types = List.map (fun itm -> (function TYP(ix,t) -> (ix,t) | _ -> (0,(UNKDTYP, ref "",TYPNONE, []))) (rw' attr itm)) xlst in
     let max = fold1 (max) (List.map (function (ix,_) -> ix) types) in
+    let typarr = Array.make (max+1) (UNKDTYP, ref "", TYPNONE, []) in
     let rec subtypmap = function
     | RNG [CNST ((b,(HEX n|SHEX n)), _, []); CNST ((b',(HEX n'|SHEX n')), _, [])] -> TYPRNG(n,n')
     | EITM ("enumitem", itm, "", n, [CNST ((w',(HEX n'|SHEX n')), _, [])]) -> TYPENUM(itm, n, (w',n'))
-    | TYP (idx, (MEMBDTYP, id, SUBTYP idx', [])) -> TYPMEMBER(idx, maptyp idx')
+    | TYP (idx, ((MEMBDTYP, id, SUBTYP idx', []) as typ')) -> typarr.(idx) <- maptyp' typ'; TYPMEMBER(maptyp idx')
     | oth -> subothlst := oth :: !subothlst; failwith "subothlst"
-    and maptyp ix = if List.mem_assoc ix types then (match List.assoc ix types with
+    and lookup ix = if List.mem_assoc ix types then List.assoc ix types else (UNKDTYP, ref "", TYPNONE, [])
+    and maptyp' = function
         | (CNSTDTYP, s, SUBTYP idx', []) -> let (a,b,c,d) = maptyp idx' in b := "const"; (CNSTDTYP, s, RECTYP (a,b,c,d), [])
         | (t, s, SUBTYP idx', lst) -> (t, s, RECTYP (maptyp idx'), List.map subtypmap lst)
-	| (t, s, typ, lst) -> (t, s, typ, List.map subtypmap lst)) else (UNKDTYP, ref "", TYPNONE, []) in
-    let typarr = Array.init (max+1) (maptyp) in
+	| (t, s, typ, lst) -> (t, s, typ, List.map subtypmap lst)
+    and maptyp ix = maptyp' (lookup ix) in
+    List.iter (fun (ix, typ') -> typarr.(ix) <- maptyp ix) types;
     attr.typetable := typarr;
     let fd = open_out "typetable.debug" in
     Array.iteri (fun ix itm -> output_string fd (string_of_int ix^":"^dumptab itm^"\n")) typarr;
@@ -1201,7 +1204,7 @@ let rec cntbasic = function
 | oth -> typothlst := oth :: !typothlst; failwith "typothlst"
 
 and cntmembers = function
-| TYPMEMBER (idx1, typ') -> findmembers typ'
+| TYPMEMBER typ' -> findmembers typ'
 | oth -> memothlst := oth :: !memothlst; failwith "memothlst"
 
 and findmembers' typ' =

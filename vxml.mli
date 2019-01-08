@@ -107,9 +107,8 @@ type typmap =
 | TYPNONE
 | SUBTYP of int
 | TYPRNG of int*int
-| TYPMEMBER of int*typetable_t
+| TYPMEMBER of typetable_t
 | TYPENUM of string * int * (int*int)
-| TYPCONST
 | TYPDEF
 | RECTYP of typetable_t
 
