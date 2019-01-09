@@ -126,7 +126,8 @@ and rw =
 | VRF of string * rw list
 | TYP of int * typ_t
 | FNC of string * string * typetable_t * rw list
-| TASK of string * string * string * rw list
+| TASK of string * string * rw list
+| TASKRF of string * string * rw list
 | INST of string * string list * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * string * rw list
@@ -157,7 +158,7 @@ and rw =
 | IF of string * rw list
 | INIT of string * string * rw list
 | IRNG of string * rw list
-| IFC of string * string * rw list
+| IFC of string * string * string * rw list
 | IMP of string * string * rw list
 | IMRF of string * string * dirop * rw list
 | JMPL of string * rw list
@@ -195,6 +196,7 @@ type token =
 | PLUS
 | MINUS
 | STAR
+| POW
 | NL
 | SRC of (string*int)
 | IDENT of string
@@ -261,12 +263,12 @@ type itms = {
   alwys: (string*rw*rw list) list ref;
   init: (string*token*rw list) list ref;
   func: (string*(string*typetable_t*rw list*itms)) list ref;
-  task: (string*string*rw list*itms) list ref;
+  task: (string*(string*rw list*itms)) list ref;
   gen: (string*rw list) list ref;
   imp: (string*(string*(string*dirop) list)) list ref;
   inst: (string*(string*string*rw list)) list ref;
   cnst: (string*(int*cexp)) list ref;
-  needed: string list ref;
+  needed: (token*string) list ref;
   avoid_dollar_unsigned: bool;
   remove_interfaces: bool;
 }
@@ -292,6 +294,7 @@ val smplopt : rw option ref
 val selopt : rw option ref
 val rngopt : rw list option ref
 val typopt : typetable_t option ref
+val decopt : (int * string) option ref
 val portopt : rw option ref
 val cellopt : rw option ref
 val optopt : (rw list * rw list) option ref
@@ -311,10 +314,11 @@ val functable : (string, string * typetable_t * rw list * itms) Hashtbl.t
 val modtokens : (string, token list * token list) Hashtbl.t
 
 val top : (string * string) list ref
+val topattr : xmlattr ref
 
 val hex_of_bigint : int -> Big_int.big_int -> string
 val hex_to_bigint : string -> Big_int.big_int
-val decode : string -> cexp
+val decode : int -> string -> cexp
 val cadd : cexp list -> cexp
 val cexp : string -> int * cexp
 val expr : itms -> rw -> token list
@@ -327,6 +331,7 @@ val simplify_exp : string -> rw list ref -> rw -> rw
 val simplify_asgn : bool -> string -> rw -> rw -> rw
 val jump_opt : string -> rw list -> rw
 val fortailmatch : string -> rw list -> bool
+val needed : itms -> token*string -> token list
 val readxml : string -> int * (int * int) * Xml.xml
 val rw' : xmlattr -> Xml.xml -> rw
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list * token list) list

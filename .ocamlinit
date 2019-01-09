@@ -42,11 +42,10 @@ let xmlf = "obj_dir/Vinterface_array.xml";;
 let xmlf = "obj_dir/Vsimple.xml";;
 let xmlf = "obj_dir/Vinterface1.xml";;
 let xmlf = "vout/Vinterface1.xml";;
+let xmlf = "obj_dir/Vsys.xml";;
 *)
 
 let xmlf = "../ariane/obj_dir/Variane_testharness.xml";;
-let xmlf = "../ariane/obj_dir/Vdm_top.xml";;
-let xmlf = "obj_dir/Vdebug_rom.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml,mods) = Vxml.translate errlst xmlf;;
@@ -74,3 +73,7 @@ List.length !memothlst
 let oldmod = ref [];;
 Hashtbl.iter (fun k _ -> oldmod := k :: !oldmod) Vxml.modules;;
 let oldmod = !oldmod;;
+
+let (x,y) = Hashtbl.find modules "load_unit";;
+let rslt = needed y "extract_transfer_size";;
+let (origin, typ', lst, itms') = Hashtbl.find functable "extract_transfer_size";;

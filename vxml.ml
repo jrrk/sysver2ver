@@ -133,7 +133,8 @@ and rw =
 | VRF of string * rw list
 | TYP of int * typ_t
 | FNC of string * string * typetable_t * rw list
-| TASK of string * string * string * rw list
+| TASK of string * string * rw list
+| TASKRF of string * string * rw list
 | INST of string * string list * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * string * rw list
@@ -164,7 +165,7 @@ and rw =
 | IF of string * rw list
 | INIT of string * string * rw list
 | IRNG of string * rw list
-| IFC of string * string * rw list
+| IFC of string * string * string * rw list
 | IMP of string * string * rw list
 | IMRF of string * string * dirop * rw list
 | JMPL of string * rw list
@@ -202,6 +203,7 @@ type token =
 | PLUS
 | MINUS
 | STAR
+| POW
 | NL
 | SRC of (string*int)
 | IDENT of string
@@ -268,12 +270,12 @@ type itms = {
   alwys: (string*rw*rw list) list ref;
   init: (string*token*rw list) list ref;
   func: (string*(string*typetable_t*rw list*itms)) list ref;
-  task: (string*string*rw list*itms) list ref;
+  task: (string*(string*rw list*itms)) list ref;
   gen: (string*rw list) list ref;
   imp: (string*(string*(string*dirop) list)) list ref;
   inst: (string*(string*string*rw list)) list ref;
   cnst: (string*(int*cexp)) list ref;
-  needed: string list ref;
+  needed: (token*string) list ref;
   avoid_dollar_unsigned: bool;
   remove_interfaces: bool;
 }
@@ -285,6 +287,7 @@ let interfaces = Hashtbl.create 255
 let files = Hashtbl.create 255
 let hierarchy = Hashtbl.create 255
 let functable = Hashtbl.create 255
+let tasktable = Hashtbl.create 255
 let modtokens = Hashtbl.create 255
 
 let exprothlst = ref []
@@ -310,6 +313,7 @@ let selopt = ref None
 let optopt = ref None
 let rngopt = ref None
 let typopt = ref None
+let decopt = ref None
 let portopt = ref None
 let cellopt = ref None
 let forlst = ref []
@@ -320,6 +324,9 @@ let widthlst = ref []
 
 let matchcnt = ref 0
 let top = ref []
+let empty_attr errlst = {anchor="a1";errlst=errlst;names=ref [];intf=ref [];typetable=ref [||];modulexml=ref []}
+
+let topattr = ref (empty_attr (ref []))
 
 let constnet = function
 | "1'h1" -> "supply1"
@@ -415,9 +422,13 @@ let rec hex_of_bigint w n =
 let (q,r) = Big_int.quomod_big_int n (Big_int.big_int_of_int 16) in
 (if (w > 4) then hex_of_bigint (w-4) q else "")^String.make 1 ("0123456789abcdef".[Big_int.int_of_big_int r])
 
-let decode str = try
-  let h = ref 0 and str' = Bytes.make (String.length str / 2) ' ' in
-  let mychar_of_int x = if x >= 32 && x <= 127 then char_of_int x else failwith "ascii" in
+let decode len str =
+  decopt := Some (len,str);
+  let bytes = String.length str in
+  try
+  if len mod 8 > 0 || len <> bytes*4 then invalid_arg str;
+  let h = ref 0 and str' = Bytes.make (bytes/2) ' ' in
+  let mychar_of_int x = if x >= 32 && x <= 127 && (len > 8 || x >= int_of_char 'a') then char_of_int x else failwith "ascii" in
   String.iteri (fun ix -> function
     | '0'..'9' as ch -> dbg ix ch !h;
         h := !h * 16 + (int_of_char ch - int_of_char '0');
@@ -426,14 +437,15 @@ let decode str = try
         h := !h * 16 + (int_of_char ch - int_of_char 'a' + 10);
         if ix land 1 = 1 then begin Bytes.set str' (ix/2) (mychar_of_int !h); h := 0; dbg ix ch !h; end
     | _ -> h := -1) str;
-  STRING (Bytes.to_string str') with err -> BIGINT (hex_to_bigint str)
+  STRING (Bytes.to_string str') with err -> let num = hex_to_bigint str in try HEX(Big_int.int_of_big_int num) with err -> BIGINT num
 
 let cexp exp = match exp.[0] with
 | '"' -> let n = String.length exp - 2 in let s = String.sub exp 1 n in (n, STRING s)
-| _ -> try Scanf.sscanf exp "%d'h%x" (fun b n -> (b, HEX n)) with err ->
+| _ ->
+    try Scanf.sscanf exp "%d'h%x" (fun b n -> (b, HEX n)) with err ->
+    try Scanf.sscanf exp "%d'h%s" (fun b s -> (b, decode b s)) with err ->
     try Scanf.sscanf exp "%d'sh%x" (fun b n -> (b, SHEX n)) with err ->
     try Scanf.sscanf exp "%d'bx" (fun b -> (b, BIN 'x')) with err ->
-    try Scanf.sscanf exp "%d'h%s" (fun b s -> (b, decode s)) with err ->
     try Scanf.sscanf exp "%f" (fun f -> (64, FLT f)) with err -> (-1,ERR exp)
 
 let rec typmap = function
@@ -500,7 +512,7 @@ let typenc = function
 let rec cell_hier = function
 | CELL (_, nam, subnam, hier, rw_lst) ->
    let hier_lst = List.flatten (List.map cell_hier rw_lst) in
-   print_endline ("Cell: "^subnam);
+   if false then print_endline ("Cell: "^subnam);
    Hashtbl.replace hierarchy subnam hier_lst;
    (nam,subnam) :: hier_lst
 | oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
@@ -640,7 +652,7 @@ let rec cell_traverse attr (nam, subnam) =
     if List.mem_assoc subnam !(attr.modulexml) then
             let (xlst', names') = List.assoc subnam !(attr.modulexml) in
                 begin
-                print_endline ("Cell traverse: "^nam);
+                print_endline ("Cell traverse: "^subnam);
                 List.iter (function
                     | IO _ -> ()
                     | VAR (_, inflst, typ', "ifaceref") -> List.iter (fun itm -> print_endline ("Ifaceref: "^itm^":"^dumptab typ')) inflst
@@ -652,8 +664,9 @@ let rec cell_traverse attr (nam, subnam) =
                     | BGN _ -> ()
                     | INIT _ -> ()
                     | ALWYS _ -> ()
-                    | INST (_, _, (kind, [])) -> print_endline ("Interface: "^kind)
+                    | IMP _ -> ()
                     | INST (_, _, (kind, portlst)) ->
+                         print_endline ("Searching: "^kind);
                          let (xlst''', names'') = List.assoc kind !(attr.modulexml) in
                          List.iter (function
                         | PORT (_, formal, Dvif _, [VRF (actual, [])]) ->
@@ -820,11 +833,14 @@ let rec rw' attr = function
         end in
     XRF (origin, nam, tid, dotted, dirop)
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' attr) xlst)
-| Xml.Element ("initarray"|"streaml"|"powsu"|"realtobits"|"itord"|"rand" as op, [("fl", origin); ("dtype_id", tid)], xlst) -> SYS (origin, "$"^op, List.map (rw' attr) xlst)
+| Xml.Element ("initarray"|"streaml"|"powsu"|"realtobits"|"itord"|"rand" as op, [("fl", origin); ("dtype_id", tid)], xlst) ->
+    SYS (origin, "$"^op, List.map (rw' attr) xlst)
 | Xml.Element ("replicate", [("fl", origin); ("dtype_id", tid)], xlst) -> REPL (origin, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("iface", [("fl", origin); ("name", bus); ("origName", bus')], xlst) ->
-    let xlst' = List.map (rw' attr) xlst in
-    IFC (origin, bus, xlst')
+    let attr' = {attr with anchor=origin;names=ref []} in
+    let xlst' = List.map (rw' attr') xlst in
+    attr.modulexml := (bus, (xlst', !(attr'.names))) :: !(attr.modulexml);
+    IFC (origin, bus, bus', xlst')
 | Xml.Element ("ifacerefdtype", [("fl", _); ("id", num); ("modportname", nam)], xlst) ->
     let xlst' = List.map (rw' attr) xlst and idx = int_of_string num in
     TYP(idx,(IFCRFDTYP nam, ref nam, TYPNONE, xlst'))
@@ -848,6 +864,7 @@ let rec rw' attr = function
     let xlst' = List.map (rw' attr) xlst in
     top := List.flatten(List.map cell_hier xlst');
     let topmod = List.filter (fun (_,kind) -> List.mem_assoc kind !(attr.modulexml)) !top in
+    topattr := attr;
     List.iter (cell_traverse attr) topmod;    
     CELLS(xlst')
 | Xml.Element ("cell", [("fl", origin); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
@@ -855,7 +872,8 @@ let rec rw' attr = function
 | Xml.Element ("display", [("fl", origin); ("displaytype", nam)], xlst) -> DSPLY (origin, nam, List.map (rw' attr) xlst)
 | Xml.Element ("readmem", [("fl", origin)], xlst) -> SYS (origin, "$readmemh", List.map (rw' attr) xlst)
 | Xml.Element (("fopen"|"fclose"|"finish"|"stop" as sys), [("fl", origin)], xlst) -> SYS (origin, "$"^sys, List.map (rw' attr) xlst)
-| Xml.Element (("task"|"taskref") as tsk, [("fl", origin); ("name", nam)], xlst) -> TASK(origin, tsk, nam, List.map (rw' attr) xlst)
+| Xml.Element ("task", [("fl", origin); ("name", nam)], xlst) -> TASK(origin, nam, List.map (rw' attr) xlst)
+| Xml.Element ("taskref", [("fl", origin); ("name", nam)], xlst) -> TASKRF(origin, nam, List.map (rw' attr) xlst)
 | Xml.Element ("valueplusargs", [("fl", origin); ("dtype_id", tid)], xlst) -> VPLSRGS(origin, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("testplusargs", [("fl", origin); ("name", nam); ("dtype_id", tid)], xlst) ->
     TPLSRGS(origin, nam, int_of_string tid, List.map (rw' attr) xlst)
@@ -1013,6 +1031,8 @@ let rec cadd = function
 | SHEX n :: SHEX m :: tl -> cadd (SHEX (n+m) :: tl)
 | (HEX _ | SHEX _ | BIGINT _) ::(ERR _|BIN _|STRING _|FLT _):: tl -> ERR "cadd"
 
+let num x = NUM (HEX x)
+
 let rec expr modul = function
 | VRF (id, []) -> IDENT id :: []
 | CNST ((s,n), tid, []) -> SIZED (s,n) :: []
@@ -1058,6 +1078,12 @@ let rec expr modul = function
     IDENT (dotted^(match dirop with Dinam _ when modul.remove_interfaces -> "_" | _ -> ".")^id) :: []
 | TPLSRGS (origin, id, tid, []) -> IDENT "$test$plusargs" :: LPAREN :: DQUOTE :: IDENT id :: DQUOTE :: RPAREN :: []
 | VPLSRGS (origin, tid, CNST ((len, fmt), _, []) :: VRF (arg, []) :: []) -> IDENT "$value$plusargs" :: LPAREN :: NUM fmt :: COMMA :: IDENT arg :: RPAREN :: []
+| SYS (origin, "$rand", []) -> SP :: IDENT "$random" :: []
+| SYS (origin, "$powsu", fst::snd::[]) -> LPAREN :: expr modul fst @ POW :: expr modul snd @ RPAREN :: []
+| SYS (origin, "$streaml", hd::tl) -> LCURLY :: LSHIFT :: LCURLY :: expr modul hd @ RCURLY :: RCURLY :: []
+| SYS (origin, "$initarray", arglst) -> let delim = ref SP in
+    let initarr ix itm = let lst' = !delim :: num ix :: COLON :: expr modul itm in delim := COMMA; lst' in
+    QUOTE :: LCURLY :: List.flatten (List.mapi initarr arglst) @ [RCURLY]
 | SYS (origin, fn, arglst) -> IDENT fn :: LPAREN :: eiter modul SP arglst @ [RPAREN]
 
 | SEL (origin, expr1 :: lo :: wid :: []) as sel -> selopt := Some sel; failwith "expr: selopt"
@@ -1104,6 +1130,7 @@ let rec tokenout fd indent = function
 | PLUS -> output_string fd "+"
 | MINUS -> output_string fd "-"
 | STAR -> output_string fd "*"
+| POW -> output_string fd "**"
 | QUERY -> output_string fd "?"
 | QUOTE -> output_string fd "'"
 | DQUOTE -> output_string fd "\""
@@ -1188,8 +1215,6 @@ let reviter modul lst =
     let delim = ref COLON in
     List.rev (List.flatten (List.map (fun itm -> let lst' = !delim :: expr modul itm in delim := COMMA; lst') lst))
 
-let num x = NUM (HEX x)
-
 let rec cntbasic = function
 | (STRDTYP,_,typmap,rw_lst) -> fold1 (+) (List.flatten (List.map cntmembers rw_lst)) :: []
 | (UNIDTYP,_,typmap,rw_lst) -> fold1 (max) (List.flatten (List.map cntmembers rw_lst)) :: []
@@ -1235,7 +1260,7 @@ and csitm modul dly = function
     | CSITM (origin, (CNST _ as cexp) :: []) -> expr modul cexp @ COMMA :: []
     | CSITM (origin, st :: []) -> DEFAULT :: COLON :: cstmt modul dly st @ SEMI :: []
     | CSITM (origin, cexplst) -> let lbl, stmts = List.partition (function CNST _ | VRF _ | LOGIC _ -> true | _ -> false) cexplst in
-                                 eiter modul SP lbl @ COLON :: BEGIN None :: iter2 modul dly stmts @ [END;NL]
+                                 (if lbl <> [] then eiter modul SP lbl else DEFAULT :: []) @ COLON :: BEGIN None :: iter2 modul dly stmts @ [END;NL]
     | oth -> failwith "csothlst"
 
 and ifcond = function
@@ -1251,7 +1276,9 @@ and ewidth = function
 
 and cstmt modul dly = function
 | JMPG (_,[]) -> []
-| BGN(lbl, rw_lst) -> BEGIN lbl :: iter2 modul dly rw_lst @ [END;NL]
+| BGN(lbl, rw_lst) ->
+    let decl,body = List.partition (function VAR _ -> true | _ -> false) rw_lst in
+    BEGIN lbl :: iter2 modul dly (decl@body) @ [END;NL]
 | IF(origin, cnd :: then_stmt :: []) -> ifcond (expr modul cnd) @ (SP :: cstmt modul dly then_stmt)
 | IF(origin, cnd :: (BGN _ as then_stmt) :: else_stmt :: []) ->
     ifcond (expr modul cnd) @ (SP :: cstmt modul dly then_stmt) @ [ELSE] @ cstmt modul dly else_stmt
@@ -1282,9 +1309,11 @@ and cstmt modul dly = function
 | DSPLY (origin, typ, SFMT (fmt, arglst) :: []) -> IDENT typ :: LPAREN :: DQUOTE :: IDENT fmt :: DQUOTE :: eiter modul COMMA arglst @ [RPAREN]
 | DSPLY (origin, typ, SFMT (fmt, arglst) :: expr1 :: []) ->
     IDENT typ :: LPAREN :: expr modul expr1 @ (COMMA :: DQUOTE :: IDENT fmt :: DQUOTE :: COMMA :: eiter modul SP arglst) @ [RPAREN]
+| SYS (origin, ("$fopen" as fn), frst::secnd::thrd::[]) ->
+    expr modul frst @ ASSIGNMENT :: IDENT fn :: LPAREN :: expr modul secnd @ COMMA :: expr modul thrd @ [RPAREN]
 | SYS (origin, fn, arglst) -> IDENT fn :: LPAREN :: eiter modul SP arglst @ [RPAREN]
 | CNST((s,n), _, []) -> SIZED (s,n) :: []
-| TASK (origin, "taskref", nam, arglst) -> IDENT nam :: (if arglst <> [] then eiter modul LPAREN arglst @ [RPAREN] else [])
+| TASKRF (origin, nam, arglst) -> IDENT nam :: (if arglst <> [] then eiter modul LPAREN arglst @ [RPAREN] else [])
 | JMPL(origin, rw_lst) -> BEGIN None :: iter2 modul dly rw_lst @ [NL;END;NL]
 | TMPVAR (origin, nam, wid, stmtlst) -> cstmt modul dly (BGN (None, stmtlst))
 (*
@@ -1337,7 +1366,7 @@ let rec optitm3 = function
 | CSITM(o,rw_lst) :: tl -> CSITM(o,optitm3 rw_lst) :: optitm3 tl
 | WHL(rw_lst) :: tl -> WHL(optitm3 rw_lst) :: optitm3 tl
 | FORSTMT(o,kind,cmpop,ix,strt,stop,inc,rw_lst) :: tl -> FORSTMT(o,kind,cmpop,ix,strt,stop,inc,optitm3 rw_lst) :: optitm3 tl
-| TASK(origin, tsk, nam, rw_lst) :: tl -> TASK(origin, tsk, nam, optitm3 rw_lst) :: optitm3 tl
+| TASK(origin, nam, rw_lst) :: tl -> TASK(origin, nam, optitm3 rw_lst) :: optitm3 tl
 | ASGN _ as oth :: tl -> oth :: optitm3 tl
 | IF(origin, cnd :: then_stmt :: []) :: tl -> IF (origin, cnd :: BGN(None, optitm3 [then_stmt]) :: []) :: optitm3 tl
 | IF(origin, cnd :: then_stmt :: else_stmt :: []) :: tl -> IF (origin, cnd :: BGN(None, optitm3 [then_stmt]) :: BGN(None, optitm3 [else_stmt]) :: []) :: optitm3 tl
@@ -1363,7 +1392,8 @@ let rec optitm4 = function
 | CSITM(origin, rw_lst) -> CSITM(origin, List.map optitm4 rw_lst)
 | WHL(rw_lst) -> WHL(List.map optitm4 rw_lst)
 | FORSTMT(o,kind,cmpop,ix,strt,stop,inc,rw_lst) -> FORSTMT(o,kind,cmpop,ix,strt,stop,inc,List.map optitm4 rw_lst)
-| TASK(origin, tsk, nam, rw_lst) -> TASK(origin, tsk, nam, List.map optitm4 rw_lst)
+| TASK(origin, nam, rw_lst) -> TASK(origin, nam, List.map optitm4 rw_lst)
+| TASKRF(origin, nam, rw_lst) -> TASKRF(origin, nam, List.map optitm4 rw_lst)
 | (ASGN _  | CNST _ | VAR _ | VRF _ | LOGIC _ | SEL _ | CMP _ | DSPLY _ | SYS _) as oth -> oth
 | oth -> optothlst := oth :: !optothlst; failwith "optothlst4"
 
@@ -1393,7 +1423,8 @@ let rec catitm (pth:string option) itms = function
     itms.alwys := (origin, POSPOS(ck,rst), optitm rw_lst) :: !(itms.alwys)    
 | ALWYS(origin, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
-    itms.alwys := (origin, POSEDGE(ck), optitm rw_lst) :: !(itms.alwys)
+    let rw_lst' = optitm rw_lst in
+    if rw_lst' <> [] then itms.alwys := (origin, POSEDGE(ck), rw_lst') :: !(itms.alwys)
 | ALWYS(origin, SNTRE(SNITM ("NEG", [VRF (ck, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     itms.alwys := (origin, NEGEDGE(ck), optitm rw_lst) :: !(itms.alwys)
@@ -1436,10 +1467,16 @@ let rec catitm (pth:string option) itms = function
     | MODPORTFTR (_,str1) -> (str1, Dunknown)
     | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst;;1442") rw_lst)) :: !(itms.imp)
 | IMRF(origin, str1, str2, []) -> ()
-| TASK (origin, "task", str1, rw_lst) ->
+| TASK (origin, nam, rw_lst) ->
     let itms' = empty_itms () in
     List.iter (catitm pth itms') rw_lst;
-    itms.task := (origin, str1, rw_lst, itms') :: !(itms.task)
+    let tsk = (origin, rw_lst, itms') in
+    itms.task := (nam, tsk) :: !(itms.task);
+    Hashtbl.add tasktable nam tsk;
+| TASKRF (origin, nam, rw_lst) ->
+    List.iter (catitm pth itms) rw_lst;
+    if not (List.mem (TASK,nam) !(itms.needed)) then
+        itms.needed := (TASK,nam) :: !(itms.needed)
 | NTL(rw_lst)
 | RNG(rw_lst)
 | SNTRE(rw_lst)
@@ -1456,7 +1493,6 @@ let rec catitm (pth:string option) itms = function
 | EITM(_, _, _, _, rw_lst)
 | CNST(_, _, rw_lst)
 | VRF(_, rw_lst)
-| TASK(_, _, _, rw_lst)
 | SFMT(_, rw_lst)
 | SYS(_,_, rw_lst)
 | PORT(_, _, _, rw_lst)
@@ -1477,8 +1513,8 @@ let rec catitm (pth:string option) itms = function
 | FRF(_, nam, rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     print_endline ("Func: "^nam);
-    if not (List.mem nam !(itms.needed)) then
-        itms.needed := nam :: !(itms.needed);
+    if not (List.mem (FUNCTION,nam) !(itms.needed)) then
+        itms.needed := (FUNCTION,nam) :: !(itms.needed);
 | XRF(origin, str1, str2, str3, dirop) -> ()
 | MODUL(origin, str1, str2, rw_lst) ->
     let itms = empty_itms () in
@@ -1491,7 +1527,7 @@ let rec catitm (pth:string option) itms = function
     let itms = empty_itms () in
     List.iter (catitm (Some str1) itms) rw_lst;
     Hashtbl.add packages str1 (origin, itms)
-| IFC(origin, str1, rw_lst) ->
+| IFC(origin, str1, str2, rw_lst) ->
     let itms = empty_itms () in
     List.iter (catitm (Some str1) itms) rw_lst;
     Hashtbl.add interfaces str1 (origin, itms)
@@ -1510,6 +1546,13 @@ let iolst modul delim dir io = function
     let wid = fold1 ( * ) widlst in
     !delim :: (DIR dir :: SP :: LOGIC ::
 	     (if wid > 1 || rng then LBRACK :: num (wid-1) :: COLON :: num 0 :: RBRACK :: [] else []) @ [SP; IDENT io])
+
+let fndlm = function
+| FIRSTG -> LPAREN::RPAREN::SEMI::[]
+| IOSTG -> RPAREN::SEMI::[]
+| VARSTG
+| JMPSTG
+| BDYSTG -> SEMI :: []
 	     
 let rec fnstmt modul dly stg = function
 | IO (origin, iolst', typ', dir, _, lst) ->
@@ -1517,16 +1560,16 @@ let rec fnstmt modul dly stg = function
     stg := IOSTG;
     lst
 | VAR (origin, idlst, typ', _) -> 
-    let dlm = match !stg with FIRSTG -> LPAREN::RPAREN::SEMI::[] | IOSTG -> RPAREN::SEMI::[] | VARSTG | JMPSTG | BDYSTG -> [] in
+    let dlm = fndlm !stg in
     stg := VARSTG;
     dlm @ List.flatten (List.map (fun id -> varlst modul (ref NL) typ' id) idlst)
 | JMPL(origin, rw_lst) ->
-    let dlm = match !stg with FIRSTG -> LPAREN::RPAREN::SEMI::[] | IOSTG -> RPAREN::SEMI::[] | VARSTG -> SEMI::[] | JMPSTG | BDYSTG -> [] in
+    let dlm = fndlm !stg in
     stg := JMPSTG;
     dlm @ BEGIN None :: (List.flatten (List.map (fnstmt modul dly stg) rw_lst)) @ [SEMI;END]
 | JMPG (_,[]) -> []
 | itm ->
-    let dlm = match !stg with FIRSTG -> LPAREN::RPAREN::SEMI::[] | IOSTG -> RPAREN::SEMI::[] | JMPSTG -> [] | VARSTG | BDYSTG -> SEMI::[] in
+    let dlm = fndlm !stg in
     stg := BDYSTG;
     dlm @ cstmt modul dly itm
 
@@ -1538,6 +1581,28 @@ let outnam f = f^".v"
 let outnamopt f = let l = String.length f in f^(if l < 4 || String.sub f (l-4) 4 <> "_opt" then "_opt.v" else ".v")
 let outtok f = f^"_tokens.txt"
 let outtcl f = "./"^f^"_fm.tcl"
+
+let needed modul (kind,nam) = match kind with
+| FUNCTION ->
+    print_endline ("Function: "^nam);
+    let found = List.mem_assoc nam !(modul.func) in
+    let (origin, typ', lst, itms') = if found then
+        List.assoc nam !(modul.func)
+    else
+        Hashtbl.find functable nam in
+    let stg = ref FIRSTG in let lst = fsrc origin :: NL :: FUNCTION :: SP :: (varlst modul (ref SP) typ' nam) @
+    List.flatten (List.map (fnstmt modul false stg) (List.tl lst)) in
+    lst @ (fndlm !stg @ [NL;ENDFUNCTION])
+| TASK ->
+    print_endline ("Task: "^nam);
+    let found = List.mem_assoc nam !(modul.task) in
+    let (origin, lst, itms') = if found then
+        List.assoc nam !(modul.task)
+    else
+        Hashtbl.find tasktable nam in
+    let lst = List.flatten (List.map (taskstmt modul false nam) lst) in
+    fsrc origin :: TASK :: SP :: IDENT nam :: SEMI :: NL :: BEGIN None :: lst @ END :: ENDTASK :: NL :: []
+| oth -> failwith "needed"
 
 let dump intf f (origin, modul) =
   let appendlst = ref [] in
@@ -1552,21 +1617,7 @@ let dump intf f (origin, modul) =
   head := !head @ (if !delim <> COMMA then !delim :: [] else []) @ [RPAREN;SEMI;NL];
   List.iter (fun (id, (origin, typ', kind', n)) -> append (fsrc origin :: varlst modul (ref SP) typ' id @ SEMI :: NL :: []);
                  ) (List.rev !(modul.v));
-  List.iter (fun nam ->
-    print_endline nam;
-    let found = List.mem_assoc nam !(modul.func) in
-    let (origin, typ', lst, itms') = if found then
-        List.assoc nam !(modul.func)
-    else
-        Hashtbl.find functable nam in
-    let lst = fsrc origin :: NL :: FUNCTION :: SP :: (varlst modul (ref SP) typ' nam) @
-    List.flatten (List.map (fnstmt modul false (ref FIRSTG)) (List.tl lst)) @ [ENDFUNCTION] in
-    append lst
-  ) (List.rev !(modul.needed));
-  List.iter (fun (origin, nam, lst, itms') ->
-		 let lst = List.flatten (List.map (taskstmt modul false nam) lst) in
-		 append (fsrc origin :: TASK :: SP :: IDENT nam :: SEMI :: NL :: BEGIN None :: lst @ END :: ENDTASK :: NL :: []);
-                 ) (List.rev !(modul.task));
+  List.iter (fun itm -> append (needed modul itm)) (List.rev !(modul.needed));
   List.iter (fun (a, (origin, lst)) -> let delim = ref LPAREN in
     let lst = MODPORT :: SP :: IDENT a ::
     List.flatten (List.map (fun (nam',dir') -> let lst = !delim :: DIR dir' :: SP :: IDENT nam' :: [] in delim := COMMA; lst) lst) @
@@ -1714,7 +1765,8 @@ let rec dumpitm = function
 | VRF (str1, rw_lst) -> "VRF("^dumps str1^", "^dumplst rw_lst^")"
 | TYP (idx, (typenc, str1, typmap, typ_lst)) -> "TYP("^dumptyp typenc^", "^dumps !str1^", "^dumpmap typmap^", "^dumplst typ_lst^")"
 | FNC (str1, str2, typ2, rw_lst) -> "FNC("^dumps str1^", "^dumps str2^", "^dumptab typ2^", "^dumplst rw_lst^")"
-| TASK (str1, str2, str3, rw_lst) -> "TASK("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumplst rw_lst^")"
+| TASK (str1, str2, rw_lst) -> "TASK("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| TASKRF (str1, str2, rw_lst) -> "TASKRF("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
 | INST (str1, str2lst, (str3, rw_lst)) -> "INST("^dumps str1^", "^dumpstrlst str2lst^"("^", "^dumps str3^", "^", "^dumplst rw_lst^"))"
 | SFMT (str1, rw_lst) -> "SFMT("^dumps str1^", "^dumplst rw_lst^")"
 | SYS (str1, str2, rw_lst) -> "SYS("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
@@ -1746,7 +1798,7 @@ let rec dumpitm = function
 | IF (str1, rw_lst) -> "IF("^dumps str1^", "^dumplst rw_lst^")"
 | INIT (str1, str2, rw_lst) -> "INIT("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
 | IRNG (str1, rw_lst) -> "IRNG("^dumps str1^", "^dumplst rw_lst^")"
-| IFC (str1, str2, rw_lst) -> "IFC("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| IFC (str1, str2, str3, rw_lst) -> "IFC("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumplst rw_lst^")"
 | IMP (str1, str2, rw_lst) -> "IMP("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
 | IMRF (str1, str2, dir, rw_lst) -> "IMRF("^dumps str1^", "^dumps str2^", "^dumpdir dir^", "^dumplst rw_lst^")"
 | JMPL (str1, rw_lst) -> "JMPL("^dumps str1^", "^dumplst rw_lst^")"
@@ -1799,6 +1851,10 @@ and dumpitms fd modul =
   List.iter (fun (a,b,lst) -> Printf.fprintf fd "(%s, %s, %s)\n" (dumps a) (dumpitm b) (dumplst lst)) !(modul.alwys);
   Printf.fprintf fd "]};\n";
   Printf.fprintf fd " init = {contents = [";
+  List.iter (fun (a,b,lst) ->
+      Printf.fprintf fd "(%s, " (dumps a);
+      tokenout fd (ref 0) b;
+      Printf.fprintf fd ", %s)\n" (dumplst lst)) !(modul.init);
   Printf.fprintf fd "]};\n";
   Printf.fprintf fd " func = {contents = [";
   List.iter (fun (a,(b,c,d,itms)) -> Printf.fprintf fd "    (%s,\n" (dumps a);
@@ -1807,7 +1863,7 @@ and dumpitms fd modul =
   Printf.fprintf fd "         ));\n" ) !(modul.func);
   Printf.fprintf fd "]};\n";
   Printf.fprintf fd " task = {contents = [";
-  List.iter (fun (b,c,d,itms) ->
+  List.iter (fun (b,(c,d,itms)) ->
   Printf.fprintf fd "     (%s, %s, %s\n" (dumps b) (dumps c) (dumplst d);
   dumpitms fd itms;
   Printf.fprintf fd "         ));\n" ) !(modul.task);
@@ -1829,7 +1885,11 @@ and dumpitms fd modul =
   Printf.fprintf fd " cnst = {contents = [";
   Printf.fprintf fd "]};\n";
   Printf.fprintf fd " needed = {contents = ";
-  let delim = ref '[' in List.iter (fun (a) -> Printf.fprintf fd "%c%s" !delim (dumps a); delim := ',') !(modul.needed);
+let delim = ref '[' in List.iter (fun (a,b) ->
+                                      Printf.fprintf fd "%c(" !delim;
+                                      tokenout fd (ref 0) a;
+                                      Printf.fprintf fd ",%s)" (dumps b);
+                                      delim := ',') !(modul.needed);
   Printf.fprintf fd "]}}\n";
   Printf.fprintf fd "  \n"
     
@@ -1846,7 +1906,7 @@ let readxml xmlf =
 let translate errlst xmlf =
     let (line,range,xml) = readxml xmlf in
     let empty = empty_itms () in
-    let empty_attr = {anchor="a1";errlst=errlst;names=ref [];intf=ref [];typetable=ref [||];modulexml=ref []} in
+    let empty_attr = empty_attr errlst in
     let rwxml = rw' empty_attr xml in
     catitm None empty rwxml;
     let top = snd(List.hd !top) in
