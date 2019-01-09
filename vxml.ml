@@ -409,7 +409,7 @@ let chkvif nam =
        let vif = l > lm && String.sub nam (l-lm) lm = m in
        (vif, if vif then String.sub nam 0 (l-lm) else nam)
 
-let expandbraket lo hi fn = Array.to_list (Array.init (hi-lo+1) (fun ix -> fn ("__BRA__"^string_of_int ix^"__KET__")))
+let expandbraket lo hi fn = Array.to_list (Array.init (hi-lo+1) (fun ix -> fn ("__BRA__"^string_of_int (ix+lo)^"__KET__")))
        
 let dbg i ch h = if false then print_endline (string_of_int i^":"^String.make 1 ch^":"^string_of_int h)
 
@@ -700,6 +700,297 @@ let rec cell_traverse attr (nam, subnam) =
                 end
         else print_endline (subnam^":missing")
 
+let oldsrc = ref ("",-1)
+
+let unaryopv = function
+| Unknown -> "???"
+| Unot -> " ~ "
+| Ulognot -> " ! "
+| Unegate -> " - "
+| Uextend -> "$unsigned"
+| Uextends -> "$signed"
+
+let cmpopv = function
+| Cunknown -> "???"
+| Ceq -> " == "
+| Cneq -> " != "
+| Cgt -> " > "
+| Cgts -> " > "
+| Cgte -> " >= "
+| Cgtes -> " >= "
+| Ceqwild -> " == "
+| Cneqwild -> " != "
+| Cltes -> " <= "
+| Clte -> " <= "
+| Clt -> " < "
+| Clts -> " < "
+
+let logopv = function
+| Lunknown -> "???"
+| Land -> " & "
+| Lredand -> " & "
+| Lor -> " | "
+| Lredor -> " | "
+| Lxor -> " ^ "
+| Lxnor -> " ~^ "
+| Lredxor -> " ^ "
+| Lredxnor -> " ~^ "
+| Lshiftl -> " << "
+| Lshiftr -> " >> "
+| Lshiftrs -> " >>> "
+
+let arithopv = function
+| Aadd -> "+"
+| Asub -> "-"
+| Amul -> "*"
+| Amuls -> "*"
+| Aunknown -> "???"
+
+let rec cadd = function
+| [] -> HEX 0
+| ERR err :: tl -> ERR err
+| HEX n :: [] -> HEX n
+| SHEX n :: [] -> SHEX n
+| FLT f :: [] -> FLT f
+| FLT f :: _ -> ERR "addflt"
+| STRING _ :: tl -> ERR "addstr"
+| BIGINT n :: [] -> BIGINT n
+| BIGINT n :: BIGINT m :: tl -> cadd (BIGINT (Big_int.add_big_int n m) :: tl)
+| (HEX n | SHEX n) :: BIGINT m :: tl -> cadd (BIGINT (Big_int.add_big_int (Big_int.big_int_of_int n) m) :: tl)
+| BIGINT n :: (HEX m | SHEX m) :: tl -> cadd (BIGINT (Big_int.add_big_int n (Big_int.big_int_of_int m)) :: tl)
+| BIN 'x' :: tl -> cadd (BIN 'x' :: tl)
+| BIN _ :: tl -> cadd (BIN 'x' :: tl)
+| HEX n :: HEX m :: tl -> cadd (HEX (n+m) :: tl)
+| SHEX n :: HEX m :: tl -> cadd (HEX (n+m) :: tl)
+| HEX n :: SHEX m :: tl -> cadd (HEX (n+m) :: tl)
+| SHEX n :: SHEX m :: tl -> cadd (SHEX (n+m) :: tl)
+| (HEX _ | SHEX _ | BIGINT _) ::(ERR _|BIN _|STRING _|FLT _):: tl -> ERR "cadd"
+
+let diropv = function
+| Dinput -> "input"
+| Doutput -> "output"
+| Dinout -> "inout"
+| Dvif _ -> "vif"
+| Dinam str -> !str
+| Dport _ -> "ifport"
+| Dunknown -> "inout"
+
+let rec tokenout fd indent = function
+| SP -> output_string fd " "
+| SEMI -> output_string fd ";"
+| COLON -> output_string fd ":"
+| COMMA -> output_string fd ","
+| LPAREN -> output_string fd "("
+| RPAREN -> output_string fd ")"
+| LBRACK -> output_string fd "["
+| RBRACK -> output_string fd "]"
+| LCURLY -> output_string fd "{"
+| RCURLY -> output_string fd "}"
+| LCOMMENT -> output_string fd " /* "
+| RCOMMENT -> output_string fd " */ "
+| LSHIFT -> output_string fd "<<"
+| RSHIFT -> output_string fd ">>"
+| AT -> output_string fd "@"
+| DOT -> output_string fd "."
+| PLUS -> output_string fd "+"
+| MINUS -> output_string fd "-"
+| STAR -> output_string fd "*"
+| POW -> output_string fd "**"
+| QUERY -> output_string fd "?"
+| QUOTE -> output_string fd "'"
+| DQUOTE -> output_string fd "\""
+| NL -> output_string fd ("\n"^if !indent > 0 then String.make (!indent*4) ' ' else "")
+| SRC (str1,int1) ->
+    if (str1,int1) <> !oldsrc then begin output_string fd ("\n/* "^str1^":"^string_of_int int1^" */"); tokenout fd indent NL; end;
+    oldsrc := (str1,int1);
+| DEFAULT -> output_string fd "default"
+| IDENT str -> output_string fd str
+| NUM (BIN n) -> output_string fd (String.make 1 n)
+| NUM (HEX n) -> output_string fd (string_of_int n)
+| NUM (SHEX n) -> output_string fd (string_of_int n)
+| NUM (BIGINT n) -> output_string fd (Big_int.string_of_big_int n)
+| NUM (STRING s) -> output_string fd ("\""^String.escaped s^"\"")
+| NUM (FLT f) -> output_string fd (string_of_float f)
+| NUM (ERR err) -> output_string fd ("NumberError:"^err)
+| SIZED (w,n) -> output_string fd (dumpsized w n)
+| DIR str -> output_string fd (diropv str)
+| BEGIN None -> incr indent; output_string fd "    begin"
+| BEGIN (Some lbl) -> incr indent; output_string fd ("    begin:"^lbl)
+| END -> output_string fd "end"; decr indent
+| IFF -> output_string fd "if"
+| ELSE -> output_string fd "else"
+| ASSIGN -> output_string fd "assign"
+| ASSIGNMENT -> output_string fd "="
+| ASSIGNDLY -> output_string fd "<="
+| CASE -> output_string fd "case"; incr indent
+| ENDCASE -> output_string fd "endcase"; decr indent
+| CMPOP op -> output_string fd (cmpopv op)
+| WHILE -> output_string fd "while"
+| FOR -> output_string fd "for"
+| ALWAYS -> output_string fd "always"
+| POSEDGE -> output_string fd "posedge"
+| NEGEDGE -> output_string fd "negedge"
+| RETURN -> output_string fd "return"
+| LOGIC -> output_string fd "logic"
+| WIRE -> output_string fd "wire"
+| FUNCTION -> output_string fd "function"; incr indent
+| ENDFUNCTION -> output_string fd "endfunction"; decr indent
+| TASK -> output_string fd "task"; incr indent
+| ENDTASK -> output_string fd "endtask"; decr indent
+| MODULE -> output_string fd "module"; incr indent
+| ENDMODULE -> output_string fd "endmodule"; decr indent
+| INITIAL -> output_string fd "initial"
+| FINAL -> output_string fd "final"
+| INTERFACE -> output_string fd "interface"; incr indent
+| ENDINTERFACE -> output_string fd "endinterface"; decr indent
+| MODPORT -> output_string fd "modport"
+
+let rec dumpitm = function
+| VRF (id, []) -> "VRF (\""^id^"\", [])"
+| UNKNOWN -> "UNKNOWN"
+| XML (rw_lst) -> "XML("^dumplst rw_lst^")"
+| EITM (str1, str2, str3, int2, rw_lst) -> "EITM("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumpi int2^", "^dumplst rw_lst^")"
+| IO (str1, str2lst, typ2, dirop, str3, rw_lst) -> "IO("^dumps str1^", "^dumpstrlst str2lst^", "^dumptab typ2^", "^dumpdir dirop^", "^dumps str3^", "^dumplst rw_lst^")"
+| VAR (str1, str2lst, typ2, str3) -> "VAR"^dumps str1^", "^dumpstrlst str2lst^", "^dumptab typ2^", "^dumps str3^")"
+| IVAR (str1, str2, int2, rw_lst, int3) -> "IVAR("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^", "^dumpi int3^")"
+| TMPVAR (str1, str2, typ2, rw_lst) -> "TMPVAR("^dumps str1^", "^dumps str2^", "^dumptab typ2^", "^dumplst rw_lst^")"
+| CNST ((int, cexp), int2, rw_lst) -> "CNST("^dumpcnst (int, cexp)^", "^dumpi int2^", "^dumplst rw_lst^")"
+| VRF (str1, rw_lst) -> "VRF("^dumps str1^", "^dumplst rw_lst^")"
+| TYP (idx, (typenc, str1, typmap, typ_lst)) -> "TYP("^dumptyp typenc^", "^dumps !str1^", "^dumpmap typmap^", "^dumplst typ_lst^")"
+| FNC (str1, str2, typ2, rw_lst) -> "FNC("^dumps str1^", "^dumps str2^", "^dumptab typ2^", "^dumplst rw_lst^")"
+| TASK (str1, str2, rw_lst) -> "TASK("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| TASKRF (str1, str2, rw_lst) -> "TASKRF("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| INST (str1, str2lst, (str3, rw_lst)) -> "INST("^dumps str1^", "^dumpstrlst str2lst^"("^", "^dumps str3^", "^", "^dumplst rw_lst^"))"
+| SFMT (str1, rw_lst) -> "SFMT("^dumps str1^", "^dumplst rw_lst^")"
+| SYS (str1, str2, rw_lst) -> "SYS("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| TPLSRGS (str1, str2, int2, rw_lst) -> "TPLSRGS("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^")"
+| VPLSRGS (str1, int2, rw_lst) -> "VPLSRGS("^dumps str1^", "^dumpi int2^", "^dumplst rw_lst^")"
+| PORT (str1, str2, dirop, rw_lst) -> "PORT("^dumps str1^", "^dumps str2^", "^dumpdir dirop^", "^dumplst rw_lst^")"
+| CA (str1, rw_lst) -> "CA("^dumps str1^", "^dumplst rw_lst^")"
+| UNRY (unaryop, rw_lst) -> "UNRY("^dumpu unaryop^", "^dumplst rw_lst^")"
+| SEL (str1, rw_lst) -> "SEL("^dumps str1^", "^dumplst rw_lst^")"
+| ASEL (rw_lst) -> "ASEL("^dumplst rw_lst^")"
+| SNITM (str1, rw_lst) -> "SNITM("^dumps str1^", "^dumplst rw_lst^")"
+| ASGN (bool, str2, rw_lst) -> "ASGN("^dumpb bool^", "^dumps str2^", "^dumplst rw_lst^")"
+| ARITH (arithop, rw_lst) -> "ARITH("^dumparith arithop^", "^dumplst rw_lst^")"
+| LOGIC (logop, rw_lst) -> "LOGIC("^dumplog logop^", "^dumplst rw_lst^")"
+| CMP (cmpop, rw_lst) -> "CMP("^dumpcmp cmpop^", "^dumplst rw_lst^")"
+| FRF (str1, str2, rw_lst) -> "FRF("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| XRF (str1, str2, str3, str4, dirop) -> "XRF("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumps str4^", "^dumpdir dirop^")"
+| PKG (str1, str2, rw_lst) -> "PKG("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| CAT (str1, rw_lst) -> "CAT("^dumps str1^", "^dumplst rw_lst^")"
+| CPS (str1, rw_lst) -> "CPS("^dumps str1^", "^dumplst rw_lst^")"
+| CND (str1, rw_lst) -> "CND("^dumps str1^", "^dumplst rw_lst^")"
+| REPL (str1, int2, rw_lst) -> "REPL("^dumps str1^", "^dumpi int2^", "^dumplst rw_lst^")"
+| MODUL (str1, str2, str3, rw_lst) -> "MODUL("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumplst rw_lst^")"
+| BGN (None, rw_lst) -> "BGN(None,"^dumplst rw_lst^")"
+| BGN (Some str1, rw_lst) -> "BGN(Some "^dumps str1^", "^dumplst rw_lst^")"
+| RNG (rw_lst) -> "RNG("^dumplst rw_lst^")"
+| ALWYS (str1, rw_lst) -> "ALWYS("^dumps str1^", "^dumplst rw_lst^")"
+| SNTRE (rw_lst) -> "SNTRE("^dumplst rw_lst^")"
+| IF (str1, rw_lst) -> "IF("^dumps str1^", "^dumplst rw_lst^")"
+| INIT (str1, str2, rw_lst) -> "INIT("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| IRNG (str1, rw_lst) -> "IRNG("^dumps str1^", "^dumplst rw_lst^")"
+| IFC (str1, str2, str3, rw_lst) -> "IFC("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumplst rw_lst^")"
+| IMP (str1, str2, rw_lst) -> "IMP("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| IMRF (str1, str2, dir, rw_lst) -> "IMRF("^dumps str1^", "^dumps str2^", "^dumpdir dir^", "^dumplst rw_lst^")"
+| JMPL (str1, rw_lst) -> "JMPL("^dumps str1^", "^dumplst rw_lst^")"
+| JMPG (str1, rw_lst) -> "JMPG("^dumps str1^", "^dumplst rw_lst^")"
+| CS (str1, rw_lst) -> "CS("^dumps str1^", "^dumplst rw_lst^")"
+| CSITM (str1, rw_lst) -> "CSITM("^dumps str1^", "^dumplst rw_lst^")"
+| WHL (rw_lst) -> "WHL("^dumplst rw_lst^")"
+| FORSTMT (str1, str2, cmpop, str3, (int1, cexp1), (int2, cexp2), (int3, cexp3), rw_lst) ->
+    "FORSTMT("^dumps str1^", "^dumps str2^", "^dumpcmp cmpop^", "^dumps str3^", "^dumpcnst (int1, cexp1)^", "^dumpcnst (int2, cexp2)^", "^dumpcnst (int3, cexp3)^", "^dumplst rw_lst^")"
+| ARG (rw_lst) -> "ARG("^dumplst rw_lst^")"
+| DSPLY (str1, str2, rw_lst) -> "DSPLY("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| FILS (str1, rw_lst) -> "FILS("^dumps str1^", "^dumplst rw_lst^")"
+| FIL (str1, str2) -> "FIL"^dumps str1^", "^dumps str2^")"
+| NTL (rw_lst) -> "NTL("^dumplst rw_lst^")"
+| CELLS (rw_lst) -> "CELLS("^dumplst rw_lst^")"
+| CELL (str1, str2, str3, str4, rw_lst) -> "CELL("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumps str4^", "^dumplst rw_lst^")" 
+| POSPOS (str1, str2) -> "POSPOS"^dumps str1^", "^dumps str2^")"
+| POSNEG (str1, str2) -> "POSNEG"^dumps str1^", "^dumps str2^")"
+| NEGNEG (str1, str2) -> "NEGNEG"^dumps str1^", "^dumps str2^")"
+| POSEDGE (str1) -> "POSEDGE"^dumps str1^")"
+| NEGEDGE (str1) -> "NEGEDGE"^dumps str1^")"
+| COMB -> "COMB"
+| MODPORTFTR (str1, str2) -> "MODPORTFTR("^dumps str1^", "^dumps str2^")"
+| TYPETABLE arr -> "[|"^String.concat ";\n\t" (Array.to_list (Array.mapi (fun idx (typenc, str1, typmap, typ_lst) -> string_of_int idx^": TYP("^dumptyp typenc^", "^dumps !str1^", "^dumpmap typmap^", "^dumpmlst typ_lst^")") arr))^"|]"
+ 
+and dumplst lst = "["^String.concat ";\n\t" (List.map dumpitm lst)^"]"
+and dumpcstlst lst = "["^String.concat ";\n\t" (List.map dumpcnst lst)^"]"
+
+and dumpitms fd modul =
+  Printf.fprintf fd "  {io =\n";
+  Printf.fprintf fd "  {contents =\n    [";
+  List.iter (fun (a,(b,c,d,e,lst)) ->
+    Printf.fprintf fd "(%s, (%s, %s, %s, %s, %s));\n" (dumps a) (dumps b) (dumptab c) (dumpdir d) (dumps e) (dumpcstlst lst)) !(modul.io);
+  Printf.fprintf fd "     ]};\n";
+  Printf.fprintf fd " v = {contents = [";
+  List.iter (fun (a,(b,c,d,e)) -> Printf.fprintf fd "(%s, (%s, %s, %s, %s));\n" (dumps a) (dumps b) (dumptab c) d (dumptab e)) !(modul.v);
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " iv = {contents = [";
+  List.iter (fun (a,(b,c,d,e)) -> Printf.fprintf fd "(%s, (%s, %d, %s, %d));\n" (dumps a) b c (dumplst d) e) !(modul.iv);
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " ir = {contents = [";
+  List.iter (fun (a,b,c) -> Printf.fprintf fd "(%s, %s, %s)\n" a (dumps b) (dumptab c)) !(modul.ir);
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " ca = {contents = [";
+  List.iter (fun (a,b,c) -> Printf.fprintf fd "(%s, %s, %s)\n" (dumps a) (dumpitm b) (dumpitm c)) !(modul.ca);
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " typ = {contents = [";
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " alwys = {contents = [";
+  List.iter (fun (a,b,lst) -> Printf.fprintf fd "(%s, %s, %s)\n" (dumps a) (dumpitm b) (dumplst lst)) !(modul.alwys);
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " init = {contents = [";
+  List.iter (fun (a,b,lst) ->
+      Printf.fprintf fd "(%s, " (dumps a);
+      tokenout fd (ref 0) b;
+      Printf.fprintf fd ", %s)\n" (dumplst lst)) !(modul.init);
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " func = {contents = [";
+  List.iter (fun (a,(b,c,d,itms)) -> Printf.fprintf fd "    (%s,\n" (dumps a);
+  Printf.fprintf fd "     (%s, %s, %s\n" (dumps b) (dumptab c) (dumplst d);
+  dumpitms fd itms;
+  Printf.fprintf fd "         ));\n" ) !(modul.func);
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " task = {contents = [";
+  List.iter (fun (b,(c,d,itms)) ->
+  Printf.fprintf fd "     (%s, %s, %s\n" (dumps b) (dumps c) (dumplst d);
+  dumpitms fd itms;
+  Printf.fprintf fd "         ));\n" ) !(modul.task);
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " gen = {contents = [";
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " imp = {contents = [";
+  List.iter (fun (a,(b,lst)) ->
+    Printf.fprintf fd "     (%s,%s, " (dumps a)  (dumps b);
+    List.iter (fun (c,d) -> Printf.fprintf fd "     (%s, %s)\n" (dumps c) (dumpdir d)) lst;
+  Printf.fprintf fd "         ));\n" ) !(modul.imp);
+  Printf.fprintf fd "]};\n";
+  Printf.fprintf fd " inst =\n";
+  Printf.fprintf fd "  {contents =\n    [";
+  List.iter (fun (a,(b,c,lst)) -> Printf.fprintf fd "    (%s,\n" (dumps a);
+  Printf.fprintf fd "     (%s, %s,\n" (dumps b) (dumps c);
+  Printf.fprintf fd "       %s" (dumplst lst);
+  Printf.fprintf fd "         ));\n" ) !(modul.inst);
+  Printf.fprintf fd " cnst = {contents = [";
+  Printf.fprintf fd "]};\n";
+  if [] <> !(modul.needed) then
+      begin
+      Printf.fprintf fd " needed = {contents = ";
+      let delim = ref '[' in
+      List.iter (fun (a,b) ->
+                     Printf.fprintf fd "%c(" !delim;
+                     tokenout fd (ref 0) a;
+                     Printf.fprintf fd ",%s)" (dumps b);
+                     delim := ',') !(modul.needed);
+                     Printf.fprintf fd "]};\n";
+      end;
+  Printf.fprintf fd "}\n";
+  Printf.fprintf fd "  \n"
+
 let rec rw' attr = function
 | Xml.Element ("verilator_xml", [], xlst) ->
     let decl,hier = List.partition (function Xml.Element (("files"|"module_files"|"netlist"), _, _) -> true | _ -> false) xlst in
@@ -756,6 +1047,12 @@ let rec rw' attr = function
                                exportlst := expandbraket lo hi (fun istr -> PORT (orig, nam^istr, Dvif dir, [VRF (nam'^istr, [])])) @ !exportlst
                            | (IFCRFDTYP _, dir, TYPNONE, []) -> exportlst := port :: !exportlst
                            | oth -> typopt := Some oth; failwith "typopt;;599")
+                   | PORT (orig, nam, Dvif _, [ASEL (VRF (nam', []) :: CNST((_,HEX idx), _, []) :: [])]) when List.mem_assoc nam' !(attr.names) -> 
+                       (match List.assoc nam' !(attr.names) with
+                           | (IFCRFDTYP _, dir, TYPRNG(hi,lo), []) ->
+                               exportlst := expandbraket idx idx (fun istr -> PORT (orig, nam, Dvif dir, [VRF (nam'^istr, [])])) @ !exportlst
+                           | (IFCRFDTYP _, dir, TYPNONE, []) -> failwith ("indexing a scalar interface: "^nam)
+                           | oth -> typopt := Some oth; failwith "typopt;;599")
                    | PORT (orig, nam, Dvif _, [VRF (nam', [])]) ->
                        print_endline ("vif interface "^nam'^" not found: ["^String.concat ";" (List.map (fun (k,_) -> k) !(attr.names))^"] ?")
                    | PORT (orig, nam, dir, connlst) as port -> exportlst := port :: !exportlst
@@ -811,6 +1108,9 @@ let rec rw' attr = function
     let xlst' = if false then decl@content else xlst in
     let xlst'' = List.map (rw' attr') xlst' in
     attr.modulexml := (nam, (xlst'', !(attr'.names))) :: !(attr.modulexml);
+    let fd = open_out (nam^".elem") in
+    output_string fd (dumplst xlst'');
+    close_out fd;
     MODUL (origin, nam, nam', xlst'')
 | Xml.Element ("case", [("fl", origin)], xlst) -> CS (origin, List.map (rw' attr) xlst)
 | Xml.Element ("caseitem", [("fl", origin)], xlst) -> CSITM (origin, List.map (rw' attr) xlst)
@@ -959,79 +1259,6 @@ needed=ref !(prev.needed);
 avoid_dollar_unsigned = prev.avoid_dollar_unsigned;
 remove_interfaces = prev.remove_interfaces; }
 
-let unaryopv = function
-| Unknown -> "???"
-| Unot -> " ~ "
-| Ulognot -> " ! "
-| Unegate -> " - "
-| Uextend -> "$unsigned"
-| Uextends -> "$signed"
-
-let cmpopv = function
-| Cunknown -> "???"
-| Ceq -> " == "
-| Cneq -> " != "
-| Cgt -> " > "
-| Cgts -> " > "
-| Cgte -> " >= "
-| Cgtes -> " >= "
-| Ceqwild -> " == "
-| Cneqwild -> " != "
-| Cltes -> " <= "
-| Clte -> " <= "
-| Clt -> " < "
-| Clts -> " < "
-
-let logopv = function
-| Lunknown -> "???"
-| Land -> " & "
-| Lredand -> " & "
-| Lor -> " | "
-| Lredor -> " | "
-| Lxor -> " ^ "
-| Lxnor -> " ~^ "
-| Lredxor -> " ^ "
-| Lredxnor -> " ~^ "
-| Lshiftl -> " << "
-| Lshiftr -> " >> "
-| Lshiftrs -> " >>> "
-
-let arithopv = function
-| Aadd -> "+"
-| Asub -> "-"
-| Amul -> "*"
-| Amuls -> "*"
-| Aunknown -> "???"
-
-let diropv = function
-| Dinput -> "input"
-| Doutput -> "output"
-| Dinout -> "inout"
-| Dvif _ -> "vif"
-| Dinam str -> !str
-| Dport _ -> "ifport"
-| Dunknown -> "inout"
-
-let rec cadd = function
-| [] -> HEX 0
-| ERR err :: tl -> ERR err
-| HEX n :: [] -> HEX n
-| SHEX n :: [] -> SHEX n
-| FLT f :: [] -> FLT f
-| FLT f :: _ -> ERR "addflt"
-| STRING _ :: tl -> ERR "addstr"
-| BIGINT n :: [] -> BIGINT n
-| BIGINT n :: BIGINT m :: tl -> cadd (BIGINT (Big_int.add_big_int n m) :: tl)
-| (HEX n | SHEX n) :: BIGINT m :: tl -> cadd (BIGINT (Big_int.add_big_int (Big_int.big_int_of_int n) m) :: tl)
-| BIGINT n :: (HEX m | SHEX m) :: tl -> cadd (BIGINT (Big_int.add_big_int n (Big_int.big_int_of_int m)) :: tl)
-| BIN 'x' :: tl -> cadd (BIN 'x' :: tl)
-| BIN _ :: tl -> cadd (BIN 'x' :: tl)
-| HEX n :: HEX m :: tl -> cadd (HEX (n+m) :: tl)
-| SHEX n :: HEX m :: tl -> cadd (HEX (n+m) :: tl)
-| HEX n :: SHEX m :: tl -> cadd (HEX (n+m) :: tl)
-| SHEX n :: SHEX m :: tl -> cadd (SHEX (n+m) :: tl)
-| (HEX _ | SHEX _ | BIGINT _) ::(ERR _|BIN _|STRING _|FLT _):: tl -> ERR "cadd"
-
 let num x = NUM (HEX x)
 
 let rec expr modul = function
@@ -1108,78 +1335,6 @@ let rec ioconn = function
 let stmtdly = function
 | false -> SP :: ASSIGNMENT :: SP :: []
 | true -> SP :: ASSIGNDLY :: SP :: []
-
-let oldsrc = ref ("",-1)
-
-let rec tokenout fd indent = function
-| SP -> output_string fd " "
-| SEMI -> output_string fd ";"
-| COLON -> output_string fd ":"
-| COMMA -> output_string fd ","
-| LPAREN -> output_string fd "("
-| RPAREN -> output_string fd ")"
-| LBRACK -> output_string fd "["
-| RBRACK -> output_string fd "]"
-| LCURLY -> output_string fd "{"
-| RCURLY -> output_string fd "}"
-| LCOMMENT -> output_string fd " /* "
-| RCOMMENT -> output_string fd " */ "
-| LSHIFT -> output_string fd "<<"
-| RSHIFT -> output_string fd ">>"
-| AT -> output_string fd "@"
-| DOT -> output_string fd "."
-| PLUS -> output_string fd "+"
-| MINUS -> output_string fd "-"
-| STAR -> output_string fd "*"
-| POW -> output_string fd "**"
-| QUERY -> output_string fd "?"
-| QUOTE -> output_string fd "'"
-| DQUOTE -> output_string fd "\""
-| NL -> output_string fd ("\n"^if !indent > 0 then String.make (!indent*4) ' ' else "")
-| SRC (str1,int1) ->
-    if (str1,int1) <> !oldsrc then begin output_string fd ("\n/* "^str1^":"^string_of_int int1^" */"); tokenout fd indent NL; end;
-    oldsrc := (str1,int1);
-| DEFAULT -> output_string fd "default"
-| IDENT str -> output_string fd str
-| NUM (BIN n) -> output_string fd (String.make 1 n)
-| NUM (HEX n) -> output_string fd (string_of_int n)
-| NUM (SHEX n) -> output_string fd (string_of_int n)
-| NUM (BIGINT n) -> output_string fd (Big_int.string_of_big_int n)
-| NUM (STRING s) -> output_string fd ("\""^String.escaped s^"\"")
-| NUM (FLT f) -> output_string fd (string_of_float f)
-| NUM (ERR err) -> output_string fd ("NumberError:"^err)
-| SIZED (w,n) -> output_string fd (dumpsized w n)
-| DIR str -> output_string fd (diropv str)
-| BEGIN None -> incr indent; output_string fd "    begin"
-| BEGIN (Some lbl) -> incr indent; output_string fd ("    begin:"^lbl)
-| END -> output_string fd "end"; decr indent
-| IFF -> output_string fd "if"
-| ELSE -> output_string fd "else"
-| ASSIGN -> output_string fd "assign"
-| ASSIGNMENT -> output_string fd "="
-| ASSIGNDLY -> output_string fd "<="
-| CASE -> output_string fd "case"; incr indent
-| ENDCASE -> output_string fd "endcase"; decr indent
-| CMPOP op -> output_string fd (cmpopv op)
-| WHILE -> output_string fd "while"
-| FOR -> output_string fd "for"
-| ALWAYS -> output_string fd "always"
-| POSEDGE -> output_string fd "posedge"
-| NEGEDGE -> output_string fd "negedge"
-| RETURN -> output_string fd "return"
-| LOGIC -> output_string fd "logic"
-| WIRE -> output_string fd "wire"
-| FUNCTION -> output_string fd "function"; incr indent
-| ENDFUNCTION -> output_string fd "endfunction"; decr indent
-| TASK -> output_string fd "task"; incr indent
-| ENDTASK -> output_string fd "endtask"; decr indent
-| MODULE -> output_string fd "module"; incr indent
-| ENDMODULE -> output_string fd "endmodule"; decr indent
-| INITIAL -> output_string fd "initial"
-| FINAL -> output_string fd "final"
-| INTERFACE -> output_string fd "interface"; incr indent
-| ENDINTERFACE -> output_string fd "endinterface"; decr indent
-| MODPORT -> output_string fd "modport"
 
 let rec reformat0 = function
 | [] -> []
@@ -1415,7 +1570,9 @@ let rec catitm (pth:string option) itms = function
     List.iter (catitm pth itms) stmtlst;
     if not (List.mem_assoc str1 !(itms.v)) then
         itms.v := (str1, (origin, typ1, str1, (UNKDTYP,ref "",TYPNONE,[]))) :: !(itms.v)
-| CA(origin, rght::lft::[]) -> itms.ca := (origin, lft, rght) :: !(itms.ca)
+| CA(origin, (rght::lft::[] as args)) ->
+    List.iter (catitm pth itms) args;
+    itms.ca := (origin, lft, rght) :: !(itms.ca)
 | INST(origin, str1lst, (str2, port_lst)) ->
     List.iter (fun str1 ->
         let pth' = match lcombine(pth,Some str1) with Some s -> s | None -> failwith "lcombine" in
@@ -1515,9 +1672,11 @@ let rec catitm (pth:string option) itms = function
 | REPL(_, _, rw_lst) -> List.iter (catitm pth itms) rw_lst
 | FRF(_, nam, rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
-    print_endline ("Func: "^nam);
     if not (List.mem (FUNCTION,nam) !(itms.needed)) then
+        begin
+        print_endline ("Needed function: "^nam);
         itms.needed := (FUNCTION,nam) :: !(itms.needed);
+        end
 | XRF(origin, str1, str2, str3, dirop) -> ()
 | MODUL(origin, str1, str2, rw_lst) ->
     let itms = empty_itms () in
@@ -1587,7 +1746,7 @@ let outtcl f = "./"^f^"_fm.tcl"
 
 let needed modul (kind,nam) = match kind with
 | FUNCTION ->
-    print_endline ("Function: "^nam);
+    print_endline ("Searching function: "^nam);
     let found = List.mem_assoc nam !(modul.func) in
     let (origin, typ', lst, itms') = if found then
         List.assoc nam !(modul.func)
@@ -1597,7 +1756,7 @@ let needed modul (kind,nam) = match kind with
     List.flatten (List.map (fnstmt modul false stg) (List.tl lst)) in
     lst @ (fndlm !stg @ [NL;ENDFUNCTION])
 | TASK ->
-    print_endline ("Task: "^nam);
+    print_endline ("Searching task: "^nam);
     let found = List.mem_assoc nam !(modul.task) in
     let (origin, lst, itms') = if found then
         List.assoc nam !(modul.task)
@@ -1653,11 +1812,12 @@ let dump intf f (origin, modul) =
                  ) !(modul.init);
   !head @ List.flatten (List.sort compare !appendlst) @ [NL;if intf then ENDINTERFACE else ENDMODULE;NL;NL]
 
-let rec iterate f (modorig, modul) =
+let rec iterate depth f (modorig, modul) =
+    let indent = String.make depth ' ' in
     let newitms = copy_itms modul in
     newitms.ir := [];
     newitms.inst := [];
-    print_endline ("Scanning instances of "^f);
+    print_endline (indent^"Scanning instances of "^f);
     List.iter (fun (inst, (origin, kind, iolst)) ->
         if Hashtbl.mem interfaces kind then
            begin
@@ -1669,7 +1829,7 @@ let rec iterate f (modorig, modul) =
            end
         else if Hashtbl.mem modules kind then
            begin
-           print_endline ("Iterating: "^kind);
+           print_endline (indent^"Iterating: "^kind);
            let (kindorig, itms) = Hashtbl.find modules kind in
            let newiolst = ref [] in
            let newinnerlst = ref [] in
@@ -1678,35 +1838,29 @@ let rec iterate f (modorig, modul) =
 		       | VRF (id, []) ->
                            newiolst := PORT(origin, id, idir', [VRF(id, [])]) :: !newiolst;
                            newinnerlst := inr :: !newinnerlst;
-		       | PORT (origin, id_i, Dvif _, VRF (id, []) :: []) as pat ->
-                           if List.mem_assoc id !(modul.inst) then
-                               let (_,inam,_) = List.assoc id !(modul.inst) in
-                               print_endline (id^" maps to "^inam);
-			       if Hashtbl.mem interfaces inam then (match typ' with (IFCRFDTYP iport, simple, TYPNONE, []) ->
-				  begin
-                                  print_endline (iport^" matched");
-				  let (_, intf) = Hashtbl.find interfaces inam in
-                                  print_endline ("Searching for "^ iport);
-                                  if List.mem_assoc iport !(intf.imp) then
-                                  let (origin, lst) = List.assoc iport !(intf.imp) in
-				  List.iter (fun (nam, dir) ->
-                                        (* print_endline (inam^":"^iport^":"^nam^":"^id_i); *)
-                                        let (_, typ', kind, _) = List.assoc nam !(intf.v) in
-					newiolst := PORT(origin, id_i^"_"^nam, dir, [VRF(id^"_"^nam, [])]) :: !newiolst;
-				        newinnerlst := (id_i^"_"^nam, (origin, typ', dir, typ'', ilst)) :: !newinnerlst) lst
-                                  else print_endline ("Direction "^ iport ^" not found");
-				  end
-                               | _ ->
-                                  print_endline (dumptab typ'^" did not match");
-                                  newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst)
-			       else
-			          begin
-			          newiolst := pat :: !newiolst;
-				  newinnerlst := inr :: !newinnerlst;
-				  end
-			    else
+		       | PORT (origin, id_i, Dvif bus, VRF (id, []) :: []) as pat ->
+                           print_endline (indent^id^" connects to "^id_i);
+                           let inam = !bus in
+                           print_endline (indent^id^" maps to "^inam);
+                           if Hashtbl.mem interfaces inam then (match typ' with (IFCRFDTYP iport, simple, TYPNONE, []) ->
+                              begin
+                              print_endline (indent^iport^" matched");
+                              let (_, intf) = Hashtbl.find interfaces inam in
+                              print_endline (indent^"Searching for "^ iport);
+                              if List.mem_assoc iport !(intf.imp) then
+                              let (origin, lst) = List.assoc iport !(intf.imp) in
+                              List.iter (fun (nam, dir) ->
+                                    (* print_endline (inam^":"^iport^":"^nam^":"^id_i); *)
+                                    let (_, typ', kind, _) = List.assoc nam !(intf.v) in
+                                    newiolst := PORT(origin, id_i^"_"^nam, dir, [VRF(id^"_"^nam, [])]) :: !newiolst;
+                                    newinnerlst := (id_i^"_"^nam, (origin, typ', dir, typ'', ilst)) :: !newinnerlst) lst
+                              else print_endline (indent^"Direction "^ iport ^" not found");
+                              end
+                           | _ ->
+                              print_endline (indent^dumptab typ'^" did not match");
+                              newiolst := pat :: !newiolst; newinnerlst := inr :: !newinnerlst)
+			   else
                                begin
-                               print_endline (id^" not found in modul.inst");
 			       newiolst := pat :: !newiolst;
 			       newinnerlst := inr :: !newinnerlst;
 			       end
@@ -1721,14 +1875,14 @@ let rec iterate f (modorig, modul) =
                let newinneritms = copy_itms itms in
                newinneritms.io := newinnerlst;
                let newhash = (kindorig, newinneritms) in
-	       iterate kind newhash
+	       iterate (depth+2) kind newhash
                end;
            newitms.inst := (inst, (origin, kind_opt, newiolst)) :: !(newitms.inst);
            end
         ) !(modul.inst);
     newitms.inst := List.rev (!(newitms.inst));
     Hashtbl.replace modules_opt (f^"_opt") (modorig, newitms);
-    print_endline (f^" done")
+    print_endline (indent^f^" done")
 
 let dumpform f f' separate = 
     let fd = open_out (outtcl f') in
@@ -1756,147 +1910,6 @@ let dumpform f f' separate =
     Printf.fprintf fd "quit\n";
     close_out fd;
     Unix.chmod (outtcl f') 0o740    
-
-let rec dumpitm = function
-| VRF (id, []) -> "VRF (\""^id^"\", [])"
-| UNKNOWN -> "UNKNOWN"
-| XML (rw_lst) -> "XML("^dumplst rw_lst^")"
-| EITM (str1, str2, str3, int2, rw_lst) -> "EITM("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumpi int2^", "^dumplst rw_lst^")"
-| IO (str1, str2lst, typ2, dirop, str3, rw_lst) -> "IO("^dumps str1^", "^dumpstrlst str2lst^", "^dumptab typ2^", "^dumpdir dirop^", "^dumps str3^", "^dumplst rw_lst^")"
-| VAR (str1, str2lst, typ2, str3) -> "VAR"^dumps str1^", "^dumpstrlst str2lst^", "^dumptab typ2^", "^dumps str3^")"
-| IVAR (str1, str2, int2, rw_lst, int3) -> "IVAR("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^", "^dumpi int3^")"
-| TMPVAR (str1, str2, typ2, rw_lst) -> "TMPVAR("^dumps str1^", "^dumps str2^", "^dumptab typ2^", "^dumplst rw_lst^")"
-| CNST ((int, cexp), int2, rw_lst) -> "CNST("^dumpcnst (int, cexp)^", "^dumpi int2^", "^dumplst rw_lst^")"
-| VRF (str1, rw_lst) -> "VRF("^dumps str1^", "^dumplst rw_lst^")"
-| TYP (idx, (typenc, str1, typmap, typ_lst)) -> "TYP("^dumptyp typenc^", "^dumps !str1^", "^dumpmap typmap^", "^dumplst typ_lst^")"
-| FNC (str1, str2, typ2, rw_lst) -> "FNC("^dumps str1^", "^dumps str2^", "^dumptab typ2^", "^dumplst rw_lst^")"
-| TASK (str1, str2, rw_lst) -> "TASK("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
-| TASKRF (str1, str2, rw_lst) -> "TASKRF("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
-| INST (str1, str2lst, (str3, rw_lst)) -> "INST("^dumps str1^", "^dumpstrlst str2lst^"("^", "^dumps str3^", "^", "^dumplst rw_lst^"))"
-| SFMT (str1, rw_lst) -> "SFMT("^dumps str1^", "^dumplst rw_lst^")"
-| SYS (str1, str2, rw_lst) -> "SYS("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
-| TPLSRGS (str1, str2, int2, rw_lst) -> "TPLSRGS("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^")"
-| VPLSRGS (str1, int2, rw_lst) -> "VPLSRGS("^dumps str1^", "^dumpi int2^", "^dumplst rw_lst^")"
-| PORT (str1, str2, dirop, rw_lst) -> "PORT("^dumps str1^", "^dumps str2^", "^dumpdir dirop^", "^dumplst rw_lst^")"
-| CA (str1, rw_lst) -> "CA("^dumps str1^", "^dumplst rw_lst^")"
-| UNRY (unaryop, rw_lst) -> "UNRY("^dumpu unaryop^", "^dumplst rw_lst^")"
-| SEL (str1, rw_lst) -> "SEL("^dumps str1^", "^dumplst rw_lst^")"
-| ASEL (rw_lst) -> "ASEL("^dumplst rw_lst^")"
-| SNITM (str1, rw_lst) -> "SNITM("^dumps str1^", "^dumplst rw_lst^")"
-| ASGN (bool, str2, rw_lst) -> "ASGN("^dumpb bool^", "^dumps str2^", "^dumplst rw_lst^")"
-| ARITH (arithop, rw_lst) -> "ARITH("^dumparith arithop^", "^dumplst rw_lst^")"
-| LOGIC (logop, rw_lst) -> "LOGIC("^dumplog logop^", "^dumplst rw_lst^")"
-| CMP (cmpop, rw_lst) -> "CMP("^dumpcmp cmpop^", "^dumplst rw_lst^")"
-| FRF (str1, str2, rw_lst) -> "FRF("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
-| XRF (str1, str2, str3, str4, dirop) -> "XRF("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumps str4^", "^dumpdir dirop^")"
-| PKG (str1, str2, rw_lst) -> "PKG("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
-| CAT (str1, rw_lst) -> "CAT("^dumps str1^", "^dumplst rw_lst^")"
-| CPS (str1, rw_lst) -> "CPS("^dumps str1^", "^dumplst rw_lst^")"
-| CND (str1, rw_lst) -> "CND("^dumps str1^", "^dumplst rw_lst^")"
-| REPL (str1, int2, rw_lst) -> "REPL("^dumps str1^", "^dumpi int2^", "^dumplst rw_lst^")"
-| MODUL (str1, str2, str3, rw_lst) -> "MODUL("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumplst rw_lst^")"
-| BGN (None, rw_lst) -> "BGN(None,"^dumplst rw_lst^")"
-| BGN (Some str1, rw_lst) -> "BGN(Some "^dumps str1^", "^dumplst rw_lst^")"
-| RNG (rw_lst) -> "RNG("^dumplst rw_lst^")"
-| ALWYS (str1, rw_lst) -> "ALWYS("^dumps str1^", "^dumplst rw_lst^")"
-| SNTRE (rw_lst) -> "SNTRE("^dumplst rw_lst^")"
-| IF (str1, rw_lst) -> "IF("^dumps str1^", "^dumplst rw_lst^")"
-| INIT (str1, str2, rw_lst) -> "INIT("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
-| IRNG (str1, rw_lst) -> "IRNG("^dumps str1^", "^dumplst rw_lst^")"
-| IFC (str1, str2, str3, rw_lst) -> "IFC("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumplst rw_lst^")"
-| IMP (str1, str2, rw_lst) -> "IMP("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
-| IMRF (str1, str2, dir, rw_lst) -> "IMRF("^dumps str1^", "^dumps str2^", "^dumpdir dir^", "^dumplst rw_lst^")"
-| JMPL (str1, rw_lst) -> "JMPL("^dumps str1^", "^dumplst rw_lst^")"
-| JMPG (str1, rw_lst) -> "JMPG("^dumps str1^", "^dumplst rw_lst^")"
-| CS (str1, rw_lst) -> "CS("^dumps str1^", "^dumplst rw_lst^")"
-| CSITM (str1, rw_lst) -> "CSITM("^dumps str1^", "^dumplst rw_lst^")"
-| WHL (rw_lst) -> "WHL("^dumplst rw_lst^")"
-| FORSTMT (str1, str2, cmpop, str3, (int1, cexp1), (int2, cexp2), (int3, cexp3), rw_lst) ->
-    "FORSTMT("^dumps str1^", "^dumps str2^", "^dumpcmp cmpop^", "^dumps str3^", "^dumpcnst (int1, cexp1)^", "^dumpcnst (int2, cexp2)^", "^dumpcnst (int3, cexp3)^", "^dumplst rw_lst^")"
-| ARG (rw_lst) -> "ARG("^dumplst rw_lst^")"
-| DSPLY (str1, str2, rw_lst) -> "DSPLY("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
-| FILS (str1, rw_lst) -> "FILS("^dumps str1^", "^dumplst rw_lst^")"
-| FIL (str1, str2) -> "FIL"^dumps str1^", "^dumps str2^")"
-| NTL (rw_lst) -> "NTL("^dumplst rw_lst^")"
-| CELLS (rw_lst) -> "CELLS("^dumplst rw_lst^")"
-| CELL (str1, str2, str3, str4, rw_lst) -> "CELL("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumps str4^", "^dumplst rw_lst^")" 
-| POSPOS (str1, str2) -> "POSPOS"^dumps str1^", "^dumps str2^")"
-| POSNEG (str1, str2) -> "POSNEG"^dumps str1^", "^dumps str2^")"
-| NEGNEG (str1, str2) -> "NEGNEG"^dumps str1^", "^dumps str2^")"
-| POSEDGE (str1) -> "POSEDGE"^dumps str1^")"
-| NEGEDGE (str1) -> "NEGEDGE"^dumps str1^")"
-| COMB -> "COMB"
-| MODPORTFTR (str1, str2) -> "MODPORTFTR("^dumps str1^", "^dumps str2^")"
-| TYPETABLE arr -> "[|"^String.concat ";\n\t" (Array.to_list (Array.mapi (fun idx (typenc, str1, typmap, typ_lst) -> string_of_int idx^": TYP("^dumptyp typenc^", "^dumps !str1^", "^dumpmap typmap^", "^dumpmlst typ_lst^")") arr))^"|]"
- 
-and dumplst lst = "["^String.concat ";\n\t" (List.map dumpitm lst)^"]"
-and dumpcstlst lst = "["^String.concat ";\n\t" (List.map dumpcnst lst)^"]"
-
-and dumpitms fd modul =
-  Printf.fprintf fd "  {io =\n";
-  Printf.fprintf fd "  {contents =\n    [";
-  List.iter (fun (a,(b,c,d,e,lst)) ->
-    Printf.fprintf fd "(%s, (%s, %s, %s, %s, %s));\n" (dumps a) (dumps b) (dumptab c) (dumpdir d) (dumps e) (dumpcstlst lst)) !(modul.io);
-  Printf.fprintf fd "     ]};\n";
-  Printf.fprintf fd " v = {contents = [";
-  List.iter (fun (a,(b,c,d,e)) -> Printf.fprintf fd "(%s, (%s, %s, %s, %s));\n" (dumps a) (dumps b) (dumptab c) d (dumptab e)) !(modul.v);
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " iv = {contents = [";
-  List.iter (fun (a,(b,c,d,e)) -> Printf.fprintf fd "(%s, (%s, %d, %s, %d));\n" (dumps a) b c (dumplst d) e) !(modul.iv);
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " ir = {contents = [";
-  List.iter (fun (a,b,c) -> Printf.fprintf fd "(%s, %s, %s)\n" a (dumps b) (dumptab c)) !(modul.ir);
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " ca = {contents = [";
-  List.iter (fun (a,b,c) -> Printf.fprintf fd "(%s, %s, %s)\n" (dumps a) (dumpitm b) (dumpitm c)) !(modul.ca);
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " typ = {contents = [";
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " alwys = {contents = [";
-  List.iter (fun (a,b,lst) -> Printf.fprintf fd "(%s, %s, %s)\n" (dumps a) (dumpitm b) (dumplst lst)) !(modul.alwys);
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " init = {contents = [";
-  List.iter (fun (a,b,lst) ->
-      Printf.fprintf fd "(%s, " (dumps a);
-      tokenout fd (ref 0) b;
-      Printf.fprintf fd ", %s)\n" (dumplst lst)) !(modul.init);
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " func = {contents = [";
-  List.iter (fun (a,(b,c,d,itms)) -> Printf.fprintf fd "    (%s,\n" (dumps a);
-  Printf.fprintf fd "     (%s, %s, %s\n" (dumps b) (dumptab c) (dumplst d);
-  dumpitms fd itms;
-  Printf.fprintf fd "         ));\n" ) !(modul.func);
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " task = {contents = [";
-  List.iter (fun (b,(c,d,itms)) ->
-  Printf.fprintf fd "     (%s, %s, %s\n" (dumps b) (dumps c) (dumplst d);
-  dumpitms fd itms;
-  Printf.fprintf fd "         ));\n" ) !(modul.task);
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " gen = {contents = [";
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " imp = {contents = [";
-  List.iter (fun (a,(b,lst)) ->
-    Printf.fprintf fd "     (%s,%s, " (dumps a)  (dumps b);
-    List.iter (fun (c,d) -> Printf.fprintf fd "     (%s, %s)\n" (dumps c) (dumpdir d)) lst;
-  Printf.fprintf fd "         ));\n" ) !(modul.imp);
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " inst =\n";
-  Printf.fprintf fd "  {contents =\n    [";
-  List.iter (fun (a,(b,c,lst)) -> Printf.fprintf fd "    (%s,\n" (dumps a);
-  Printf.fprintf fd "     (%s, %s,\n" (dumps b) (dumps c);
-  Printf.fprintf fd "       %s" (dumplst lst);
-  Printf.fprintf fd "         ));\n" ) !(modul.inst);
-  Printf.fprintf fd " cnst = {contents = [";
-  Printf.fprintf fd "]};\n";
-  Printf.fprintf fd " needed = {contents = ";
-let delim = ref '[' in List.iter (fun (a,b) ->
-                                      Printf.fprintf fd "%c(" !delim;
-                                      tokenout fd (ref 0) a;
-                                      Printf.fprintf fd ",%s)" (dumps b);
-                                      delim := ',') !(modul.needed);
-  Printf.fprintf fd "]}}\n";
-  Printf.fprintf fd "  \n"
     
 let rec debug f (origin, modul) =
   let fd = open_out (f^".debug") in
@@ -1920,7 +1933,7 @@ let translate errlst xmlf =
     let debugtree = try int_of_string (Sys.getenv "VXML_DEBUGTREE") > 0 with _ -> true in
     let opttree = try int_of_string (Sys.getenv "VXML_OPTTREE") > 0 with _ -> true in
     let tophash = Hashtbl.find modules top in
-    if opttree then iterate top tophash;
+    if opttree then iterate 0 top tophash;
     let top_opt = top^"_opt" in
     dumpform top top_opt separate;
     let mods = ref [] in

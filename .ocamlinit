@@ -48,6 +48,7 @@ let xmlf = "../ariane/obj_dir/Vbug1.xml";;
 *)
 
 let xmlf = "../ariane/obj_dir/Variane_testharness.xml";;
+let xmlf = "../ariane/obj_dir/Vbug3.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml,mods) = Vxml.translate errlst xmlf;;
