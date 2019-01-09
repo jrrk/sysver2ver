@@ -5,7 +5,8 @@ mkdir vout voutopt vout2 voutopt2
 mv *.debug debug
 mv *opt.v voutopt
 mv *.v vout
-rm vout/axi_node_intf_wrap__pi4.v
+mv vout/axi_node_intf_wrap__pi4.v edited/axi_node_intf_wrap__pi4_edited.v
+patch edited/axi_node_intf_wrap__pi4_edited.v < example/patch1
 verilator --Mdir vout2 --xml-only vout/*.v edited/axi_node_intf_wrap__pi4_edited.v --top-module ariane_testharness
 ./vxmlmain vout2/Variane_testharness.xml
 mv *opt.v voutopt2

@@ -1406,7 +1406,9 @@ let optitm lst =
 let rec catitm (pth:string option) itms = function
 | IO(origin, str1lst, typ1, dir, str3, clst) -> List.iter (fun str1 -> itms.io := (str1, (origin, typ1, dir, str3, List.map ioconn clst)) :: !(itms.io)) str1lst
 | VAR(origin, str1lst, typ1, "ifaceref") -> List.iter (fun str1 -> itms.ir := (origin, str1, typ1) :: !(itms.ir)) str1lst
-| VAR(origin, str1lst, typ1, str2) -> List.iter (fun str1 -> itms.v := (str1, (origin, typ1, str2, (UNKDTYP,ref "",TYPNONE,[]))) :: !(itms.v)) str1lst
+| VAR(origin, str1lst, typ1, str2) -> List.iter (fun str1 ->
+    if not (List.mem_assoc str1 !(itms.v)) then
+        itms.v := (str1, (origin, typ1, str2, (UNKDTYP,ref "",TYPNONE,[]))) :: !(itms.v)) str1lst
 | IVAR(origin, str1, int1, rwlst, int2) -> itms.iv := (str1, (origin, int1, rwlst, int2)) :: !(itms.iv)
 | TMPVAR(origin, str1, typ1, stmtlst) ->
     List.iter (catitm pth itms) stmtlst;
@@ -1629,6 +1631,8 @@ let dump intf f (origin, modul) =
   List.iter (function
     | (origin, COMB, lst) ->
       append (fsrc origin :: ALWAYS :: AT :: STAR :: flatten1 modul false lst);
+    | (origin, POSPOS (ck, rst), lst) ->
+      append (fsrc origin :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: COMMA :: POSEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 modul true lst);
     | (origin, POSNEG (ck, rst), lst) ->
       append (fsrc origin :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: COMMA :: NEGEDGE :: SP :: IDENT rst :: RPAREN :: flatten1 modul true lst);
     | (origin, NEGNEG (ck, rst), lst) ->
@@ -1637,7 +1641,7 @@ let dump intf f (origin, modul) =
       append (fsrc origin :: ALWAYS :: AT :: LPAREN :: POSEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 modul true lst);
     | (origin, NEGEDGE (ck), lst) ->
       append (fsrc origin :: ALWAYS :: AT :: LPAREN :: NEGEDGE :: SP :: IDENT ck :: RPAREN :: flatten1 modul true lst);
-    | (origin, _, lst) -> failwith "not implemented";
+    | (origin, _, lst) -> failwith "edge specification not implemented";
     ) (List.rev (List.map (fun (origin,edg,lst) -> (origin, edg, lst)) !(modul.alwys)));
   List.iter (fun (inst, (origin, kind, lst)) ->
                  let delim = ref SP in
