@@ -5,9 +5,10 @@ mkdir vout voutopt vout2 voutopt2
 mv *.debug debug
 mv *opt.v voutopt
 mv *.v vout
-verilator --Mdir voutopt2 --xml-only voutopt/*opt.v --top-module ariane_testharness_opt
-verilator --Mdir vout2 --xml-only vout/*.v --top-module ariane_testharness
+verilator --Mdir vout2 --xml-only -Wno-width -Wno-fatal vout/*.v --top-module ariane_testharness
 ./vxmlmain vout2/Variane_testharness.xml
 mv *opt.v voutopt2
 mv *.v vout2
+verilator --Mdir voutopt2 --xml-only -Wno-width -Wno-fatal voutopt/*opt.v --top-module ariane_testharness_opt
+./vxmlmain vout2/Variane_testharness.xml
 meld vout vout2

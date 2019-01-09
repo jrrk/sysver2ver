@@ -991,6 +991,8 @@ and dumpitms fd modul =
   Printf.fprintf fd "}\n";
   Printf.fprintf fd "  \n"
 
+let namedcnt = ref 0
+
 let rec rw' attr = function
 | Xml.Element ("verilator_xml", [], xlst) ->
     let decl,hier = List.partition (function Xml.Element (("files"|"module_files"|"netlist"), _, _) -> true | _ -> false) xlst in
@@ -1079,7 +1081,9 @@ let rec rw' attr = function
 | Xml.Element ("always", [("fl", origin)], xlst) -> ALWYS (origin, List.map (rw' {attr with anchor=origin}) xlst)
 | Xml.Element ("sentree", [("fl", origin)], xlst) -> SNTRE (List.map (rw' attr) xlst)
 | Xml.Element ("senitem", [("fl", origin); ("edgeType", etyp)], xlst) -> SNITM (etyp, List.map (rw' attr) xlst)
-| Xml.Element ("begin", [("fl", origin); ("name", namedblk)], xlst) -> while_opt origin (Some namedblk) (List.map (rw' attr) xlst)
+| Xml.Element ("begin", [("fl", origin); ("name", namedblk)], xlst) ->
+    incr namedcnt;
+    while_opt origin (Some (namedblk^"_"^string_of_int !namedcnt)) (List.map (rw' attr) xlst)
 | Xml.Element ("begin", [("fl", origin)], xlst) -> while_opt origin None (List.map (rw' attr) xlst)
 | Xml.Element (("assign"|"assigndly") as dly, [("fl", origin); ("dtype_id", tid)], hd::tl::[]) ->
     let src = rw' attr hd and dst = rw' attr tl in
@@ -1321,9 +1325,15 @@ and eiter modul tok lst =
     let delim = ref tok in
     List.flatten (List.map (fun itm -> let lst' = !delim :: expr modul itm in delim := COMMA; lst') lst)
 
+let implicit s =
+  let sub = "__pinNumber" in
+  let l = String.length s and m = String.length sub in
+  l > m && String.sub s 0 m = sub
+
 let rec portconn modul = function
 | VRF (id, []) -> DOT :: IDENT id :: []
 | PORT (origin, id_o, dir, []) -> DOT :: IDENT id_o :: LPAREN :: RPAREN :: []
+| PORT (origin, id_i, dir, expr1 :: []) when implicit id_i -> LPAREN :: expr modul expr1 @ [RPAREN]
 | PORT (origin, id_i, dir, expr1 :: []) -> DOT :: IDENT id_i :: LPAREN :: expr modul expr1 @ [RPAREN]
 | RNG [CNST ((_,lft), _, []); CNST ((_,rght), _, [])] -> LCOMMENT :: NUM lft :: COLON :: NUM rght :: RCOMMENT :: []
 | oth -> portothlst := oth :: !portothlst; failwith "portothlst"
@@ -1394,16 +1404,24 @@ and findmembers' typ' =
 
 and findmembers typ' = let (widlst,cnst,rng) = findmembers' typ' in widlst
 
+let comment widlst =
+        let delim = ref LCOMMENT in
+        List.flatten (List.map (fun itm -> let lst = !delim :: num itm :: [] in delim := SEMI; lst) widlst) @ [RCOMMENT]
+
+let expand delim = fun w -> let lst = !delim :: num w :: [] in delim := STAR; lst
+
+let widshow id rng = function
+| [] -> IDENT id :: []
+| 1 :: [] when not rng -> IDENT id :: []
+| n :: [] -> LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: []
+| n :: m :: [] -> LBRACK :: num (m-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: SP :: LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: []
+| n :: m :: l :: [] -> LBRACK :: num (l-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: SP :: LBRACK :: num (m-1) :: COLON :: num 0 :: RBRACK :: LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: SP :: []
+| lst -> let delim = ref LBRACK in List.flatten (List.map (expand delim) lst) @ MINUS :: num 1 :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: []
+
 let varlst modul delim typ' id =
     let (widlst,cnst,rng) = findmembers' typ' in
-    let expand delim = fun w -> let lst = !delim :: num w :: [] in delim := STAR; lst in
-    let decl = !delim :: (if cnst then WIRE else LOGIC) :: SP :: match widlst with
-                | [] -> IDENT id :: []
-                | 1 :: [] when not rng -> IDENT id :: []
-                | n :: [] -> LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: []
-                | n :: m :: [] -> LBRACK :: num (m-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: SP :: LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: []
-                | oth -> let delim = ref LBRACK in List.flatten (List.map (expand delim) widlst) @ MINUS :: num 1 :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: [] in
-    decl @ (if cnst && List.mem_assoc id !(modul.cnst) then SP :: ASSIGNMENT :: SP :: SIZED (List.assoc id !(modul.cnst)) :: [] else [])
+    let decl = !delim :: (if cnst then WIRE else LOGIC) :: SP :: widshow id rng widlst in decl @
+    comment widlst @ (if cnst && List.mem_assoc id !(modul.cnst) then SP :: ASSIGNMENT :: SP :: SIZED (List.assoc id !(modul.cnst)) :: [] else [])
 
 let rec iter2 modul dly lst =
     List.flatten (List.map (fun itm -> cstmt modul dly itm @ [SEMI;NL]) lst)
@@ -1705,9 +1723,7 @@ let iolst modul delim dir io = function
 | (IFCRFDTYP dir, kind, TYPNONE, []) -> !delim :: NL :: IDENT !kind :: DOT :: IDENT dir :: SP :: IDENT io :: []
 | typ' ->
     let (widlst,cnst,rng) = findmembers' typ' in
-    let wid = fold1 ( * ) widlst in
-    !delim :: (DIR dir :: SP :: LOGIC ::
-	     (if wid > 1 || rng then LBRACK :: num (wid-1) :: COLON :: num 0 :: RBRACK :: [] else []) @ [SP; IDENT io])
+    !delim :: (DIR dir :: SP :: LOGIC :: SP :: widshow io rng widlst @ comment widlst)
 
 let fndlm = function
 | FIRSTG -> LPAREN::RPAREN::SEMI::[]
@@ -1817,7 +1833,7 @@ let rec iterate depth f (modorig, modul) =
     let newitms = copy_itms modul in
     newitms.ir := [];
     newitms.inst := [];
-    print_endline (indent^"Scanning instances of "^f);
+    print_string (indent^"Scanning instances of "^f^": ["^String.concat ";" (List.map (fun (inst, (_,kind,_)) -> inst^"("^kind^")") !(modul.inst))^"]");
     List.iter (fun (inst, (origin, kind, iolst)) ->
         if Hashtbl.mem interfaces kind then
            begin
@@ -1839,6 +1855,12 @@ let rec iterate depth f (modorig, modul) =
                            newiolst := PORT(origin, id, idir', [VRF(id, [])]) :: !newiolst;
                            newinnerlst := inr :: !newinnerlst;
 		       | PORT (origin, id_i, Dvif bus, VRF (id, []) :: []) as pat ->
+                           if List.mem_assoc id !(modul.inst) then
+                               begin
+                               let (_,inam,_) = List.assoc id !(modul.inst) in
+                               print_endline (indent^id^" is a local bus mapped to "^inam);
+                               bus := inam;
+                               end;
                            print_endline (indent^id^" connects to "^id_i);
                            let inam = !bus in
                            print_endline (indent^id^" maps to "^inam);
@@ -1850,7 +1872,7 @@ let rec iterate depth f (modorig, modul) =
                               if List.mem_assoc iport !(intf.imp) then
                               let (origin, lst) = List.assoc iport !(intf.imp) in
                               List.iter (fun (nam, dir) ->
-                                    (* print_endline (inam^":"^iport^":"^nam^":"^id_i); *)
+                                    print_endline (indent^inam^":"^iport^":"^nam^":"^id_i);
                                     let (_, typ', kind, _) = List.assoc nam !(intf.v) in
                                     newiolst := PORT(origin, id_i^"_"^nam, dir, [VRF(id^"_"^nam, [])]) :: !newiolst;
                                     newinnerlst := (id_i^"_"^nam, (origin, typ', dir, typ'', ilst)) :: !newinnerlst) lst
