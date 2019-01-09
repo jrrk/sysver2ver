@@ -669,13 +669,14 @@ let rec cell_traverse attr (nam, subnam) =
                          print_endline ("Searching: "^kind);
                          let (xlst''', names'') = List.assoc kind !(attr.modulexml) in
                          List.iter (function
-                        | PORT (_, formal, Dvif _, [VRF (actual, [])]) ->
+                        | PORT (_, formal, Dvif bus, [VRF (actual, [])]) ->
 			if List.mem_assoc formal names'' then
 			    begin
 			    let (typenc1,str1,typmap1,typmaplst1) as formtyp = List.assoc formal names'' in
 			    if List.mem_assoc actual names' then
 			        begin
 				let (typenc2,str2,typmap2,typmaplst2) as actualtyp = List.assoc actual names' in
+                                if !str2 = "" then str2 := !bus;
 			        if !str1 <> !str2 then
 				    begin
 				    print_endline ("formal: "^formal^", actual: "^actual);
@@ -1542,7 +1543,7 @@ let rec catitm (pth:string option) itms = function
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst;;1508"
 
 let iolst modul delim dir io = function
-| (IFCRFDTYP dir, kind, TYPNONE, []) -> !delim :: IDENT !kind :: DOT :: IDENT dir :: SP :: IDENT io :: []
+| (IFCRFDTYP dir, kind, TYPNONE, []) -> !delim :: NL :: IDENT !kind :: DOT :: IDENT dir :: SP :: IDENT io :: []
 | typ' ->
     let (widlst,cnst,rng) = findmembers' typ' in
     let wid = fold1 ( * ) widlst in
@@ -1915,24 +1916,25 @@ let translate errlst xmlf =
     catitm None empty rwxml;
     let top = snd(List.hd !top) in
     print_endline ("toplevel is "^top);
-    let tophash = Hashtbl.find modules top in
-    iterate top tophash;
-    let top_opt = top^"_opt" in
     let separate = try int_of_string (Sys.getenv "VXML_SEPARATE") > 0 with _ -> true in
+    let debugtree = try int_of_string (Sys.getenv "VXML_DEBUGTREE") > 0 with _ -> true in
+    let opttree = try int_of_string (Sys.getenv "VXML_OPTTREE") > 0 with _ -> true in
+    let tophash = Hashtbl.find modules top in
+    if opttree then iterate top tophash;
+    let top_opt = top^"_opt" in
     dumpform top top_opt separate;
     let mods = ref [] in
-    let debugtree = try int_of_string (Sys.getenv "VXML_DEBUGTREE") > 0 with _ -> true in
     if debugtree then
         begin
         Hashtbl.iter debug interfaces;
         Hashtbl.iter debug modules;
-        Hashtbl.iter debug modules_opt;
+        if opttree then Hashtbl.iter debug modules_opt;
         end;
     Hashtbl.iter (fun k x -> let d = reformat0 (dump true k x) in
         mods := (k, d, reformat2 (reformat1 d)) :: !mods) interfaces;
     Hashtbl.iter (fun k x -> let d = reformat0 (dump false k x) in
         mods := (k, d, reformat2 (reformat1 d)) :: !mods) modules;
-    Hashtbl.iter (fun k (o, m) -> let d = reformat0 (dump false k (o, {m with remove_interfaces=true})) in
+    if opttree then Hashtbl.iter (fun k (o, m) -> let d = reformat0 (dump false k (o, {m with remove_interfaces=true})) in
         mods := (k, d, reformat2 (reformat1 d)) :: !mods) modules_opt;
     let mods = List.sort compare !mods in
     let indent = ref 0 in
