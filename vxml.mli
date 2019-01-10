@@ -269,7 +269,7 @@ type itms = {
   gen: (string*rw list) list ref;
   imp: (string*(string*(string*dirop) list)) list ref;
   inst: (string*(string*string*rw list)) list ref;
-  cnst: (string*(int*cexp)) list ref;
+  cnst: (string*(bool*(int*cexp))) list ref;
   needed: (token*string) list ref;
   avoid_dollar_unsigned: bool;
   remove_interfaces: bool;

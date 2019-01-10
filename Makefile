@@ -30,8 +30,6 @@ P = picorv32_axi_opt.v picorv32_wrapper_mixed.v picorv32_opt.v
 M = axi4_memory_opt.v picorv32_axi_adapter_opt.v picorv32_axi_opt.v picorv32_pcpi_div_opt.v picorv32_pcpi_mul_opt.v picorv32_opt.v ref_opt/picorv32_axi_mixed.v ref_opt/picorv32_mixed.v ref_opt/picorv32_wrapper_mixed.v # picorv32_wrapper_opt.v
 X = picorv32_wrapper_opt.v
 Y = picorv32_wrapper.v
-L = ../sysver2ver-prev/example/testbench_implement.v ../sysver2ver-prev/axi4_memory_opt.v ../sysver2ver-prev/picorv32_axi_adapter_opt.v ../sysver2ver-prev/picorv32_axi__pi1_opt.v ../sysver2ver-prev/picorv32_pcpi_div_opt.v ../sysver2ver-prev/picorv32_pcpi_mul_opt.v ../sysver2ver-prev/picorv32__pi2_opt.v ../sysver2ver-prev/picorv32_wrapper_opt.v
-H = ../sysver2ver-prev/example/testbench_implement.v axi4_memory_opt.v ../sysver2ver-prev/picorv32_axi_adapter_opt.v ../sysver2ver-prev/picorv32_axi__pi1_opt.v ../sysver2ver-prev/picorv32_pcpi_div_opt.v ../sysver2ver-prev/picorv32_pcpi_mul_opt.v ../sysver2ver-prev/picorv32__pi2_opt.v ../sysver2ver-prev/picorv32_wrapper_opt.v
 
 mixed.vvp: $S $M
 	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA -DDEBUGREGS $S $M
@@ -50,12 +48,6 @@ target.vvp: $G $T $X
 
 nonopt.vvp: $G $N $Y
 	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA -DWRAPPER=picorv32_wrapper $G $N $Y
-
-legacy.vvp: $L
-	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA $L
-
-hybrid.vvp: $H
-	iverilog -g2005-sv -o $@ -DCOMPRESSED_ISA $H
 
 $T: obj_dir/Vpicorv32_wrapper.xml
 	env VXML_SEPARATE=1 ./vxmlmain $<
@@ -82,4 +74,4 @@ picorv32_wrapper_mixed.v: picorv32_wrapper_opt.v
 	sed -e 's=\(\ picorv32_wrapper\)_opt=\1_mixed\ =' $< > $@
 
 clean:
-	rm -rf vout vopt voutopt edited debug debugopt elem *.v *.tcl *.elem *.debug
+	rm -rf old vout vopt voutopt edited debug debugopt elem *.v *.tcl *.elem *.debug *.fss a.out

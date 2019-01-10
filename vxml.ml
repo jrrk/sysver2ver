@@ -276,7 +276,7 @@ type itms = {
   gen: (string*rw list) list ref;
   imp: (string*(string*(string*dirop) list)) list ref;
   inst: (string*(string*string*rw list)) list ref;
-  cnst: (string*(int*cexp)) list ref;
+  cnst: (string*(bool*(int*cexp))) list ref;
   needed: (token*string) list ref;
   avoid_dollar_unsigned: bool;
   remove_interfaces: bool;
@@ -1451,7 +1451,18 @@ let widshow id rng = function
 let varlst modul delim typ' id =
     let (widlst,cnst,rng) = findmembers' typ' in
     let decl = !delim :: (if cnst then WIRE else LOGIC) :: SP :: widshow id rng widlst in decl @
-    comment widlst @ (if cnst && List.mem_assoc id !(modul.cnst) then SP :: ASSIGNMENT :: SP :: SIZED (List.assoc id !(modul.cnst)) :: [] else [])
+    comment widlst @ (if List.mem_assoc id !(modul.cnst) then
+                         begin
+                         let (isc,init) = List.assoc id !(modul.cnst) in
+                         if cnst && isc then
+                             begin
+                             SP :: ASSIGNMENT :: SP :: SIZED init :: []
+                             end
+                         else
+                             begin
+                             SEMI :: NL :: INITIAL :: SP :: IDENT id :: SP :: ASSIGNMENT :: SP :: SIZED init :: []
+                             end
+                         end else [])
 
 let rec iter2 modul dly lst =
     List.flatten (List.map (fun itm -> cstmt modul dly itm @ [SEMI;NL]) lst)
@@ -1608,6 +1619,16 @@ let optitm lst =
     let lst'' = List.map optitm4 lst' in
     lst''
 
+let rec is_cnst itms id =
+    if List.mem_assoc id !(itms.v) then
+        begin
+        let (origin, ((a,b,c,d) as typ'), kind', n) = List.assoc id !(itms.v) in
+        print_endline (dumptab typ');
+        !b = "const"
+        end
+    else
+        false
+
 let rec catitm (pth:string option) itms = function
 | IO(origin, str1lst, typ1, dir, str3, clst) ->
     List.iter (fun str1 ->
@@ -1660,7 +1681,7 @@ let rec catitm (pth:string option) itms = function
     List.iter (catitm pth itms) rw_lst;
     (match rw_lst with
         | ASGN (false, _, (CNST (cnst, _, [])) :: VRF (id, []) :: []) :: [] ->
-             itms.cnst := (id,cnst) :: !(itms.cnst);
+             itms.cnst := (id,(is_cnst itms id,cnst)) :: !(itms.cnst);
              print_endline ("initial found : "^id);
         | _ -> itms.init := (origin, INITIAL, rw_lst) :: !(itms.init));
 | INIT (origin, "final", rw_lst) ->
