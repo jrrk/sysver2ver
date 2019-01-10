@@ -1095,8 +1095,8 @@ let rec taskstmt dly nam = function
 | BGN(_,rw_lst) -> List.flatten (List.map (taskstmt dly nam) rw_lst)
 | itm -> cstmt dly itm @ SEMI :: NL :: []
 
-let outnam f = f^"_translate.v"
-let outnamopt f = let l = String.length f in f^(if l < 4 || String.sub f (l-4) 4 <> "_opt" then "_opt" else "")^"_translate.v"
+let outnam f = f^".v"
+let outnamopt f = let l = String.length f in f^(if l < 4 || String.sub f (l-4) 4 <> "_opt" then "_opt" else "")^".v"
 let outtok f = f^"_tokens.txt"
 let outtcl f = "./"^f^"_fm.tcl"
 
