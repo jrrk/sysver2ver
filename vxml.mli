@@ -184,6 +184,7 @@ and rw =
 | TYPETABLE of typetable_t array
 
 type token =
+| INVALID
 | SP
 | SEMI
 | COLON
@@ -248,8 +249,9 @@ type xmlattr = {
     anchor: string;
     errlst: Xml.xml list ref;
     names: (string*typetable_t) list ref;
-    typetable : typetable_t array ref;
+    typetable: typetable_t array;
     intf : (string * string) list ref;
+    instances: (string*token) list;
     modulexml: (string*(rw list*(string*typetable_t) list)) list ref;
 }
 
@@ -292,7 +294,7 @@ val optothlst : rw list ref
 val xrflst : rw list ref
 val smplopt : rw option ref
 val selopt : rw option ref
-val rngopt : rw list option ref
+val rngopt : (token * rw list) option ref
 val typopt : typetable_t option ref
 val decopt : (int * string) option ref
 val portopt : rw option ref
@@ -318,6 +320,7 @@ val topattr : xmlattr ref
 
 val hex_of_bigint : int -> Big_int.big_int -> string
 val hex_to_bigint : string -> Big_int.big_int
+val hex_to_ascii : int -> string -> bytes
 val decode : int -> string -> cexp
 val cadd : cexp list -> cexp
 val cexp : string -> int * cexp

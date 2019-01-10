@@ -6,6 +6,9 @@
 // means.
 
 `timescale 1 ns / 1 ps
+`ifndef WRAPPER
+ `define WRAPPER picorv32_wrapper_opt
+`endif
 
 `ifndef VERILATOR
 module testbench #(
@@ -86,10 +89,7 @@ module testbench #(
 	wire [31:0] 	  dbg_reg_x31;
 `endif
 
-	picorv32_wrapper #(
-		.AXI_TEST (AXI_TEST),
-		.VERBOSE  (VERBOSE)
-	) top (
+	`WRAPPER top (
 		.clk(clk),
 		.resetn(resetn),
 		.trap(trap),

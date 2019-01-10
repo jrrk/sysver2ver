@@ -46,10 +46,11 @@ let xmlf = "obj_dir/Vsys.xml";;
 let xmlf = "obj_dir/Vgenvarexample.xml";;
 let xmlf = "../ariane/obj_dir/Vbug1.xml";;
 let xmlf = "../ariane/obj_dir/Vbug3.xml";;
+let xmlf = "obj_dir/Vunpacked.xml";;
 *)
 
 let xmlf = "../ariane/obj_dir/Variane_testharness.xml";;
-let xmlf = "obj_dir/Vunpacked.xml";;
+let xmlf = "obj_dir/Vpicorv32_wrapper.xml";;
 
 let errlst = ref [];;
 let (line,range,rwxml,xml,mods) = Vxml.translate errlst xmlf;;
