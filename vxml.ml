@@ -142,7 +142,7 @@ and rw =
 | IVAR of string * string * int * rw list * int
 | TMPVAR of string * string * typetable_t * rw list
 | CNST of (int * cexp) * int * rw list
-| VRF of string * rw list
+| VRF of string * typetable_t * rw list
 | TYP of int * typ_t
 | FNC of string * string * typetable_t * rw list
 | TASK of string * string * rw list
@@ -185,7 +185,7 @@ and rw =
 | CS of string * rw list
 | CSITM of string * rw list
 | WHL of rw list
-| FORSTMT of (string * string * cmpop * string * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
+| FORSTMT of (string * string * cmpop * rw * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
 | ARG of rw list
 | DSPLY of string * string * rw list
 | FILS of string * rw list
@@ -476,11 +476,11 @@ let rec typmap = function
 | oth -> mapothlst := oth :: !mapothlst; failwith "mapothlst"
 
 let fortailmatch ix' = function
-| ASGN(dly, _, ARITH (Aadd, CNST (inc, _, []) :: VRF (ix'', []) :: []) :: VRF (ix''', []) :: []) :: tl -> (ix'=ix'') && (ix''=ix''')
+| ASGN(dly, _, ARITH (Aadd, CNST (inc, _, []) :: (VRF _ as ix'') :: []) :: (VRF _ as ix''') :: []) :: tl -> (ix'=ix'') && (ix''=ix''')
 | _ -> false
 
 let forinc = function
-| ASGN(dly,_, ARITH (Aadd, CNST (inc, _, []) :: VRF (ix'', []) :: []) :: VRF (ix''', []) :: []) :: tl -> (inc,List.rev tl)
+| ASGN(dly,_, ARITH (Aadd, CNST (inc, _, []) :: (VRF _) :: []) :: (VRF _) :: []) :: tl -> (inc,List.rev tl)
 | tl -> ((0,ERR ""),List.rev tl)
 
 let fold1 fn = function
@@ -493,21 +493,21 @@ let rec jump_opt origin = function
 | tl -> JMPL (origin, tl)
 
 let while_opt origin lbl = function
-| VAR (_, [ix''], _, ("int"|"integer"|"logic" as kind)) :: ASGN(dly, _, CNST (strt, _, []) :: VRF (ix, []) :: []) ::
+| VAR (_, [ix''], _, ("int"|"integer"|"logic" as kind)) :: ASGN(dly, _, CNST (strt, _, []) :: (VRF (ix''', _, []) as ix) :: []) ::
         JMPL (_, 
            (WHL
-            (CMP (cmpop, CNST (stop, _, []) :: VRF (ix', []) :: []) ::
-             stmtlst)) :: []) :: [] when (ix=ix') && (ix'=ix'') && fortailmatch ix (List.rev stmtlst) ->
+            (CMP (cmpop, CNST (stop, _, []) :: (VRF _ as ix') :: []) ::
+             stmtlst)) :: []) :: [] when (ix=ix') && (ix''=ix''') && fortailmatch ix (List.rev stmtlst) ->
                let (inc,stmts) = forinc (List.rev stmtlst) in FORSTMT (origin,kind,cmpop,ix,strt,stop,inc,stmts)
-| VAR (_, [ix''], _, ("int"|"integer"|"logic" as kind)) :: ASGN(dly,_, CNST (strt, _, []) :: VRF (ix, []) :: []) ::
+| VAR (_, [ix''], _, ("int"|"integer"|"logic" as kind)) :: ASGN(dly,_, CNST (strt, _, []) :: (VRF (ix''', _, []) as ix) :: []) ::
            WHL
-            (CMP (cmpop, CNST (stop, _, []) :: VRF (ix', []) :: []) ::
-             stmtlst) :: [] when (ix=ix') && (ix'=ix'') && fortailmatch ix (List.rev stmtlst) ->
+            (CMP (cmpop, CNST (stop, _, []) :: (VRF _ as ix') :: []) ::
+             stmtlst) :: [] when (ix=ix') && (ix''=ix''') && fortailmatch ix (List.rev stmtlst) ->
                let (inc,stmts) = forinc (List.rev stmtlst) in FORSTMT (origin,kind,cmpop,ix,strt,stop,inc,stmts)
 | VAR _ :: ASGN(dly,_, a :: WHL (b :: stmtlst) :: []) :: [] as xlst' -> forlst := (a,b,stmtlst) :: !forlst; BGN (lbl, xlst')
-| ASGN(dly,_, CNST (strt, _, []) :: VRF (ix, []) :: []) ::
+| ASGN(dly,_, CNST (strt, _, []) :: (VRF _ as ix) :: []) ::
            WHL
-            (CMP (cmpop, CNST (stop, _, []) :: VRF (ix', []) :: []) ::
+            (CMP (cmpop, CNST (stop, _, []) :: (VRF _ as ix') :: []) ::
              stmtlst) :: [] when (ix=ix') && fortailmatch ix (List.rev stmtlst) ->
                let (inc,stmts) = forinc (List.rev stmtlst) in FORSTMT (origin,"",cmpop,ix,strt,stop,inc,stmts)
 | ASGN(dly,_, a :: WHL (b :: stmtlst) :: []) :: [] as xlst' -> forlst := (a,b,stmtlst) :: !forlst; BGN (lbl, xlst')
@@ -540,7 +540,7 @@ let rec cell_hier = function
 | oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
 
 let rec simplify_exp anchor tmpl = function
-| VRF (_, []) as vrf -> vrf
+| VRF (_, _, []) as vrf -> vrf
 | CNST _ as cst -> cst
 | UNRY (op, expr1 :: []) -> UNRY (op, simplify_exp anchor tmpl expr1 :: [])
 | CMP (op, expr1 :: expr2 :: []) -> CMP (op, simplify_exp anchor tmpl expr1 :: simplify_exp anchor tmpl expr2 :: [])
@@ -562,9 +562,10 @@ let rec simplify_exp anchor tmpl = function
         let idx' = lo'+wid' in
         let uniq = 1000000 + List.length !tmpl * 1000 + idx' in
         let t = "__tmp"^string_of_int uniq in
-        let tmp = VRF (t, []) in
+        let typ' = (BASDTYP, ref "logic", TYPRNG(idx'-1,0), []) in
+        let tmp = VRF (t, typ', []) in
         let smpl = simplify_exp anchor tmpl oth in
-        tmpl := !tmpl @ TMPVAR(anchor, t, (BASDTYP, ref "logic", TYPRNG(idx'-1,0), []), []) :: ASGN(false, orig, smpl :: tmp :: []) :: [];
+        tmpl := !tmpl @ TMPVAR(anchor, t, typ', []) :: ASGN(false, orig, smpl :: tmp :: []) :: [];
         SEL (orig, tmp :: lo :: wid :: [])
 | SEL (origin, expr1 :: lo :: wid :: []) as sel -> smplopt := Some sel; failwith "simplify_exp: smplopt"
 | oth -> smpothlst := oth :: !smpothlst; oth
@@ -825,7 +826,7 @@ let tokencnv indent = function
 let tokenout fd indent tok = output_string fd (tokencnv indent tok)
 
 let rec dumpitm = function
-| VRF (id, []) -> "VRF (\""^id^"\", [])"
+| VRF (id, _, []) -> "VRF (\""^id^"\", _, [])"
 | UNKNOWN -> "UNKNOWN"
 | XML (rw_lst) -> "XML("^dumplst rw_lst^")"
 | EITM (str1, str2, str3, int2, rw_lst) -> "EITM("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumpi int2^", "^dumplst rw_lst^")"
@@ -834,7 +835,7 @@ let rec dumpitm = function
 | IVAR (str1, str2, int2, rw_lst, int3) -> "IVAR("^dumps str1^", "^dumps str2^", "^dumpi int2^", "^dumplst rw_lst^", "^dumpi int3^")"
 | TMPVAR (str1, str2, typ2, rw_lst) -> "TMPVAR("^dumps str1^", "^dumps str2^", "^dumptab typ2^", "^dumplst rw_lst^")"
 | CNST ((int, cexp), int2, rw_lst) -> "CNST("^dumpcnst (int, cexp)^", "^dumpi int2^", "^dumplst rw_lst^")"
-| VRF (str1, rw_lst) -> "VRF("^dumps str1^", "^dumplst rw_lst^")"
+| VRF (str1, typ', rw_lst) -> "VRF("^dumps str1^", "^dumptab typ'^", "^dumplst rw_lst^")"
 | TYP (idx, (typenc, str1, typmap, typ_lst)) -> "TYP("^dumptyp typenc^", "^dumps !str1^", "^dumpmap typmap^", "^dumplst typ_lst^")"
 | FNC (str1, str2, typ2, rw_lst) -> "FNC("^dumps str1^", "^dumps str2^", "^dumptab typ2^", "^dumplst rw_lst^")"
 | TASK (str1, str2, rw_lst) -> "TASK("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
@@ -878,8 +879,9 @@ let rec dumpitm = function
 | CS (str1, rw_lst) -> "CS("^dumps str1^", "^dumplst rw_lst^")"
 | CSITM (str1, rw_lst) -> "CSITM("^dumps str1^", "^dumplst rw_lst^")"
 | WHL (rw_lst) -> "WHL("^dumplst rw_lst^")"
-| FORSTMT (str1, str2, cmpop, str3, (int1, cexp1), (int2, cexp2), (int3, cexp3), rw_lst) ->
-    "FORSTMT("^dumps str1^", "^dumps str2^", "^dumpcmp cmpop^", "^dumps str3^", "^dumpcnst (int1, cexp1)^", "^dumpcnst (int2, cexp2)^", "^dumpcnst (int3, cexp3)^", "^dumplst rw_lst^")"
+| FORSTMT (str1, str2, cmpop, VRF(str', typ', rw_lst'), (int1, cexp1), (int2, cexp2), (int3, cexp3), rw_lst) ->
+    "FORSTMT("^dumps str1^", "^dumps str2^", "^dumpcmp cmpop^", "^"VRF("^dumps str'^", "^dumptab typ'^", "^dumplst rw_lst'^"), "^dumpcnst (int1, cexp1)^", "^dumpcnst (int2, cexp2)^", "^dumpcnst (int3, cexp3)^", "^dumplst rw_lst^")"
+| FORSTMT _ -> "FORSTMT(...)"
 | ARG (rw_lst) -> "ARG("^dumplst rw_lst^")"
 | DSPLY (str1, str2, rw_lst) -> "DSPLY("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
 | FILS (str1, rw_lst) -> "FILS("^dumps str1^", "^dumplst rw_lst^")"
@@ -992,7 +994,7 @@ let rec cell_traverse attr (nam, subnam) =
                          print_endline ("Searching: "^kind);
                          let (xlst''', names'') = List.assoc kind !(attr.modulexml) in
                          List.iter (function
-                        | PORT (_, formal, Dvif bus, [VRF (actual, [])]) ->
+                        | PORT (_, formal, Dvif bus, [VRF (actual, _, [])]) ->
 			if List.mem_assoc formal names'' then
 			    begin
 			    let (typenc1,str1,typmap1,typmaplst1) as formtyp = List.assoc formal names'' in
@@ -1084,25 +1086,31 @@ let rec rw' attr = function
                CNST (cexp value, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("contassign", [("fl", origin); ("dtype_id", tid)], xlst) -> CA (origin, List.map (rw' attr) xlst)
 | Xml.Element ("not"|"negate"|"extend"|"extends"|"lognot" as op, [("fl", origin); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' attr) xlst)
-| Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) -> VRF (snd (chkvif nam), List.map (rw' attr) xlst)
+| Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) ->
+               VRF (snd (chkvif nam), attr.typetable.(int_of_string tid), List.map (rw' attr) xlst)
 | Xml.Element ("instance", [("fl", origin); ("name", nam); ("defName", dnam); ("origName", nam')], xlst) ->
-               let instkind = List.assoc dnam attr.instances in
+(* *)
+               let instkind = if List.mem_assoc dnam attr.instances then
+                   List.assoc dnam attr.instances
+               else
+                   (print_endline (dnam^": missing"); MODULE) in
+(* *)
 	       let rnglst, attrlst = List.partition (function RNG _ -> true | _ -> false) (List.map (rw' attr) xlst) in
                let exportlst = ref [] in
                List.iter (function
-                   | PORT (orig, nam, Dvif _, [VRF (nam', [])]) as port when List.mem_assoc nam' !(attr.names) -> 
+                   | PORT (orig, nam, Dvif _, [VRF (nam', typ', [])]) as port when List.mem_assoc nam' !(attr.names) -> 
                        (match List.assoc nam' !(attr.names) with
                            | (IFCRFDTYP _, dir, TYPRNG(hi,lo), []) ->
-                               exportlst := expandbraket lo hi (fun istr -> PORT (orig, nam^istr, Dvif dir, [VRF (nam'^istr, [])])) @ !exportlst
+                               exportlst := expandbraket lo hi (fun istr -> PORT (orig, nam^istr, Dvif dir, [VRF (nam'^istr, typ', [])])) @ !exportlst
                            | (IFCRFDTYP _, dir, TYPNONE, []) -> exportlst := port :: !exportlst
                            | oth -> typopt := Some oth; failwith ("typopt;;599: "^dumptab oth))
-                   | PORT (orig, nam, Dvif _, [ASEL (VRF (nam', []) :: CNST((_,HEX idx), _, []) :: [])]) when List.mem_assoc nam' !(attr.names) -> 
+                   | PORT (orig, nam, Dvif _, [ASEL (VRF (nam', typ', []) :: CNST((_,HEX idx), _, []) :: [])]) when List.mem_assoc nam' !(attr.names) -> 
                        (match List.assoc nam' !(attr.names) with
                            | (IFCRFDTYP _, dir, TYPRNG(hi,lo), []) ->
-                               exportlst := expandbraket idx idx (fun istr -> PORT (orig, nam, Dvif dir, [VRF (nam'^istr, [])])) @ !exportlst
+                               exportlst := expandbraket idx idx (fun istr -> PORT (orig, nam, Dvif dir, [VRF (nam'^istr, typ', [])])) @ !exportlst
                            | (IFCRFDTYP _, dir, TYPNONE, []) -> failwith ("indexing a scalar interface: "^nam)
                            | oth -> typopt := Some oth; failwith ("typopt;;599: "^dumptab oth))
-                   | PORT (orig, nam, Dvif _, [VRF (nam', [])]) ->
+                   | PORT (orig, nam, Dvif _, [VRF (nam', _, [])]) ->
                        print_endline ("vif interface "^nam'^" not found: ["^String.concat ";" (List.map (fun (k,_) -> k) !(attr.names))^"] ?")
                    | PORT (orig, nam, dir, connlst) as port -> exportlst := port :: !exportlst
                    | oth -> portopt := Some oth; failwith "portopt") attrlst;
@@ -1190,7 +1198,7 @@ let rec rw' attr = function
         end in
     XRF (origin, nam, tid, dotted, dirop)
 | Xml.Element ("arg", [("fl", _)], xlst) -> ARG (List.map (rw' attr) xlst)
-| Xml.Element ("initarray"|"streaml"|"powsu"|"realtobits"|"itord"|"rand" as op, [("fl", origin); ("dtype_id", tid)], xlst) ->
+| Xml.Element ("initarray"|"streaml"|"powsu"|"powss"|"realtobits"|"itord"|"rand" as op, [("fl", origin); ("dtype_id", tid)], xlst) ->
     SYS (origin, "$"^op, List.map (rw' attr) xlst)
 | Xml.Element ("replicate", [("fl", origin); ("dtype_id", tid)], xlst) -> REPL (origin, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("iface", [("fl", origin); ("name", bus); ("origName", bus')], xlst) ->
@@ -1317,7 +1325,7 @@ remove_interfaces = prev.remove_interfaces; }
 let num x = NUM (HEX x)
 
 let rec expr modul = function
-| VRF (id, []) -> IDENT id :: []
+| VRF (id, _, []) -> IDENT id :: []
 | CNST ((s,n), tid, []) -> SIZED (s,n) :: []
 | UNRY (Uextend, expr1 :: []) when modul.avoid_dollar_unsigned -> LCURLY :: SIZED (1, BIN '0') :: COMMA :: expr modul expr1 @ [RCURLY]
 | UNRY ((Uextend|Uextends) as op, expr1 :: []) -> IDENT (unaryopv op) :: LPAREN :: expr modul expr1 @ [RPAREN]
@@ -1330,22 +1338,22 @@ let rec expr modul = function
     LPAREN :: expr modul (UNRY (Uextends, expr1 :: [])) @ (IDENT (logopv op) :: expr modul expr2) @[RPAREN]
 | LOGIC (op, expr1 :: expr2 :: []) -> LPAREN :: expr modul expr1 @ (IDENT (logopv op) :: expr modul expr2) @[RPAREN]
 | ARITH (op, expr1 :: expr2 :: []) -> LPAREN :: expr modul expr1 @ (IDENT (arithopv op) :: expr modul expr2) @[RPAREN]
-| SEL (origin, ((VRF _ | XRF _ | ASEL _) as expr1) :: (CNST((szlo,lo'),_,_)) :: (CNST((szw,wid'),_,_)) :: []) ->
+| SEL (origin, ((VRF _ | XRF _ | ASEL _) as expr1) :: (CNST((szlo, lo'),_,_)) :: (CNST((szw,wid'),_,_)) :: []) ->
     expr modul expr1 @ (match wid' with HEX 1 | SHEX 1 -> LBRACK :: NUM lo' :: RBRACK :: []
     | _ -> LBRACK :: NUM (cadd [lo';wid';SHEX (-1)]) :: COLON :: NUM lo' :: RBRACK :: [])
-| SEL (origin, ((VRF _ | XRF _ | ASEL _) as expr1) :: expr2 :: CNST((szw,wid'),_,_) :: []) ->
+| SEL (origin, ((VRF _ | XRF _ | ASEL _) as expr1) :: expr2 :: CNST((szw, wid'),_,_) :: []) ->
     expr modul expr1 @ (match wid' with HEX 1 | SHEX 1 -> LBRACK :: expr modul expr2 @ [RBRACK]
     | _ -> LBRACK :: expr modul expr2 @ [PLUS;COLON] @ (NUM wid' :: RBRACK :: []))
 | SEL (origin, expr1 :: CNST ((32,(HEX 0 | SHEX 0)), idx, []) :: (CNST((szw,HEX wid'),_,_)) :: []) ->
     expr modul (LOGIC (Land, expr1 :: CNST ((wid', HEX ((1 lsl wid') -1)), idx, []) :: []))
 | SEL (o, CND (origin, expr1 :: lft :: rght :: []) :: expr2 :: expr3 :: []) ->
     LPAREN :: expr modul expr1 @ [QUERY] @ expr modul (SEL (o, lft :: expr2 :: expr3 :: [])) @ [COLON] @ expr modul (SEL (o, rght :: expr2 :: expr3 :: [])) @ [RPAREN]
-| SEL (orig, (UNRY (Uextend, VRF (id, []) :: []) :: (CNST _ as expr2) :: (CNST _ as expr3) :: [])) ->
-    expr modul (SEL (orig, VRF (id, []) :: expr2 :: expr3 :: []))
+| SEL (orig, (UNRY (Uextend, VRF (id, typ', []) :: []) :: (CNST _ as expr2) :: (CNST _ as expr3) :: [])) ->
+    expr modul (SEL (orig, VRF (id, typ', []) :: expr2 :: expr3 :: []))
 | SEL (orig, (CNST ((32, SHEX n), idx, []) :: CNST ((32, HEX lo'), _, []) :: CNST ((32, HEX wid'), _, []) :: [])) ->
     SIZED (wid', SHEX (n asr lo')) :: []
     
-| ASEL (VRF (lval, []) :: expr1 :: []) -> IDENT lval :: LBRACK :: expr modul expr1 @ [RBRACK]
+| ASEL (VRF (lval, _, []) :: expr1 :: []) -> IDENT lval :: LBRACK :: expr modul expr1 @ [RBRACK]
 | ASEL (ASEL _ as multi :: expr' :: []) -> expr modul multi @ LBRACK :: expr modul expr' @ [RBRACK]
 | CND (origin, expr1 :: lft :: rght :: []) -> LPAREN :: expr modul expr1 @ [QUERY] @ expr modul lft @ [COLON] @ expr modul rght @ [RPAREN]
 | CAT (origin, expr1 :: expr2 :: []) -> LCURLY :: expr modul expr1 @ [COMMA] @ expr modul expr2 @ [RCURLY]
@@ -1360,7 +1368,7 @@ let rec expr modul = function
     xrflst := xrf :: !xrflst;
     IDENT (dotted^(match dirop with Dinam _ when modul.remove_interfaces -> "_" | _ -> ".")^id) :: []
 | TPLSRGS (origin, id, tid, []) -> IDENT "$test$plusargs" :: LPAREN :: DQUOTE :: IDENT id :: DQUOTE :: RPAREN :: []
-| VPLSRGS (origin, tid, CNST ((len, fmt), _, []) :: VRF (arg, []) :: []) -> IDENT "$value$plusargs" :: LPAREN :: NUM fmt :: COMMA :: IDENT arg :: RPAREN :: []
+| VPLSRGS (origin, tid, CNST ((len, fmt), _, []) :: VRF (arg, _, []) :: []) -> IDENT "$value$plusargs" :: LPAREN :: NUM fmt :: COMMA :: IDENT arg :: RPAREN :: []
 | SYS (origin, "$rand", []) -> SP :: IDENT "$random" :: []
 | SYS (origin, "$powsu", fst::snd::[]) -> LPAREN :: expr modul fst @ POW :: expr modul snd @ RPAREN :: []
 | SYS (origin, "$streaml", hd::tl) -> LCURLY :: LSHIFT :: LCURLY :: expr modul hd @ RCURLY :: RCURLY :: []
@@ -1382,7 +1390,7 @@ let implicit s =
   l > m && String.sub s 0 m = sub
 
 let rec portconn modul = function
-| VRF (id, []) -> DOT :: IDENT id :: []
+| VRF (id, _, []) -> DOT :: IDENT id :: []
 | PORT (origin, id_o, dir, []) -> DOT :: IDENT id_o :: LPAREN :: RPAREN :: []
 | PORT (origin, id_i, dir, expr1 :: []) when implicit id_i -> LPAREN :: expr modul expr1 @ [RPAREN]
 | PORT (origin, id_i, dir, expr1 :: []) -> DOT :: IDENT id_i :: LPAREN :: expr modul expr1 @ [RPAREN]
@@ -1553,8 +1561,8 @@ and ifcond = function
 | oth -> IFF :: SP :: LPAREN :: oth @ (RPAREN :: [])
 
 and ewidth = function
-| CAT (_,lst) -> fold1 (+) (List.map ewidth lst)
-| SEL (_, VRF (_, []) :: CNST ((_,_), _, []) :: CNST ((_,HEX wid), _, []) :: []) -> wid
+| CAT (_, lst) -> fold1 (+) (List.map ewidth lst)
+| SEL (_, VRF (_, _, []) :: CNST ((_,_), _, []) :: CNST ((_,HEX wid), _, []) :: []) -> wid
 | SEL (_, UNRY (Uextends, _) :: CNST ((_,_), _, []) :: CNST ((_,HEX wid), _, []) :: []) -> wid
 | CNST ((n, _), _, []) -> n
 | oth -> widthlst := oth :: !widthlst; failwith "widthlst"
@@ -1572,7 +1580,7 @@ and cstmt modul dly = function
 | ASGN(true, origin, 
     src ::
     SEL (_,
-        ASEL (VRF (lval, []) ::
+        ASEL (VRF (lval, _, []) ::
         expr1 ::
         []) ::
     CNST ((szlo,lo'), _, []) ::
@@ -1585,9 +1593,9 @@ and cstmt modul dly = function
 | CS (origin, sel :: lst) -> CASE :: LPAREN :: expr modul sel @ (RPAREN :: NL :: List.flatten (List.map (csitm modul dly) lst)) @ [NL;ENDCASE]
 | CA(origin, rght::lft::[]) -> ASSIGN :: SP :: expr modul lft @ stmtdly dly @ expr modul rght
 | VAR (origin, idlst, typ', _) -> List.flatten (List.map (fun id -> varlst modul (ref NL) typ' id) idlst)
-| FORSTMT (o,kind,cnd,ix,strt,stop,inc,stmts) ->
-    FOR :: LPAREN :: (if kind <> "" then IDENT kind :: SP :: [] else []) @
-    IDENT ix :: ASSIGNMENT :: SIZED strt :: SEMI ::
+| FORSTMT (o,kind,cnd,VRF(ix, typ', []),strt,stop,inc,stmts) ->
+    FOR :: LPAREN :: (if kind = "logic" then varlst modul (ref SP) typ' ix else if kind <> "" then [IDENT kind; SP; IDENT ix] else [IDENT ix]) @
+    ASSIGNMENT :: SIZED strt :: SEMI ::
     SIZED stop :: CMPOP cnd :: IDENT ix :: SEMI ::
     IDENT ix :: ASSIGNMENT :: IDENT ix :: PLUS :: SIZED inc :: RPAREN ::
     BEGIN None :: iter2 modul dly stmts @ [END]
@@ -1603,11 +1611,11 @@ and cstmt modul dly = function
 | TMPVAR (origin, nam, wid, stmtlst) -> cstmt modul dly (BGN (None, stmtlst))
 (*
 | WHL
-    (CMP (cmpop, (CNST (stop, _, []) :: VRF (ix, []) :: [])) ::
+    (CMP (cmpop, (CNST (stop, _, []) :: VRF (ix, _, []) :: [])) ::
      stmt ::
      ASGN _ :: [])
 (*
- (ARITH (Aadd, (CNST (inc, _, []) :: VRF (ix', []) :: []) :: VRF (ix'', []) :: []) :: []) :: []) :: [])
+ (ARITH (Aadd, (CNST (inc, _, []) :: VRF (ix', _, []) :: []) :: VRF (ix'', _, []) :: []) :: []) :: []) :: [])
 *)
     -> WHILE :: []
 *)
@@ -1685,7 +1693,7 @@ let rec optitm4 = function
 
 let optitm lst =
     let lst' = optitm3 lst in
-    optopt := Some (lst,lst');
+    optopt := Some (lst, lst');
     let lst'' = List.map optitm4 lst' in
     lst''
 
@@ -1704,7 +1712,7 @@ let rec catitm (pth:string option) itms = function
     List.iter (fun str1 ->
         let typ' = ref typ1 in
         List.iter (fun itm ->
-            itms.ca := (origin, VRF(str1,[]), itm) :: !(itms.ca);
+            itms.ca := (origin, VRF(str1, typ1,[]), itm) :: !(itms.ca);
             let (a,b,c,d) = typ1 in typ' := (a,ref "wire",c,d)) clst;
         itms.io := (str1, (origin, !typ', dir, str3, List.map ioconn clst)) :: !(itms.io);
         ) str1lst
@@ -1725,23 +1733,23 @@ let rec catitm (pth:string option) itms = function
         let pth' = match lcombine(pth,Some str1) with Some s -> s | None -> failwith "lcombine" in
         itms.inst := (pth', (origin, str2, port_lst)) :: !(itms.inst)
         ) str1lst
-| ALWYS(origin, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: SNITM ("POS", [VRF (rst, [])]) :: []) :: rw_lst) ->
+| ALWYS(origin, SNTRE(SNITM ("POS", [VRF (ck, _, [])]) :: SNITM ("POS", [VRF (rst, _, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     itms.alwys := (origin, POSPOS(ck,rst), optitm rw_lst) :: !(itms.alwys)    
-| ALWYS(origin, SNTRE(SNITM ("POS", [VRF (ck, [])]) :: []) :: rw_lst) ->
+| ALWYS(origin, SNTRE(SNITM ("POS", [VRF (ck, _, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     let rw_lst' = optitm rw_lst in
     if rw_lst' <> [] then itms.alwys := (origin, POSEDGE(ck), rw_lst') :: !(itms.alwys)
-| ALWYS(origin, SNTRE(SNITM ("NEG", [VRF (ck, [])]) :: []) :: rw_lst) ->
+| ALWYS(origin, SNTRE(SNITM ("NEG", [VRF (ck, _, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     itms.alwys := (origin, NEGEDGE(ck), optitm rw_lst) :: !(itms.alwys)
-| ALWYS(origin, SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, [])]) :: SNITM ("NEG", [VRF (rst, [])]) :: []) :: rw_lst) ->
+| ALWYS(origin, SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, _, [])]) :: SNITM ("NEG", [VRF (rst, _, [])]) :: []) :: rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     let rw_lst' = (function
-       | BGN(lbl, (IF(origin, VRF(rst',[]) :: thn :: els :: []) :: [])) :: [] ->
-           BGN(lbl, (IF(origin, UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
-       | IF(origin, VRF(rst',[]) :: thn :: els :: []) :: [] ->
-           BGN(None, (IF(origin, UNRY(Unot, VRF(rst',[]) :: []) :: els :: thn :: []) :: [])) :: []
+       | BGN(lbl, (IF(origin, VRF(rst', typ',[]) :: thn :: els :: []) :: [])) :: [] ->
+           BGN(lbl, (IF(origin, UNRY(Unot, VRF(rst', typ',[]) :: []) :: els :: thn :: []) :: [])) :: []
+       | IF(origin, VRF(rst', typ',[]) :: thn :: els :: []) :: [] ->
+           BGN(None, (IF(origin, UNRY(Unot, VRF(rst', typ',[]) :: []) :: els :: thn :: []) :: [])) :: []
        | oth -> posneglst := oth :: !posneglst; oth) rw_lst in
     itms.alwys := (origin, (match edg with "POS" -> POSNEG(ck,rst) | "NEG" -> NEGNEG(ck,rst) | _ -> UNKNOWN), optitm rw_lst') :: !(itms.alwys)
 | ALWYS(origin, rw_lst) ->
@@ -1750,7 +1758,7 @@ let rec catitm (pth:string option) itms = function
 | INIT (origin, "initial", rw_lst) ->
     List.iter (catitm pth itms) rw_lst;
     (match rw_lst with
-        | ASGN (false, _, (CNST (cnst, _, [])) :: VRF (id, []) :: []) :: [] ->
+        | ASGN (false, _, (CNST (cnst, _, [])) :: VRF (id, _, []) :: []) :: [] ->
              itms.cnst := (id,(is_cnst itms id,cnst)) :: !(itms.cnst);
              print_endline ("initial found : "^id);
         | _ -> itms.init := (origin, INITIAL, rw_lst) :: !(itms.init));
@@ -1799,7 +1807,7 @@ let rec catitm (pth:string option) itms = function
 | XML(rw_lst)
 | EITM(_, _, _, _, rw_lst)
 | CNST(_, _, rw_lst)
-| VRF(_, rw_lst)
+| VRF(_, _, rw_lst)
 | SFMT(_, rw_lst)
 | SYS(_,_, rw_lst)
 | PORT(_, _, _, rw_lst)
@@ -1857,10 +1865,10 @@ let iolst modul delim dir io = function
 | (IFCRFDTYP dir, kind, TYPNONE, []) -> !delim :: NL :: IDENT !kind :: DOT :: IDENT dir :: SP :: IDENT io :: []
 | (STRDTYP, _, TYPNONE, typlst) as typ' ->
     let (widlst,cnst,rng) = findmembers' typ' in
-    !delim :: LCOMMENT :: num 1844 :: RCOMMENT :: DIR dir :: SP :: LOGIC :: SP :: widshow io rng widlst @ comment widlst
+    !delim :: DIR dir :: SP :: LOGIC :: SP :: widshow io rng widlst @ comment widlst
 | (typenc, kind, typmap, rng) as typ' ->
     let (widlst,cnst,rng) = findmembers' typ' in
-    !delim :: LCOMMENT :: num 1847 :: RCOMMENT :: DIR dir :: SP :: chktyp !kind :: SP :: widshow io rng widlst @ comment widlst
+    !delim :: DIR dir :: SP :: chktyp !kind :: SP :: widshow io rng widlst @ comment widlst
 
 let fndlm = function
 | FIRSTG -> LPAREN::RPAREN::SEMI::[]
@@ -1988,10 +1996,10 @@ let rec iterate depth f (modorig, modul) =
            let newinnerlst = ref [] in
 	   let previolst = !(itms.io) in
            List.iter2 (fun ((_, (origin, typ', idir', typ'', ilst)) as inr) -> function
-		       | VRF (id, []) ->
-                           newiolst := PORT(origin, id, idir', [VRF(id, [])]) :: !newiolst;
+		       | VRF (id, typ', []) ->
+                           newiolst := PORT(origin, id, idir', [VRF(id, typ', [])]) :: !newiolst;
                            newinnerlst := inr :: !newinnerlst;
-		       | PORT (origin, id_i, Dvif bus, VRF (id, []) :: []) as pat ->
+		       | PORT (origin, id_i, Dvif bus, VRF (id, _, []) :: []) as pat ->
                            if List.mem_assoc id !(modul.inst) then
                                begin
                                let (_,inam,_) = List.assoc id !(modul.inst) in
@@ -2011,7 +2019,7 @@ let rec iterate depth f (modorig, modul) =
                               List.iter (fun (nam, dir) ->
                                     print_endline (indent^inam^":"^iport^":"^nam^":"^id_i);
                                     let (_, typ', kind, _) = List.assoc nam !(intf.v) in
-                                    newiolst := PORT(origin, id_i^"_"^nam, dir, [VRF(id^"_"^nam, [])]) :: !newiolst;
+                                    newiolst := PORT(origin, id_i^"_"^nam, dir, [VRF(id^"_"^nam, typ', [])]) :: !newiolst;
                                     newinnerlst := (id_i^"_"^nam, (origin, typ', dir, typ'', ilst)) :: !newinnerlst) lst
                               else print_endline (indent^"Direction "^ iport ^" not found");
                               end

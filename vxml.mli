@@ -135,7 +135,7 @@ and rw =
 | IVAR of string * string * int * rw list * int
 | TMPVAR of string * string * typetable_t * rw list
 | CNST of (int * cexp) * int * rw list
-| VRF of string * rw list
+| VRF of string * typetable_t * rw list
 | TYP of int * typ_t
 | FNC of string * string * typetable_t * rw list
 | TASK of string * string * rw list
@@ -178,7 +178,7 @@ and rw =
 | CS of string * rw list
 | CSITM of string * rw list
 | WHL of rw list
-| FORSTMT of (string * string * cmpop * string * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
+| FORSTMT of (string * string * cmpop * rw * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
 | ARG of rw list
 | DSPLY of string * string * rw list
 | FILS of string * rw list
@@ -347,7 +347,7 @@ val optitm : rw list -> rw list
 val simplify_exp : string -> rw list ref -> rw -> rw
 val simplify_asgn : bool -> string -> rw -> rw -> rw
 val jump_opt : string -> rw list -> rw
-val fortailmatch : string -> rw list -> bool
+val fortailmatch : rw -> rw list -> bool
 val needed : itms -> token*string -> token list
 val readxml : string -> int * (int * int) * Xml.xml
 val rw' : xmlattr -> Xml.xml -> rw
