@@ -24,8 +24,8 @@ G = example/testbench_golden.v
 
 V =  example/picorv32_wrapper.v example/axi4_memory.v example/picorv32_axi_adapter.v example/picorv32_axi.v example/picorv32_pcpi_div.v example/picorv32_pcpi_mul.v example/picorv32.v
 S = $B $V
-T = axi4_memory_opt.v picorv32__pi2_opt.v picorv32_axi__pi1_opt.v picorv32_axi_adapter_opt.v picorv32_pcpi_div_opt.v picorv32_pcpi_mul_opt.v
-N = axi4_memory.v picorv32__pi2.v picorv32_axi__pi1.v  picorv32_axi_adapter.v picorv32_pcpi_div.v picorv32_pcpi_mul.v
+T = axi4_memory_opt.v picorv32_opt.v picorv32_axi_opt.v picorv32_axi_adapter_opt.v picorv32_pcpi_div_opt.v picorv32_pcpi_mul_opt.v
+N = axi4_memory.v picorv32.v picorv32_axi.v picorv32_axi_adapter.v picorv32_pcpi_div.v picorv32_pcpi_mul.v
 P = picorv32_axi_opt.v picorv32_wrapper_mixed.v picorv32_opt.v 
 M = axi4_memory_opt.v picorv32_axi_adapter_opt.v picorv32_axi_opt.v picorv32_pcpi_div_opt.v picorv32_pcpi_mul_opt.v picorv32_opt.v ref_opt/picorv32_axi_mixed.v ref_opt/picorv32_mixed.v ref_opt/picorv32_wrapper_mixed.v # picorv32_wrapper_opt.v
 X = picorv32_wrapper_opt.v
@@ -54,21 +54,6 @@ $T: obj_dir/Vpicorv32_wrapper.xml
 
 obj_dir/Vpicorv32_wrapper.xml: $V
 	verilator --xml-only -Wno-fatal -DCOMPRESSED_ISA -DDEBUGREGS $V
-
-picorv32_axi_opt.v: picorv32_axi__pi1_opt.v
-	sed -e 's=\(\ picorv32_axi\)__pi1\(_opt\)=\1\2\ =' -e 's=\(\picorv32\)__pi2\(_opt\)=\1\2=' $< > $@
-
-picorv32_opt.v: picorv32__pi2_opt.v
-	sed -e 's=\(\ picorv32\)__pi2\(_opt\)=\1\2\ =' $< > $@
-
-ref_opt/picorv32_axi_mixed.v: example/picorv32_axi.v
-	sed -e 's=\(\ picorv32_axi\)\ =\1_mixed\ =' -e 's=\(picorv32\)\ =\1_mixed\ =' $< > $@
-
-ref_opt/picorv32_mixed.v: example/picorv32.v
-	sed -e 's=\(\ picorv32\)\ =\1_mixed\ =' -e 's=\(picorv32_pcpi_mul\)\ =\1_opt\ =' $< > $@
-
-ref_opt/picorv32_wrapper_mixed.v:  example/picorv32_wrapper.v
-	sed -e 's=\(\ picorv32_wrapper\)\ =\1_mixed\ =' -e 's=\(picorv32_axi\)\ =\1_mixed\ =' $< > $@
 
 picorv32_wrapper_mixed.v: picorv32_wrapper_opt.v
 	sed -e 's=\(\ picorv32_wrapper\)_opt=\1_mixed\ =' $< > $@

@@ -162,7 +162,7 @@ and rw =
 | CPS of string * rw list
 | CND of string * rw list
 | REPL of string * int * rw list
-| MODUL of string * string * string * rw list
+| MODUL of string * string * rw list
 | BGN of string option * rw list
 | RNG of rw list
 | ALWYS of string * rw list
@@ -170,7 +170,7 @@ and rw =
 | IF of string * rw list
 | INIT of string * string * rw list
 | IRNG of string * rw list
-| IFC of string * string * string * rw list
+| IFC of string * string * rw list
 | IMP of string * string * rw list
 | IMRF of string * string * dirop * rw list
 | JMPL of string * rw list
@@ -255,6 +255,8 @@ type token =
 | FINAL
 | INTERFACE
 | ENDINTERFACE
+| PACKAGE
+| ENDPACKAGE
 | MODPORT
 
 type xmlattr = {
@@ -263,7 +265,7 @@ type xmlattr = {
     names: (string*typetable_t) list ref;
     typetable: typetable_t array;
     intf : (string * string) list ref;
-    instances: (string*token) list;
+    instances: (string*(token*string)) list ref;
     modulexml: (string*(rw list*(string*typetable_t) list)) list ref;
 }
 
