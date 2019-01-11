@@ -94,6 +94,18 @@ type typenc =
 | IFCRFDTYP of string
 | TYPDF of string
 
+type arrtyp =
+| UNKARR
+| BIT
+| REAL
+| STRING
+| RNG of (int*int)
+| PACKED of (int*int)
+| UNPACKED of (int*int)
+| ADD of arrtyp list
+| MAX of arrtyp list
+| MEMBER of arrtyp list
+
 type cexp =
 | ERR of string
 | BIN of char
@@ -299,6 +311,8 @@ val typopt : typetable_t option ref
 val decopt : (int * string) option ref
 val portopt : rw option ref
 val cellopt : rw option ref
+val instopt : Xml.xml option ref
+val arropt : arrtyp list option ref
 val optopt : (rw list * rw list) option ref
 val forlst : (rw * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
@@ -326,9 +340,9 @@ val cadd : cexp list -> cexp
 val cexp : string -> int * cexp
 val expr : itms -> rw -> token list
 val ewidth : rw -> int
-val cntmembers : typmap -> int list
-val findmembers : typetable_t -> int list
-val findmembers' : typetable_t -> int list * bool * bool
+val cntmembers : typmap -> arrtyp
+val findmembers : typetable_t -> arrtyp list
+val findmembers' : typetable_t -> arrtyp list * bool * bool
 val optitm : rw list -> rw list
 val simplify_exp : string -> rw list ref -> rw -> rw
 val simplify_asgn : bool -> string -> rw -> rw -> rw
@@ -340,3 +354,4 @@ val rw' : xmlattr -> Xml.xml -> rw
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list * token list) list
 val dump : bool -> string -> string * itms -> token list
 val debug : string -> string * itms -> unit
+val comment : arrtyp list -> token list

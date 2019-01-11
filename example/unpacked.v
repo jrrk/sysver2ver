@@ -20,15 +20,57 @@
 //-- Standard   : SystemVerilog IEEE 1800-2012
 
 module unpacked #(
-    parameter int NUM_OPERANDS      = 2,
-    parameter int ID_BITWIDTH       = 4,
-    parameter int PRIORITY_BITWIDTH = 3
+    parameter int NUM_OPERANDS      = 3,
+    parameter int ID_BITWIDTH       = 3,
+    parameter int PRIORITY_BITWIDTH = 4
 )(
-    input  logic [PRIORITY_BITWIDTH-1:0] priorities_i  [NUM_OPERANDS],
-    input  logic [ID_BITWIDTH-1:0      ] identifiers_i [NUM_OPERANDS],
+    input logic [PRIORITY_BITWIDTH-1:0]  priorities_i [NUM_OPERANDS],
+    input logic [ID_BITWIDTH-1:0 ]       identifiers_i [NUM_OPERANDS],
     output logic [PRIORITY_BITWIDTH-1:0] largest_priority_o,
-    output logic [ID_BITWIDTH-1:0      ] identifier_of_largest_o
+    output logic [ID_BITWIDTH-1:0 ]      identifier_of_largest_o,
+    output logic [31:0]                  num_operands_out,
+    output logic [31:0]                  id_bitwidth_out,
+    output logic [31:0]                  priority_bitwidth_out,
+    output logic [31:0]                  max_stage_out,
+    output logic [31:0]                  num_operands_aligned_out,
+    input logic [4:0]                    idx1,
+    input logic [3:0]                    idx2,
+    input logic [3:0]                    idx3,
+    input logic [1:0]                    idx4,
+    input logic [2:0]                    idx5,
+    input logic [4:0]                    idx6,
+    output logic [10:0]                  rslt1,
+    output logic [7:0]                   rslt2,
+    output logic [31:0]                  rslt3,
+    output logic [0:0]                   rslt4,
+    output logic [0:0]                   rslt5,
+    input logic                          wr, ck,
+    input logic [31:0]                   data
 );
+
+   logic [10:0]         unpacked1 [20];
+   logic [5:0] [7:0]    packed1;
+   logic [31:0]         unpacked2 [0:15];
+   logic [31:0]         unpacked2d [0:3][0:7];
+
+   wire [4:0]           addr1 = idx1 < 20 ? idx1 : '0;
+   
+   assign rslt1 = unpacked1[addr1];
+   assign rslt2 = packed1[idx5];
+   assign rslt3 = unpacked2[idx2];
+   assign rslt4 = unpacked2[idx3][num_operands_out];
+   assign rslt5 = unpacked2d[idx4][idx5][idx6];
+
+    always@(posedge ck)
+        begin
+        if (wr) 
+            begin
+            unpacked1[addr1] <= data[10:0];
+            packed1[idx5] <= data[7:0];
+            unpacked2[idx3] <= data;
+            unpacked2d[idx4][idx5] <= data;
+            end
+        end
 
     localparam int max_stage            = ($clog2(NUM_OPERANDS)-1);
     localparam int num_operands_aligned = 2**(max_stage+1);
@@ -36,7 +78,12 @@ module unpacked #(
     logic [PRIORITY_BITWIDTH-1:0] priority_stages   [max_stage + 2][num_operands_aligned];
     logic [ID_BITWIDTH-1:0      ] identifier_stages [max_stage + 2][num_operands_aligned];
 
-
+    assign num_operands_out = NUM_OPERANDS;
+    assign id_bitwidth_out = ID_BITWIDTH;
+    assign priority_bitwidth_out = PRIORITY_BITWIDTH;
+    assign max_stage_out = max_stage;
+    assign num_operands_aligned_out = num_operands_aligned;
+   
     always_comb begin : proc_zero_padding
         for (integer operand = 0; operand < num_operands_aligned; operand++) begin
             if(operand < NUM_OPERANDS) begin
@@ -121,13 +168,35 @@ module plic_comparator #(
         end
     end
 
-    //pragma translate_off
-    `ifndef VERILATOR
-    initial begin
-        assert(ID_BITWIDTH       > 0)   else $error("ID_BITWIDTH has to be larger than 0");
-        assert(PRIORITY_BITWIDTH > 0)   else $error("PRIORITY_BITWIDTH has to be larger than 0");
-    end
-    `endif
-    //pragma translate_on
-
 endmodule
+
+`ifndef VERILATOR
+
+module tb;
+
+   parameter int NUM_OPERANDS      = 3;
+   parameter int ID_BITWIDTH       = 3;   
+   parameter int PRIORITY_BITWIDTH = 4;
+
+    logic [PRIORITY_BITWIDTH-1:0] priorities_i [NUM_OPERANDS];
+    logic [ID_BITWIDTH-1:0 ]      identifiers_i [NUM_OPERANDS];
+    logic [PRIORITY_BITWIDTH-1:0] largest_priority_o;
+    logic [ID_BITWIDTH-1:0 ]      identifier_of_largest_o;
+    logic [31:0]                  num_operands_out;
+    logic [31:0]                  id_bitwidth_out;
+    logic [31:0]                  priority_bitwidth_out;
+    logic [31:0]                  max_stage_out;
+    logic [31:0]                  num_operands_aligned_out;
+
+    unpacked dut(.*);
+   
+    initial
+      begin
+         priorities_i = '{default:0};
+         identifiers_i = '{default:0};
+         #1000
+           $finish;
+      end
+   
+endmodule // tb
+`endif //  `ifndef VERILATOR

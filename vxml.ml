@@ -94,6 +94,18 @@ type typenc =
 | IFCRFDTYP of string
 | TYPDF of string
 
+type arrtyp =
+| UNKARR
+| BIT
+| REAL
+| STRING
+| RNG of (int*int)
+| PACKED of (int*int)
+| UNPACKED of (int*int)
+| ADD of arrtyp list
+| MAX of arrtyp list
+| MEMBER of arrtyp list
+
 type cexp =
 | ERR of string
 | BIN of char
@@ -319,6 +331,7 @@ let decopt = ref None
 let portopt = ref None
 let cellopt = ref None
 let instopt = ref None
+let arropt = ref None
 let forlst = ref []
 let ternlst = ref []
 let ternothlst = ref []
@@ -732,76 +745,84 @@ let diropv = function
 | Dport _ -> "ifport"
 | Dunknown -> "inout"
 
-let rec tokenout fd indent = function
-| SP -> output_string fd " "
-| SEMI -> output_string fd ";"
-| COLON -> output_string fd ":"
-| COMMA -> output_string fd ","
-| LPAREN -> output_string fd "("
-| RPAREN -> output_string fd ")"
-| LBRACK -> output_string fd "["
-| RBRACK -> output_string fd "]"
-| LCURLY -> output_string fd "{"
-| RCURLY -> output_string fd "}"
-| LCOMMENT -> output_string fd " /* "
-| RCOMMENT -> output_string fd " */ "
-| LSHIFT -> output_string fd "<<"
-| RSHIFT -> output_string fd ">>"
-| AT -> output_string fd "@"
-| DOT -> output_string fd "."
-| PLUS -> output_string fd "+"
-| MINUS -> output_string fd "-"
-| STAR -> output_string fd "*"
-| POW -> output_string fd "**"
-| QUERY -> output_string fd "?"
-| QUOTE -> output_string fd "'"
-| DQUOTE -> output_string fd "\""
-| NL -> output_string fd ("\n"^if !indent > 0 then String.make (!indent*4) ' ' else "")
+let nltoken indent = ("\n"^if !indent > 0 then String.make (!indent*4) ' ' else "")
+
+let tokencnv indent = function
+| SP -> " "
+| SEMI -> ";"
+| COLON -> ":"
+| COMMA -> ","
+| LPAREN -> "("
+| RPAREN -> ")"
+| LBRACK -> "["
+| RBRACK -> "]"
+| LCURLY -> "{"
+| RCURLY -> "}"
+| LCOMMENT -> " /* "
+| RCOMMENT -> " */ "
+| LSHIFT -> "<<"
+| RSHIFT -> ">>"
+| AT -> "@"
+| DOT -> "."
+| PLUS -> "+"
+| MINUS -> "-"
+| STAR -> "*"
+| POW -> "**"
+| QUERY -> "?"
+| QUOTE -> "'"
+| DQUOTE -> "\""
+| NL -> nltoken indent
 | SRC (str1,int1) ->
-    if (str1,int1) <> !oldsrc then begin output_string fd ("\n/* "^str1^":"^string_of_int int1^" */"); tokenout fd indent NL; end;
-    oldsrc := (str1,int1);
-| DEFAULT -> output_string fd "default"
-| IDENT str -> output_string fd str
-| NUM (BIN n) -> output_string fd (String.make 1 n)
-| NUM (HEX n) -> output_string fd (string_of_int n)
-| NUM (SHEX n) -> output_string fd (string_of_int n)
-| NUM (BIGINT n) -> output_string fd (Big_int.string_of_big_int n)
-| NUM (STRING s) -> output_string fd ("\""^String.escaped s^"\"")
-| NUM (FLT f) -> output_string fd (string_of_float f)
-| NUM (ERR err) -> output_string fd ("NumberError:"^err)
-| SIZED (w,n) -> output_string fd (dumpsized w n)
-| DIR str -> output_string fd (diropv str)
-| BEGIN None -> incr indent; output_string fd "    begin"
-| BEGIN (Some lbl) -> incr indent; output_string fd ("    begin:"^lbl)
-| END -> output_string fd "end"; decr indent
-| IFF -> output_string fd "if"
-| ELSE -> output_string fd "else"
-| ASSIGN -> output_string fd "assign"
-| ASSIGNMENT -> output_string fd "="
-| ASSIGNDLY -> output_string fd "<="
-| CASE -> output_string fd "case"; incr indent
-| ENDCASE -> output_string fd "endcase"; decr indent
-| CMPOP op -> output_string fd (cmpopv op)
-| WHILE -> output_string fd "while"
-| FOR -> output_string fd "for"
-| ALWAYS -> output_string fd "always"
-| POSEDGE -> output_string fd "posedge"
-| NEGEDGE -> output_string fd "negedge"
-| RETURN -> output_string fd "return"
-| LOGIC -> output_string fd "logic"
-| WIRE -> output_string fd "wire"
-| FUNCTION -> output_string fd "function"; incr indent
-| ENDFUNCTION -> output_string fd "endfunction"; decr indent
-| TASK -> output_string fd "task"; incr indent
-| ENDTASK -> output_string fd "endtask"; decr indent
-| MODULE -> output_string fd "module"; incr indent
-| ENDMODULE -> output_string fd "endmodule"; decr indent
-| INITIAL -> output_string fd "initial"
-| FINAL -> output_string fd "final"
-| INTERFACE -> output_string fd "interface"; incr indent
-| ENDINTERFACE -> output_string fd "endinterface"; decr indent
-| MODPORT -> output_string fd "modport"
+    if (str1,int1) <> !oldsrc then
+        begin
+        oldsrc := (str1,int1);
+        "\n/* "^str1^":"^string_of_int int1^" */"^nltoken indent
+        end
+    else ""
+| DEFAULT -> "default"
+| IDENT str -> str
+| NUM (BIN n) -> (String.make 1 n)
+| NUM (HEX n) -> (string_of_int n)
+| NUM (SHEX n) -> (string_of_int n)
+| NUM (BIGINT n) -> (Big_int.string_of_big_int n)
+| NUM (STRING s) -> ("\""^String.escaped s^"\"")
+| NUM (FLT f) -> (string_of_float f)
+| NUM (ERR err) -> ("NumberError:"^err)
+| SIZED (w,n) -> (dumpsized w n)
+| DIR str -> (diropv str)
+| BEGIN None -> incr indent; "    begin"
+| BEGIN (Some lbl) -> incr indent; ("    begin:"^lbl)
+| END -> decr indent; "end"
+| IFF -> "if"
+| ELSE -> "else"
+| ASSIGN -> "assign"
+| ASSIGNMENT -> "="
+| ASSIGNDLY -> "<="
+| CASE -> incr indent; "case"
+| ENDCASE -> decr indent; "endcase"
+| CMPOP op -> (cmpopv op)
+| WHILE -> "while"
+| FOR -> "for"
+| ALWAYS -> "always"
+| POSEDGE -> "posedge"
+| NEGEDGE -> "negedge"
+| RETURN -> "return"
+| LOGIC -> "logic"
+| WIRE -> "wire"
+| FUNCTION -> incr indent; "function"
+| ENDFUNCTION -> decr indent; "endfunction"
+| TASK -> incr indent; "task"
+| ENDTASK -> decr indent; "endtask"
+| MODULE -> incr indent; "module"
+| ENDMODULE -> decr indent; "endmodule"
+| INITIAL -> "initial"
+| FINAL -> "final"
+| INTERFACE -> incr indent; "interface"
+| ENDINTERFACE -> decr indent; "endinterface"
+| MODPORT -> "modport"
 | INVALID -> failwith "invalid token"
+
+let tokenout fd indent tok = output_string fd (tokencnv indent tok)
 
 let rec dumpitm = function
 | VRF (id, []) -> "VRF (\""^id^"\", [])"
@@ -1037,7 +1058,7 @@ let rec rw' attr = function
                                let nam' = nam'^istr in print_endline ("@"^nam'); (nam', typ')) @ !(attr.names);
                            let exp' = expandbraket lo hi (fun istr -> nam'^istr) in
                            if vif then VAR (origin, exp', attr', typ) else IO (origin, exp', attr', Dinam dir, "logic", [])
-                       | oth -> typopt := Some oth; failwith "typopt;;582")
+                       | oth -> typopt := Some oth; failwith ("typopt;;582: "^dumptab oth))
                | (IFCRFDTYP _, dir, TYPNONE, []) as typ' ->
                    print_endline ("@"^nam');
                    if not (List.mem_assoc nam' !(attr.names)) then
@@ -1045,7 +1066,7 @@ let rec rw' attr = function
                    else
                        print_endline (dumptab typ'^":"^dumptab (List.assoc nam' !(attr.names)));
                    if vif then VAR (origin, [sub], typ', typ) else IO (origin, [nam], typ', Dinam dir, "logic", [])
-               | oth -> typopt := Some oth; failwith "typopt;;587" in rslt
+               | oth -> typopt := Some oth; failwith ("typopt;;587: "^dumptab oth) in rslt
 | Xml.Element ("var", [("fl", origin); ("name", nam); ("dtype_id", tid); ("vartype", typ); ("origName", nam')], []) ->
                let pat = "__Vconcswap" in
                let l = String.length nam and l' = String.length pat in
@@ -1074,13 +1095,13 @@ let rec rw' attr = function
                            | (IFCRFDTYP _, dir, TYPRNG(hi,lo), []) ->
                                exportlst := expandbraket lo hi (fun istr -> PORT (orig, nam^istr, Dvif dir, [VRF (nam'^istr, [])])) @ !exportlst
                            | (IFCRFDTYP _, dir, TYPNONE, []) -> exportlst := port :: !exportlst
-                           | oth -> typopt := Some oth; failwith "typopt;;599")
+                           | oth -> typopt := Some oth; failwith ("typopt;;599: "^dumptab oth))
                    | PORT (orig, nam, Dvif _, [ASEL (VRF (nam', []) :: CNST((_,HEX idx), _, []) :: [])]) when List.mem_assoc nam' !(attr.names) -> 
                        (match List.assoc nam' !(attr.names) with
                            | (IFCRFDTYP _, dir, TYPRNG(hi,lo), []) ->
                                exportlst := expandbraket idx idx (fun istr -> PORT (orig, nam, Dvif dir, [VRF (nam'^istr, [])])) @ !exportlst
                            | (IFCRFDTYP _, dir, TYPNONE, []) -> failwith ("indexing a scalar interface: "^nam)
-                           | oth -> typopt := Some oth; failwith "typopt;;599")
+                           | oth -> typopt := Some oth; failwith ("typopt;;599: "^dumptab oth))
                    | PORT (orig, nam, Dvif _, [VRF (nam', [])]) ->
                        print_endline ("vif interface "^nam'^" not found: ["^String.concat ";" (List.map (fun (k,_) -> k) !(attr.names))^"] ?")
                    | PORT (orig, nam, dir, connlst) as port -> exportlst := port :: !exportlst
@@ -1412,20 +1433,20 @@ let reviter modul lst =
     List.rev (List.flatten (List.map (fun itm -> let lst' = !delim :: expr modul itm in delim := COMMA; lst') lst))
 
 let rec cntbasic = function
-| (STRDTYP,_,typmap,rw_lst) -> fold1 (+) (List.flatten (List.map cntmembers rw_lst)) :: []
-| (UNIDTYP,_,typmap,rw_lst) -> fold1 (max) (List.flatten (List.map cntmembers rw_lst)) :: []
-| (BASDTYP, typ, TYPRNG(hi, lo), []) when (function "logic"|"integer"|"int"|"bit"|"wire" -> true | _ -> false) !typ -> hi - lo + 1 :: []
-| (BASDTYP, {contents=("logic"|"bit")}, TYPNONE, []) -> 1 :: []
-| (BASDTYP, {contents="real"}, TYPNONE, []) -> 64 :: []
-| (BASDTYP, {contents="string"}, TYPNONE, []) -> 1 :: []
-| (IFCRFDTYP _, _, TYPNONE, []) -> 0 :: []
-| (PACKADTYP, {contents=_}, RECTYP subtyp, TYPRNG(n,n')::_) -> List.map (fun itm -> itm * (n - n' + 1)) (findmembers subtyp)
-| (UNPACKADTYP, {contents=_}, RECTYP subtyp, TYPRNG (n,n')::_) -> (n - n' + 1) :: findmembers subtyp
-| (MEMBDTYP, id, SUBTYP subtyp, []) -> 1 :: []
-| oth -> typopt := Some oth; failwith "typopt;;1425"
+| (STRDTYP,_,typmap,rw_lst) -> ADD (List.map cntmembers rw_lst) :: []
+| (UNIDTYP,_,typmap,rw_lst) -> MAX (List.map cntmembers rw_lst) :: []
+| (BASDTYP, typ, TYPRNG(hi, lo), []) when (function "logic"|"integer"|"int"|"bit"|"wire" -> true | _ -> false) !typ -> RNG (hi, lo) :: []
+| (BASDTYP, {contents=("logic"|"bit"|"wire")}, TYPNONE, []) -> BIT :: []
+| (BASDTYP, {contents="real"}, TYPNONE, []) -> REAL :: []
+| (BASDTYP, {contents="string"}, TYPNONE, []) -> STRING :: []
+| (IFCRFDTYP _, _, TYPNONE, []) -> UNKARR :: []
+| (PACKADTYP, {contents=_}, RECTYP subtyp, TYPRNG(n,n')::_) -> PACKED(n, n') :: findmembers subtyp
+| (UNPACKADTYP, {contents=_}, RECTYP subtyp, TYPRNG (n,n')::_) -> UNPACKED(n, n') :: findmembers subtyp
+| (MEMBDTYP, id, SUBTYP subtyp, []) -> failwith ("SUBTYP")
+| oth -> typopt := Some oth; failwith ("typopt;;1425:"^dumptab oth)
 
 and cntmembers = function
-| TYPMEMBER typ' -> findmembers typ'
+| TYPMEMBER typ' -> MEMBER (findmembers typ')
 | oth -> memothlst := oth :: !memothlst; failwith "memothlst"
 
 and findmembers' typ' =
@@ -1434,19 +1455,31 @@ and findmembers' typ' =
 
 and findmembers typ' = let (widlst,cnst,rng) = findmembers' typ' in widlst
 
-let comment widlst =
-        let delim = ref LCOMMENT in
-        List.flatten (List.map (fun itm -> let lst = !delim :: num itm :: [] in delim := SEMI; lst) widlst) @ [RCOMMENT]
+let rec comment' = function
+| UNKARR -> "UNKARR"
+| BIT -> "BIT"
+| REAL -> "REAL"
+| STRING -> "STRING"
+| RNG(int1,int2) -> "RNG("^string_of_int int1^":"^string_of_int int2^")"
+| PACKED(int1,int2) -> "PACKED("^string_of_int int1^":"^string_of_int int2^")"
+| UNPACKED(int1,int2) -> "UNPACKED("^string_of_int int1^":"^string_of_int int2^")"
+| ADD arrtyp_lst -> "ADD ["^String.concat ";" (List.map comment' arrtyp_lst)^"]"
+| MAX arrtyp_lst -> "MAX ["^String.concat ";" (List.map comment' arrtyp_lst)^"]"
+| MEMBER arrtyp_lst -> "MEMBER ["^String.concat ";" (List.map comment' arrtyp_lst)^"]"
 
-let expand delim = fun w -> let lst = !delim :: num w :: [] in delim := STAR; lst
+let comment lst = LCOMMENT :: List.flatten (List.map (fun itm -> SP :: IDENT (comment' itm) :: []) (List.rev lst)) @ RCOMMENT :: []
 
-let widshow id rng = function
-| [] -> IDENT id :: []
-| 1 :: [] when not rng -> IDENT id :: []
-| n :: [] -> LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: []
-| n :: m :: [] -> LBRACK :: num (m-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: SP :: LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: []
-| n :: m :: l :: [] -> LBRACK :: num (l-1) :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: SP :: LBRACK :: num (m-1) :: COLON :: num 0 :: RBRACK :: LBRACK :: num (n-1) :: COLON :: num 0 :: RBRACK :: SP :: []
-| lst -> let delim = ref LBRACK in List.flatten (List.map (expand delim) lst) @ MINUS :: num 1 :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: []
+let rec widshow id rng = function
+| [] -> []
+| UNKARR :: tl -> failwith "UNKARR"
+| BIT :: tl -> SP :: IDENT id :: SP :: widshow id rng tl
+| RNG(hi,lo) :: PACKED(hi',lo') :: tl -> widshow id rng (RNG((hi-lo+1)*(hi'-lo'+1)-1 , 0) :: tl)
+| RNG(hi,lo) :: tl -> LBRACK :: num hi :: COLON :: num lo :: RBRACK :: SP :: IDENT id :: SP :: widshow id rng tl
+| PACKED(hi,lo) :: tl -> LBRACK :: num hi :: COLON :: num lo :: RBRACK :: SP :: widshow id rng tl
+| UNPACKED(hi,lo) :: tl -> widshow id rng tl @ SP :: LBRACK :: num hi :: COLON :: num lo :: RBRACK :: []
+| oth -> arropt := Some oth; failwith ("arropt;; ["^String.concat ";" (List.map comment' oth)^"]")
+
+let widshow id rng lst = widshow id rng (List.rev lst)
 
 let varlst modul delim typ' id =
     let (widlst,cnst,rng) = findmembers' typ' in
@@ -1778,12 +1811,16 @@ let rec catitm (pth:string option) itms = function
 | TYP _ -> ()
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst;;1508"
 
+let chktyp = function
+| "wire" -> WIRE
+| "logic" -> LOGIC
+| oth -> LOGIC
+
 let iolst modul delim dir io = function
 | (IFCRFDTYP dir, kind, TYPNONE, []) -> !delim :: NL :: IDENT !kind :: DOT :: IDENT dir :: SP :: IDENT io :: []
-| (BASDTYP, kind, typmap, []) as typ' ->
+| (typenc, kind, typmap, rng) as typ' ->
     let (widlst,cnst,rng) = findmembers' typ' in
-    !delim :: (DIR dir :: SP :: IDENT !kind :: SP :: widshow io rng widlst @ comment widlst)
-| oth -> typopt := Some oth; failwith "typopt;;1762"
+    !delim :: (DIR dir :: SP :: chktyp !kind :: SP :: widshow io rng widlst @ comment widlst)
 
 let fndlm = function
 | FIRSTG -> LPAREN::RPAREN::SEMI::[]
