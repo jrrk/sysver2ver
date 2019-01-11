@@ -99,7 +99,7 @@ type arrtyp =
 | BIT
 | REAL
 | STRING
-| RNG of (int*int)
+| ARNG of (int*int)
 | PACKED of (int*int)
 | UNPACKED of (int*int)
 | ADD of arrtyp list
@@ -1435,7 +1435,7 @@ let reviter modul lst =
 let rec cntbasic = function
 | (STRDTYP,_,typmap,rw_lst) -> ADD (List.map cntmembers rw_lst) :: []
 | (UNIDTYP,_,typmap,rw_lst) -> MAX (List.map cntmembers rw_lst) :: []
-| (BASDTYP, typ, TYPRNG(hi, lo), []) when (function "logic"|"integer"|"int"|"bit"|"wire" -> true | _ -> false) !typ -> RNG (hi, lo) :: []
+| (BASDTYP, typ, TYPRNG(hi, lo), []) when (function "logic"|"integer"|"int"|"bit"|"wire" -> true | _ -> false) !typ -> ARNG (hi, lo) :: []
 | (BASDTYP, {contents=("logic"|"bit"|"wire")}, TYPNONE, []) -> BIT :: []
 | (BASDTYP, {contents="real"}, TYPNONE, []) -> REAL :: []
 | (BASDTYP, {contents="string"}, TYPNONE, []) -> STRING :: []
@@ -1460,7 +1460,7 @@ let rec comment' = function
 | BIT -> "BIT"
 | REAL -> "REAL"
 | STRING -> "STRING"
-| RNG(int1,int2) -> "RNG("^string_of_int int1^":"^string_of_int int2^")"
+| ARNG(int1,int2) -> "ARNG("^string_of_int int1^":"^string_of_int int2^")"
 | PACKED(int1,int2) -> "PACKED("^string_of_int int1^":"^string_of_int int2^")"
 | UNPACKED(int1,int2) -> "UNPACKED("^string_of_int int1^":"^string_of_int int2^")"
 | ADD arrtyp_lst -> "ADD ["^String.concat ";" (List.map comment' arrtyp_lst)^"]"
@@ -1469,15 +1469,52 @@ let rec comment' = function
 
 let comment lst = LCOMMENT :: List.flatten (List.map (fun itm -> SP :: IDENT (comment' itm) :: []) (List.rev lst)) @ RCOMMENT :: []
 
+let rec widadd = function
+| [] -> []
+| BIT :: [] -> BIT :: []
+| BIT :: BIT :: [] -> ARNG(1,0) :: []
+| ARNG(hi,lo) :: BIT :: [] -> ARNG(hi+1,lo) :: []
+| BIT :: ARNG(hi,lo) :: [] -> ARNG(hi+1,lo) :: []
+| ARNG(hi,lo) :: [] -> ARNG(hi,lo) :: []
+| ADD lst :: tl -> widadd lst @ tl
+| MAX lst :: tl -> widmax lst @ tl
+| MEMBER lst :: tl -> widadd (widadd lst @ widadd tl)
+| ARNG(hi,lo) :: ARNG(hi',lo') :: tl -> widadd (ARNG(hi+hi'-lo-lo'+1, 0) :: tl)
+| ARNG(hi,lo) :: MEMBER[ARNG(hi',lo')] :: tl -> widadd (ARNG(hi+hi'-lo-lo'+1, 0) :: tl)
+| PACKED(hi,lo) :: ARNG(hi',lo') :: tl -> widadd (ARNG((hi-lo+1)*(hi'-lo'+1)-1, 0) :: tl)
+| oth -> arropt := Some oth; failwith ("arropt1479;; ["^String.concat ";" (List.map comment' oth)^"]")
+
+and widmax = function
+| [] -> []
+| BIT :: [] -> BIT :: []
+| BIT :: BIT :: [] -> ARNG(1,0) :: []
+| ARNG(hi,lo) :: BIT :: [] -> ARNG(hi,lo) :: []
+| BIT :: ARNG(hi,lo) :: [] -> ARNG(hi,lo) :: []
+| ARNG(hi,lo) :: [] -> ARNG(hi,lo) :: []
+| ADD lst :: tl -> widadd lst @ tl
+| MAX lst :: tl -> widmax lst @ tl
+| MEMBER lst :: tl -> widmax (widmax lst @ widmax tl)
+| ARNG(hi,lo) :: ARNG(hi',lo') :: tl -> widmax (ARNG(max(hi-lo) (hi'-lo'), 0) :: tl)
+| ARNG(hi,lo) :: MEMBER[ARNG(hi',lo')] :: tl -> widmax (ARNG(max(hi-lo) (hi'-lo'), 0) :: tl)
+| PACKED(hi,lo) :: ARNG(hi',lo') :: tl -> widmax (ARNG((hi-lo+1)*(hi'-lo'+1)-1, 0) :: tl)
+| oth -> arropt := Some oth; failwith ("arropt1479;; ["^String.concat ";" (List.map comment' oth)^"]")
+
+let widadd lst = match (widadd lst) with
+| (ARNG _ :: []) as rng -> rng
+| oth -> arropt := Some oth; failwith ("arropt1482;; ["^String.concat ";" (List.map comment' oth)^"]")
+
 let rec widshow id rng = function
 | [] -> []
 | UNKARR :: tl -> failwith "UNKARR"
 | BIT :: tl -> SP :: IDENT id :: SP :: widshow id rng tl
-| RNG(hi,lo) :: PACKED(hi',lo') :: tl -> widshow id rng (RNG((hi-lo+1)*(hi'-lo'+1)-1 , 0) :: tl)
-| RNG(hi,lo) :: tl -> LBRACK :: num hi :: COLON :: num lo :: RBRACK :: SP :: IDENT id :: SP :: widshow id rng tl
+| STRING :: tl -> SP :: IDENT id :: SP :: widshow id rng tl
+| ARNG(hi,lo) :: PACKED(hi',lo') :: tl -> widshow id rng (ARNG((hi-lo+1)*(hi'-lo'+1)-1 , 0) :: tl)
+| ARNG(hi,lo) :: tl -> LBRACK :: num hi :: COLON :: num lo :: RBRACK :: SP :: IDENT id :: SP :: widshow id rng tl
 | PACKED(hi,lo) :: tl -> LBRACK :: num hi :: COLON :: num lo :: RBRACK :: SP :: widshow id rng tl
 | UNPACKED(hi,lo) :: tl -> widshow id rng tl @ SP :: LBRACK :: num hi :: COLON :: num lo :: RBRACK :: []
-| oth -> arropt := Some oth; failwith ("arropt;; ["^String.concat ";" (List.map comment' oth)^"]")
+| ADD lst :: tl -> widshow id rng (widadd lst @ tl)
+| MAX lst :: tl -> widshow id rng (widmax lst @ tl)
+| oth -> arropt := Some oth; failwith ("arropt1501;; ["^String.concat ";" (List.map comment' oth)^"]")
 
 let widshow id rng lst = widshow id rng (List.rev lst)
 
@@ -1818,9 +1855,12 @@ let chktyp = function
 
 let iolst modul delim dir io = function
 | (IFCRFDTYP dir, kind, TYPNONE, []) -> !delim :: NL :: IDENT !kind :: DOT :: IDENT dir :: SP :: IDENT io :: []
+| (STRDTYP, _, TYPNONE, typlst) as typ' ->
+    let (widlst,cnst,rng) = findmembers' typ' in
+    !delim :: LCOMMENT :: num 1844 :: RCOMMENT :: DIR dir :: SP :: LOGIC :: SP :: widshow io rng widlst @ comment widlst
 | (typenc, kind, typmap, rng) as typ' ->
     let (widlst,cnst,rng) = findmembers' typ' in
-    !delim :: (DIR dir :: SP :: chktyp !kind :: SP :: widshow io rng widlst @ comment widlst)
+    !delim :: LCOMMENT :: num 1847 :: RCOMMENT :: DIR dir :: SP :: chktyp !kind :: SP :: widshow io rng widlst @ comment widlst
 
 let fndlm = function
 | FIRSTG -> LPAREN::RPAREN::SEMI::[]

@@ -99,7 +99,7 @@ type arrtyp =
 | BIT
 | REAL
 | STRING
-| RNG of (int*int)
+| ARNG of (int*int)
 | PACKED of (int*int)
 | UNPACKED of (int*int)
 | ADD of arrtyp list

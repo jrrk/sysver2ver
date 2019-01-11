@@ -1,5 +1,5 @@
 make ./vxmlmain
-rm -rf vout voutopt vout2 voutopt2 *.v *.tcl *.debug
+rm -rf debug vout voutopt vout2 voutopt2 *.v *.tcl *.debug
 mkdir debug vout voutopt vout2 voutopt2
 ./vxmlmain ../ariane/obj_dir/Variane_testharness.xml
 mv *.debug debug
