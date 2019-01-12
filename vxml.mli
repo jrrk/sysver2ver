@@ -262,11 +262,11 @@ type token =
 type xmlattr = {
     anchor: string;
     errlst: Xml.xml list ref;
-    names: (string*typetable_t) list ref;
+    names: (string*typetable_t ref) list ref;
     typetable: typetable_t array;
     intf : (string * string) list ref;
     instances: (string*(token*string)) list ref;
-    modulexml: (string*(rw list*(string*typetable_t) list)) list ref;
+    modulexml: (string*(rw list*(string*typetable_t ref) list)) list ref;
 }
 
 type itms = { 
