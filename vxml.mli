@@ -76,7 +76,7 @@ type dirop =
 | Doutput
 | Dinout
 | Dvif of string ref
-| Dinam of string ref
+| Dinam of string
 | Dport of (string * int * dirop * string * string list)
 
 type typenc =
@@ -124,8 +124,8 @@ type typmap =
 | TYPDEF
 | RECTYP of typetable_t
 
-and typetable_t = typenc*string ref*typmap*typmap list
-and typ_t = typenc*string ref*typmap*rw list
+and typetable_t = typenc*string*typmap*typmap list
+and typ_t = typenc*string*typmap*rw list
 and rw =
 | UNKNOWN
 | XML of rw list
