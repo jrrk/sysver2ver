@@ -1158,8 +1158,10 @@ let rec rw' attr = function
 | Xml.Element ("sentree", [("fl", origin)], xlst) -> SNTRE (List.map (rw' attr) xlst)
 | Xml.Element ("senitem", [("fl", origin); ("edgeType", etyp)], xlst) -> SNITM (etyp, List.map (rw' attr) xlst)
 | Xml.Element ("begin", [("fl", origin); ("name", namedblk)], xlst) ->
+    let anonblk = let l = String.length namedblk and pat = "unnamedblk" in let l' = String.length pat in 
+        (if l > l' && String.sub namedblk 0 l' = pat then pat else namedblk)^"_"^string_of_int !namedcnt in
     incr namedcnt;
-    while_opt origin (Some (namedblk^"_"^string_of_int !namedcnt)) (List.map (rw' attr) xlst)
+    while_opt origin (Some anonblk) (List.map (rw' attr) xlst)
 | Xml.Element ("begin", [("fl", origin)], xlst) -> while_opt origin None (List.map (rw' attr) xlst)
 | Xml.Element (("assign"|"assigndly") as dly, [("fl", origin); ("dtype_id", tid)], hd::tl::[]) ->
     let src = rw' attr hd and dst = rw' attr tl in
@@ -1547,7 +1549,7 @@ let rec widshow id rng = function
 | [] -> []
 | UNKARR :: tl -> failwith "UNKARR"
 | BIT :: tl -> SP :: IDENT id :: SP :: widshow id rng tl
-| STRING :: tl -> SP :: IDENT id :: SP :: widshow id rng tl
+| STRING :: tl -> LBRACK :: num 7 :: COLON :: num 0 :: RBRACK :: SP :: IDENT id :: SP :: widshow id rng tl
 | ARNG(hi,lo) :: PACKED(hi',lo') :: tl -> widshow id rng (ARNG((hi-lo+1)*(hi'-lo'+1)-1 , 0) :: tl)
 | ARNG(hi,lo) :: tl -> LBRACK :: num hi :: COLON :: num lo :: RBRACK :: SP :: IDENT id :: SP :: widshow id rng tl
 | PACKED(hi,lo) :: tl -> LBRACK :: num hi :: COLON :: num lo :: RBRACK :: SP :: widshow id rng tl
