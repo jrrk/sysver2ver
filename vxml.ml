@@ -121,87 +121,6 @@ type stage =
 | VARSTG
 | JMPSTG
 | BDYSTG
-
-type typmap =
-| TYPNONE
-| SUBTYP of int
-| TYPRNG of int*int
-| TYPMEMBER of typetable_t
-| TYPENUM of string * int * (int*int)
-| TYPDEF
-| RECTYP of typetable_t
-
-and typetable_t = typenc*string*typmap*typmap list
-and typ_t = typenc*string*typmap*rw list
-and rw =
-| UNKNOWN
-| XML of rw list
-| EITM of string * string * string * int * rw list
-| IO of string * string list * typetable_t * dirop * string * rw list
-| VAR of string * string list * typetable_t * string
-| IVAR of string * string * int * rw list * int
-| TMPVAR of string * string * typetable_t * rw list
-| CNST of (int * cexp) * int * rw list
-| VRF of string * typetable_t * rw list
-| TYP of int * typ_t
-| FNC of string * string * typetable_t * rw list
-| TASK of string * string * rw list
-| TASKRF of string * string * rw list
-| INST of string * string list * (string * rw list)
-| SFMT of string * rw list
-| SYS of string * string * rw list
-| TPLSRGS of string * string * int * rw list
-| VPLSRGS of string * int * rw list
-| PORT of string * string * dirop * rw list
-| CA of string * rw list
-| UNRY of unaryop * rw list
-| SEL of string * rw list
-| ASEL of rw list
-| SNITM of string * rw list
-| ASGN of bool * string * rw list
-| ARITH of arithop * rw list
-| LOGIC of logop * rw list
-| CMP of cmpop * rw list
-| FRF of string * string * rw list
-| XRF of string * string * string * string * dirop
-| PKG of string * string * rw list
-| CAT of string * rw list
-| CPS of string * rw list
-| CND of string * rw list
-| REPL of string * int * rw list
-| MODUL of string * string * rw list
-| BGN of string option * rw list
-| RNG of rw list
-| ALWYS of string * rw list
-| SNTRE of rw list
-| IF of string * rw list
-| INIT of string * string * rw list
-| IRNG of string * rw list
-| IFC of string * string * rw list
-| IMP of string * string * rw list
-| IMRF of string * string * dirop * rw list
-| JMPL of string * rw list
-| JMPG of string * rw list
-| CS of string * rw list
-| CSITM of string * rw list
-| WHL of rw list
-| FORSTMT of (string * string * cmpop * rw * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
-| ARG of rw list
-| DSPLY of string * string * rw list
-| FILS of string * rw list
-| FIL of string * string
-| NTL of rw list
-| CELLS of rw list
-| CELL of string * string * string * string * rw list
-| POSPOS of string*string
-| POSNEG of string*string
-| NEGNEG of string*string
-| POSEDGE of string
-| NEGEDGE of string
-| COMB
-| MODPORTFTR of string * string
-| TYPETABLE of typetable_t array
-
 type token =
 | INVALID
 | SP
@@ -266,16 +185,95 @@ type token =
 | ENDPACKAGE
 | MODPORT
 
-type xmlattr = {
+type typmap =
+| TYPNONE
+| SUBTYP of int
+| TYPRNG of int*int
+| TYPMEMBER of typetable_t
+| TYPENUM of string * int * (int*int)
+| TYPDEF
+| RECTYP of typetable_t
+
+and typetable_t = typenc*string*typmap*typmap list
+and typ_t = typenc*string*typmap*rw list
+and xmlattr = {
     anchor: string;
     errlst: Xml.xml list ref;
     names: (string*typetable_t ref) list ref;
     typetable: typetable_t array;
     intf: (string*string) list ref;
     instances: (string*(token*string)) list ref;
-    modulexml: (string*(rw list*(string*typetable_t ref) list)) list ref;
+    modulexml: (string*(string*rw list*(string*typetable_t ref) list)) list ref;
     }
-    
+and rw =
+| UNKNOWN
+| XML of rw list
+| EITM of string * string * string * int * rw list
+| IO of string * string list * typetable_t * dirop * string * rw list
+| VAR of string * string list * typetable_t * string
+| IVAR of string * string * int * rw list * int
+| TMPVAR of string * string * typetable_t * rw list
+| CNST of (int * cexp) * int * rw list
+| VRF of string * typetable_t * rw list
+| TYP of int * typ_t
+| FNC of string * string * typetable_t * rw list
+| TASKDEF of string * string * rw list
+| TASKRF of string * string * rw list
+| INST of string * string list * (string * rw list)
+| SFMT of string * rw list
+| SYS of string * string * rw list
+| TPLSRGS of string * string * int * rw list
+| VPLSRGS of string * int * rw list
+| PORT of string * string * dirop * rw list
+| CA of string * rw list
+| UNRY of unaryop * rw list
+| SEL of string * rw list
+| ASEL of rw list
+| SNITM of string * rw list
+| ASGN of bool * string * rw list
+| ARITH of arithop * rw list
+| LOGIC of logop * rw list
+| CMP of cmpop * rw list
+| FRF of string * string * rw list
+| XRF of string * string * string * string * dirop
+| PKG of string * string * rw list
+| CAT of string * rw list
+| CPS of string * rw list
+| CND of string * rw list
+| REPL of string * int * rw list
+| MODUL of string * string * rw list
+| BGN of string option * rw list
+| RNG of rw list
+| ALWYS of string * rw list
+| SNTRE of rw list
+| IF of string * rw list
+| INIT of string * string * rw list
+| IRNG of string * rw list
+| IFC of string * string * rw list
+| IMP of string * string * rw list
+| IMRF of string * string * dirop * rw list
+| JMPL of string * rw list
+| JMPG of string * rw list
+| CS of string * rw list
+| CSITM of string * rw list
+| WHL of rw list
+| FORSTMT of (string * string * cmpop * rw * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
+| ARG of rw list
+| DSPLY of string * string * rw list
+| FILS of string * rw list
+| FIL of string * string
+| NTL of rw list
+| CELLS of rw list * xmlattr
+| CELL of string * string * string * string * rw list
+| POSPOS of string*string
+| POSNEG of string*string
+| NEGNEG of string*string
+| POSEDGE of string
+| NEGEDGE of string
+| COMB
+| MODPORTFTR of string * string
+| TYPETABLE of typetable_t array
+
 type itms = { 
   io: (string*(string*typetable_t*dirop*string*(int*cexp) list)) list ref;
   v: (string*(string*typetable_t*string*typetable_t)) list ref;
@@ -294,6 +292,7 @@ type itms = {
   needed: (token*string) list ref;
   avoid_dollar_unsigned: bool;
   remove_interfaces: bool;
+  names'': (string * typetable_t ref) list;
 }
 
 let modules = Hashtbl.create 255
@@ -341,10 +340,7 @@ let optitmlst = ref []
 let widthlst = ref []
 
 let matchcnt = ref 0
-let top = ref []
 let empty_attr errlst = {anchor="a1";errlst=errlst;names=ref [];intf=ref [];instances=ref [];typetable=[||];modulexml=ref []}
-
-let topattr = ref (empty_attr (ref []))
 
 let constnet = function
 | "1'h1" -> "supply1"
@@ -842,7 +838,7 @@ let rec dumpitm = function
 | VRF (str1, typ', rw_lst) -> "VRF("^dumps str1^", "^dumptab typ'^", "^dumplst rw_lst^")"
 | TYP (idx, (typenc, str1, typmap, typ_lst)) -> "TYP("^dumptyp typenc^", "^dumps str1^", "^dumpmap typmap^", "^dumplst typ_lst^")"
 | FNC (str1, str2, typ2, rw_lst) -> "FNC("^dumps str1^", "^dumps str2^", "^dumptab typ2^", "^dumplst rw_lst^")"
-| TASK (str1, str2, rw_lst) -> "TASK("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| TASKDEF (str1, str2, rw_lst) -> "TASK("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
 | TASKRF (str1, str2, rw_lst) -> "TASKRF("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
 | INST (str1, str2lst, (str3, rw_lst)) -> "INST("^dumps str1^", "^dumpstrlst str2lst^"("^", "^dumps str3^", "^", "^dumplst rw_lst^"))"
 | SFMT (str1, rw_lst) -> "SFMT("^dumps str1^", "^dumplst rw_lst^")"
@@ -891,7 +887,7 @@ let rec dumpitm = function
 | FILS (str1, rw_lst) -> "FILS("^dumps str1^", "^dumplst rw_lst^")"
 | FIL (str1, str2) -> "FIL"^dumps str1^", "^dumps str2^")"
 | NTL (rw_lst) -> "NTL("^dumplst rw_lst^")"
-| CELLS (rw_lst) -> "CELLS("^dumplst rw_lst^")"
+| CELLS (rw_lst, attr) -> "CELLS("^dumplst rw_lst^", ...)"
 | CELL (str1, str2, str3, str4, rw_lst) -> "CELL("^dumps str1^", "^dumps str2^", "^dumps str3^", "^dumps str4^", "^dumplst rw_lst^")" 
 | POSPOS (str1, str2) -> "POSPOS"^dumps str1^", "^dumps str2^")"
 | POSNEG (str1, str2) -> "POSNEG"^dumps str1^", "^dumps str2^")"
@@ -976,28 +972,29 @@ and dumpitms fd modul =
   Printf.fprintf fd "}\n";
   Printf.fprintf fd "  \n"
 
-let cell_traverse attr indent (nam, subnam) =
-    print_endline (indent^"Searching hierarchy: "^nam);
+let cell_traverse fd attr indent (nam, subnam) =
+    output_string fd (indent^"Searching hierarchy: "^nam^"\n");
     if List.mem_assoc subnam !(attr.modulexml) then
-            let (xlst', names') = List.assoc subnam !(attr.modulexml) in
+            let (_, xlst', names') = List.assoc subnam !(attr.modulexml) in
                 begin
-                print_endline (indent^"Cell traverse: "^subnam);
+                output_string fd (indent^"Cell traverse: "^subnam^"\n");
                 List.iter (function
                     | IO _ -> ()
-                    | VAR (_, inflst, typ', "ifaceref") -> List.iter (fun itm -> print_endline (indent^"Ifaceref: "^itm^":"^dumptab typ')) inflst
+                    | VAR (_, inflst, typ', "ifaceref") ->
+		        List.iter (fun itm -> output_string fd (indent^"Ifaceref: "^itm^":"^dumptab typ'^"\n")) inflst
                     | VAR _ -> ()
                     | IVAR _ -> ()
                     | TYP _ -> ()
                     | FNC _ -> ()
-                    | TASK _ -> ()
+                    | TASKDEF _ -> ()
                     | CA _ -> ()
                     | BGN _ -> ()
                     | INIT _ -> ()
                     | ALWYS _ -> ()
                     | IMP _ -> ()
                     | INST (_, _, (kind, portlst)) ->
-                         print_endline (indent^"Searching: "^kind);
-                         let (xlst''', names'') = List.assoc kind !(attr.modulexml) in
+                         output_string fd (indent^"Searching: "^kind^"\n");
+                         let (_, xlst''', names'') = List.assoc kind !(attr.modulexml) in
                          List.iter (function
                         | PORT (_, formal, Dvif bus, [VRF (actual, _, [])]) ->
 			if List.mem_assoc formal names'' then
@@ -1011,26 +1008,30 @@ let cell_traverse attr indent (nam, subnam) =
                                 let str3 = if str2 = "" then !bus else str2 in
 (*			        if !str1 <> !str2 then *)
 				    begin
-				    print_endline (indent^"formal: "^formal^", actual: "^actual);
-				    print_endline (indent^"formaltype: "^dumptab !formtyp^", actualtype: "^dumptab !actualtyp);
+				    output_string fd (indent^"formal: "^formal^", actual: "^actual^"\n");
+				    output_string fd (indent^"formaltype: "^dumptab !formtyp^", actualtype: "^dumptab !actualtyp^"\n");
 				    formtyp := (typenc1,str3,typmap1,typmaplst1);
 				    end;
 				end
 			    else
 				begin
-				print_endline (indent^"Actual "^actual^" not found");
-				List.iter (fun (k,_) -> print_endline ("List: "^k)) names'
+				output_string fd (indent^"Actual "^actual^" not found\n");
+				List.iter (fun (k,_) -> output_string fd ("List: "^k)) names'
 				end
 			    end    
 			else
 			    begin
-			    print_endline (indent^"Formal "^formal^" not found");
-			    List.iter (fun (k,_) -> print_endline ("List: "^k)) names''
+			    output_string fd (indent^"Formal "^formal^" not found"^"\n");
+			    List.iter (fun (k,_) -> output_string fd ("List: "^k)) names''
 			    end
-                        | _ -> ()) portlst
+                        | _ -> ()) portlst;
+                         output_string fd ("completed: "^kind^"\n");
+			 let fd' = open_out (kind^".names") in
+			 List.iter (fun (a,b) -> output_string fd' (a^":"^dumptab !b^"\n")) names'';
+			 close_out fd'
                     | oth -> cellopt := Some oth; failwith ("cellopt: "^dumpitm oth)) xlst'
                 end
-        else print_endline (indent^subnam^":missing")
+        else output_string fd (indent^subnam^":missing\n")
 
 let namedcnt = ref 0
 
@@ -1185,7 +1186,7 @@ let rec rw' attr = function
     let (_,nam') = List.assoc nam !(attr.instances) in
     let attr' = {attr with anchor=origin;names=ref []} in
     let xlst' = List.map (rw' attr') xlst in
-    attr.modulexml := (nam', (xlst', !(attr'.names))) :: !(attr.modulexml);
+    attr.modulexml := (nam', (origin, xlst', !(attr'.names))) :: !(attr.modulexml);
     let fd = open_out (nam'^".elem") in
     output_string fd (dumplst xlst');
     output_string fd ("\n["^String.concat ";\n " (List.map (fun (k,x) -> dumps k^", "^dumptab !x) !(attr'.names))^"]\n");
@@ -1223,7 +1224,7 @@ let rec rw' attr = function
     let (_,bus') = List.assoc bus !(attr.instances) in
     let attr' = {attr with anchor=origin;names=ref []} in
     let xlst' = List.map (rw' attr') xlst in
-    attr.modulexml := (bus', (xlst', !(attr'.names))) :: !(attr.modulexml);
+    attr.modulexml := (bus', (origin, xlst', !(attr'.names))) :: !(attr.modulexml);
     IFC (origin, bus', xlst')
 | Xml.Element ("ifacerefdtype", [("fl", _); ("id", num); ("modportname", nam)], xlst) ->
     let xlst' = List.map (rw' attr) xlst and idx = int_of_string num in
@@ -1246,14 +1247,13 @@ let rec rw' attr = function
 | Xml.Element ("cells", [], xlst) ->
     attr.intf := [];
     let xlst' = List.map (rw' attr) xlst in
+    let fd = open_out "traverse.cell" in
     let rec traverse' indent = function
-        | CELL(origin, nam, subnam', hier, xlst) -> cell_traverse attr indent (nam,subnam'); List.iter (traverse' (indent^"  ")) xlst
+        | CELL(origin, nam, subnam', hier, xlst) -> cell_traverse fd attr indent (nam,subnam'); List.iter (traverse' (indent^"  ")) xlst
         | _ -> () in
     List.iter (traverse' "") xlst';
-    top := List.flatten(List.map cell_hier xlst');
-    let topmod = List.filter (fun (_,kind) -> List.mem_assoc kind !(attr.modulexml)) !top in
-    topattr := attr;
-    CELLS(xlst')
+    close_out fd;
+    CELLS(xlst', attr)
 | Xml.Element ("cell", [("fl", origin); ("name", nam); ("submodname", subnam); ("hier", hier)], xlst) ->
     let (_,subnam') = if List.mem_assoc subnam !(attr.instances) then
         List.assoc subnam !(attr.instances)
@@ -1266,7 +1266,7 @@ let rec rw' attr = function
 | Xml.Element ("display", [("fl", origin); ("displaytype", nam)], xlst) -> DSPLY (origin, nam, List.map (rw' attr) xlst)
 | Xml.Element ("readmem", [("fl", origin)], xlst) -> SYS (origin, "$readmemh", List.map (rw' attr) xlst)
 | Xml.Element (("fopen"|"fclose"|"finish"|"stop" as sys), [("fl", origin)], xlst) -> SYS (origin, "$"^sys, List.map (rw' attr) xlst)
-| Xml.Element ("task", [("fl", origin); ("name", nam)], xlst) -> TASK(origin, nam, List.map (rw' attr) xlst)
+| Xml.Element ("task", [("fl", origin); ("name", nam)], xlst) -> TASKDEF(origin, nam, List.map (rw' attr) xlst)
 | Xml.Element ("taskref", [("fl", origin); ("name", nam)], xlst) -> TASKRF(origin, nam, List.map (rw' attr) xlst)
 | Xml.Element ("valueplusargs", [("fl", origin); ("dtype_id", tid)], xlst) -> VPLSRGS(origin, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("testplusargs", [("fl", origin); ("name", nam); ("dtype_id", tid)], xlst) ->
@@ -1294,7 +1294,7 @@ let rec rw' attr = function
     TYPETABLE typarr
 | (Xml.Element (str, _, _) | Xml.PCData str) as err -> attr.errlst := err :: !(attr.errlst); failwith ("XML element "^str^" not supported")
 
-let empty_itms () = {
+let empty_itms names'' = {
 io=ref [];
 v=ref [];
 iv=ref [];
@@ -1311,7 +1311,8 @@ inst=ref [];
 cnst=ref [];
 needed=ref [];
 avoid_dollar_unsigned = true;
-remove_interfaces = false; }
+remove_interfaces = false;
+names''=names'' }
 
 let rev_itms prev = {
 io=ref (List.rev !(prev.io));
@@ -1330,7 +1331,8 @@ inst=ref (List.rev !(prev.inst));
 cnst=ref (List.rev !(prev.cnst));
 needed=ref (List.rev !(prev.needed));
 avoid_dollar_unsigned = prev.avoid_dollar_unsigned;
-remove_interfaces = prev.remove_interfaces; }
+remove_interfaces = prev.remove_interfaces;
+names''=prev.names'' }
 
 let copy_itms prev = {
 io=ref !(prev.io);
@@ -1349,7 +1351,8 @@ inst=ref !(prev.inst);
 cnst=ref !(prev.cnst);
 needed=ref !(prev.needed);
 avoid_dollar_unsigned = prev.avoid_dollar_unsigned;
-remove_interfaces = prev.remove_interfaces; }
+remove_interfaces = prev.remove_interfaces;
+names''=prev.names'' }
 
 let num x = NUM (HEX x)
 
@@ -1688,7 +1691,7 @@ let rec optitm3 = function
 | CSITM(o,rw_lst) :: tl -> CSITM(o,optitm3 rw_lst) :: optitm3 tl
 | WHL(rw_lst) :: tl -> WHL(optitm3 rw_lst) :: optitm3 tl
 | FORSTMT(o,kind,cmpop,ix,strt,stop,inc,rw_lst) :: tl -> FORSTMT(o,kind,cmpop,ix,strt,stop,inc,optitm3 rw_lst) :: optitm3 tl
-| TASK(origin, nam, rw_lst) :: tl -> TASK(origin, nam, optitm3 rw_lst) :: optitm3 tl
+| TASKDEF(origin, nam, rw_lst) :: tl -> TASKDEF(origin, nam, optitm3 rw_lst) :: optitm3 tl
 | TASKRF(origin, nam, rw_lst) :: tl -> TASKRF(origin, nam, optitm3 rw_lst) :: optitm3 tl
 | ASGN _ as oth :: tl -> oth :: optitm3 tl
 | IF(origin, cnd :: then_stmt :: []) :: tl -> IF (origin, cnd :: BGN(None, optitm3 [then_stmt]) :: []) :: optitm3 tl
@@ -1715,7 +1718,7 @@ let rec optitm4 = function
 | CSITM(origin, rw_lst) -> CSITM(origin, List.map optitm4 rw_lst)
 | WHL(rw_lst) -> WHL(List.map optitm4 rw_lst)
 | FORSTMT(o,kind,cmpop,ix,strt,stop,inc,rw_lst) -> FORSTMT(o,kind,cmpop,ix,strt,stop,inc,List.map optitm4 rw_lst)
-| TASK(origin, nam, rw_lst) -> TASK(origin, nam, List.map optitm4 rw_lst)
+| TASKDEF(origin, nam, rw_lst) -> TASKDEF(origin, nam, List.map optitm4 rw_lst)
 | TASKRF(origin, nam, rw_lst) -> TASKRF(origin, nam, List.map optitm4 rw_lst)
 | (ASGN _  | CNST _ | VAR _ | VRF _ | LOGIC _ | SEL _ | CMP _ | DSPLY _ | SYS _) as oth -> oth
 | oth -> optothlst := oth :: !optothlst; failwith "optothlst4"
@@ -1736,10 +1739,11 @@ let rec is_cnst itms id =
     else
         false
 
-let rec catitm (pth:string option) itms = function
+let rec catitm (pth:string option) itms names' = function
 | IO(origin, str1lst, typ1, dir, str3, clst) ->
     List.iter (fun str1 ->
         let typ' = ref typ1 in
+        if List.mem_assoc str1 itms.names'' then typ' := !(List.assoc str1 itms.names'');
         List.iter (fun itm ->
             itms.ca := (origin, VRF(str1, typ1,[]), itm) :: !(itms.ca);
             let (a,b,c,d) = typ1 in typ' := (a,"wire",c,d)) clst;
@@ -1751,11 +1755,11 @@ let rec catitm (pth:string option) itms = function
         itms.v := (str1, (origin, typ1, str2, (UNKDTYP,"",TYPNONE,[]))) :: !(itms.v)) str1lst
 | IVAR(origin, str1, int1, rwlst, int2) -> itms.iv := (str1, (origin, int1, rwlst, int2)) :: !(itms.iv)
 | TMPVAR(origin, str1, typ1, stmtlst) ->
-    List.iter (catitm pth itms) stmtlst;
+    List.iter (catitm pth itms names') stmtlst;
     if not (List.mem_assoc str1 !(itms.v)) then
         itms.v := (str1, (origin, typ1, str1, (UNKDTYP,"",TYPNONE,[]))) :: !(itms.v)
 | CA(origin, (rght::lft::[] as args)) ->
-    List.iter (catitm pth itms) args;
+    List.iter (catitm pth itms names') args;
     itms.ca := (origin, lft, rght) :: !(itms.ca)
 | INST(origin, str1lst, (str2, port_lst)) ->
     List.iter (fun str1 ->
@@ -1763,17 +1767,17 @@ let rec catitm (pth:string option) itms = function
         itms.inst := (pth', (origin, str2, port_lst)) :: !(itms.inst)
         ) str1lst
 | ALWYS(origin, SNTRE(SNITM ("POS", [VRF (ck, _, [])]) :: SNITM ("POS", [VRF (rst, _, [])]) :: []) :: rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
+    List.iter (catitm pth itms names') rw_lst;
     itms.alwys := (origin, POSPOS(ck,rst), optitm rw_lst) :: !(itms.alwys)    
 | ALWYS(origin, SNTRE(SNITM ("POS", [VRF (ck, _, [])]) :: []) :: rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
+    List.iter (catitm pth itms names') rw_lst;
     let rw_lst' = optitm rw_lst in
     if rw_lst' <> [] then itms.alwys := (origin, POSEDGE(ck), rw_lst') :: !(itms.alwys)
 | ALWYS(origin, SNTRE(SNITM ("NEG", [VRF (ck, _, [])]) :: []) :: rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
+    List.iter (catitm pth itms names') rw_lst;
     itms.alwys := (origin, NEGEDGE(ck), optitm rw_lst) :: !(itms.alwys)
 | ALWYS(origin, SNTRE(SNITM (("POS"|"NEG") as edg, [VRF (ck, _, [])]) :: SNITM ("NEG", [VRF (rst, _, [])]) :: []) :: rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
+    List.iter (catitm pth itms names') rw_lst;
     let rw_lst' = (function
        | BGN(lbl, (IF(origin, VRF(rst', typ',[]) :: thn :: els :: []) :: [])) :: [] ->
            BGN(lbl, (IF(origin, UNRY(Unot, VRF(rst', typ',[]) :: []) :: els :: thn :: []) :: [])) :: []
@@ -1782,28 +1786,28 @@ let rec catitm (pth:string option) itms = function
        | oth -> posneglst := oth :: !posneglst; oth) rw_lst in
     itms.alwys := (origin, (match edg with "POS" -> POSNEG(ck,rst) | "NEG" -> NEGNEG(ck,rst) | _ -> UNKNOWN), optitm rw_lst') :: !(itms.alwys)
 | ALWYS(origin, rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
+    List.iter (catitm pth itms names') rw_lst;
     itms.alwys := (origin, COMB, rw_lst) :: !(itms.alwys)
 | INIT (origin, "initial", rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
+    List.iter (catitm pth itms names') rw_lst;
     (match rw_lst with
         | ASGN (false, _, (CNST (cnst, _, [])) :: VRF (id, _, []) :: []) :: [] ->
              itms.cnst := (id,(is_cnst itms id,cnst)) :: !(itms.cnst);
              print_endline ("initial found : "^id);
         | _ -> itms.init := (origin, INITIAL, rw_lst) :: !(itms.init));
 | INIT (origin, "final", rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
+    List.iter (catitm pth itms names') rw_lst;
     itms.init := (origin, FINAL, rw_lst) :: !(itms.init)
 | BGN(pth', rw_lst) ->
-    List.iter (catitm (lcombine (pth,pth')) itms) rw_lst
+    List.iter (catitm (lcombine (pth,pth')) itms names') rw_lst
 | FNC(origin, nam, typ', rw_lst) ->
-    let itms' = empty_itms () in
-    List.iter (catitm pth itms') rw_lst;
+    let itms' = empty_itms itms.names'' in
+    List.iter (catitm pth itms' names') rw_lst;
     let fn = (origin, typ', rw_lst, itms') in
     itms.func := (nam, fn) :: !(itms.func);
     Hashtbl.add functable nam fn;
 | IF(origin, rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
+    List.iter (catitm pth itms names') rw_lst;
     itms.gen := (origin,rw_lst) :: !(itms.gen)
 | IMP(origin, nam, rw_lst) ->
     itms.imp := (nam, (origin, List.map (function
@@ -1811,14 +1815,14 @@ let rec catitm (pth:string option) itms = function
     | MODPORTFTR (_,str1) -> (str1, Dunknown)
     | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst;;1442") rw_lst)) :: !(itms.imp)
 | IMRF(origin, str1, str2, []) -> ()
-| TASK (origin, nam, rw_lst) ->
-    let itms' = empty_itms () in
-    List.iter (catitm pth itms') rw_lst;
+| TASKDEF (origin, nam, rw_lst) ->
+    let itms' = empty_itms itms.names'' in
+    List.iter (catitm pth itms' names') rw_lst;
     let tsk = (origin, rw_lst, itms') in
     itms.task := (nam, tsk) :: !(itms.task);
     Hashtbl.add tasktable nam tsk;
 | TASKRF (origin, nam, rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
+    List.iter (catitm pth itms names') rw_lst;
     if not (List.mem (TASK,nam) !(itms.needed)) then
         itms.needed := (TASK,nam) :: !(itms.needed)
 | NTL(rw_lst)
@@ -1853,9 +1857,9 @@ let rec catitm (pth:string option) itms = function
 | CND(_, rw_lst)
 | DSPLY(_, _, rw_lst)
 | VPLSRGS(_, _, rw_lst)
-| REPL(_, _, rw_lst) -> List.iter (catitm pth itms) rw_lst
+| REPL(_, _, rw_lst) -> List.iter (catitm pth itms names') rw_lst
 | FRF(_, nam, rw_lst) ->
-    List.iter (catitm pth itms) rw_lst;
+    List.iter (catitm pth itms names') rw_lst;
     if not (List.mem (FUNCTION,nam) !(itms.needed)) then
         begin
         print_endline ("Needed function: "^nam);
@@ -1863,21 +1867,23 @@ let rec catitm (pth:string option) itms = function
         end
 | XRF(origin, str1, str2, str3, dirop) -> ()
 | MODUL(origin, nam', rw_lst) ->
-    let itms = empty_itms () in
-    List.iter (catitm None itms) rw_lst;
+    let (orig'', xlst'', names'') = List.assoc nam' names' in
+    let itms = empty_itms names'' in
+    List.iter (catitm None itms names') rw_lst;
     let itms' = rev_itms itms in
     Hashtbl.add modules nam' (origin, itms')
 | PKG(origin, str1, rw_lst) ->
-    let itms = empty_itms () in
-    List.iter (catitm (Some str1) itms) rw_lst;
+    let itms = empty_itms itms.names'' in
+    List.iter (catitm (Some str1) itms names') rw_lst;
     Hashtbl.add packages str1 (origin, itms)
-| IFC(origin, str1, rw_lst) ->
-    let itms = empty_itms () in
-    List.iter (catitm (Some str1) itms) rw_lst;
-    Hashtbl.add interfaces str1 (origin, itms)
+| IFC(origin, nam', rw_lst) ->
+    let (orig'', xlst'', names'') = List.assoc nam' names' in
+    let itms' = empty_itms names'' in
+    List.iter (catitm (Some nam') itms' names') rw_lst;
+    Hashtbl.add interfaces nam' (origin, itms')
 | FIL(enc, fil) ->
     Hashtbl.add files enc fil
-| CELLS(rw_lst) -> ()
+| CELLS(rw_lst,_) -> ()
 | TPLSRGS (_, id, tid, []) -> ()
 | TYPETABLE _ -> ()
 | TYP _ -> ()
@@ -2086,7 +2092,7 @@ let dumpform f f' separate =
     Printf.fprintf fd "read_sverilog -container r -libname WORK -12 { \\\n";
     let plst = ref [] in Hashtbl.iter (fun _ (s,_) -> plst := fst (find_source s) :: !plst) packages;
     let iflst = List.map snd (if Hashtbl.mem hierarchy f then Hashtbl.find hierarchy f else []) in
-    let hlst = List.sort_uniq compare (List.map (fun k -> let (s, _) = if Hashtbl.mem modules k then Hashtbl.find modules k else (k, empty_itms ()) in fst (find_source s)) (f::iflst)) in
+    let hlst = List.sort_uniq compare (List.map (fun k -> let (s, _) = if Hashtbl.mem modules k then Hashtbl.find modules k else (k, empty_itms []) in fst (find_source s)) (f::iflst)) in
     let slst = !plst @ hlst in
     List.iter (fun src -> if src.[0] == '/' then Printf.fprintf fd "%s \\\n" src else Printf.fprintf fd "%s/%s \\\n" srcpath src) slst;
     Printf.fprintf fd "}\n";
@@ -2117,11 +2123,17 @@ let readxml xmlf =
 
 let translate errlst xmlf =
     let (line,range,xml) = readxml xmlf in
-    let empty = empty_itms () in
-    let empty_attr = empty_attr errlst in
-    let rwxml = rw' empty_attr xml in
-    catitm None empty rwxml;
-    let top = snd(List.hd !top) in
+    let attr' = empty_attr errlst in
+    let rwxml = rw' attr' xml in
+    let cell_lst,topattr = match rwxml with XML
+       [FILS ("files", fil_lst);
+	FILS ("module_files", fil_lst');
+	NTL modlst;
+	CELLS (cell_lst,topattr)] -> (cell_lst,topattr) | _ -> ([],empty_attr(ref [])) in
+    let toplst = List.flatten(List.map cell_hier cell_lst) in
+    let empty = empty_itms [] in
+    catitm None empty !(topattr.modulexml) rwxml;
+    let top = snd(List.hd toplst) in
     print_endline ("toplevel is "^top);
     let separate = try int_of_string (Sys.getenv "VXML_SEPARATE") > 0 with _ -> true in
     let debugtree = try int_of_string (Sys.getenv "VXML_DEBUGTREE") > 0 with _ -> true in
@@ -2164,4 +2176,4 @@ let translate errlst xmlf =
         ) mods;
         close_out fd;
         end;
-    (line,range,rwxml,xml,mods)
+    (line,range,rwxml,xml,mods,toplst,topattr)

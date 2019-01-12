@@ -2,7 +2,7 @@ open Vxml;;
 
 let errlst = ref [] in
 Printexc.record_backtrace true;
-let (line,range,rwxml,xml,mods) = Vxml.translate (ref []) Sys.argv.(1) in
+let (line,range,rwxml,xml,mods,toplst,topattr) = Vxml.translate (ref []) Sys.argv.(1) in
 List.iter (fun l -> Printf.printf "%d:" (List.length l)) [
 !exprothlst;
 !stmtothlst;

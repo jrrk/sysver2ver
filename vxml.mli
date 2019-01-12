@@ -115,86 +115,6 @@ type cexp =
 | FLT of float
 | BIGINT of Big_int.big_int
 
-type typmap =
-| TYPNONE
-| SUBTYP of int
-| TYPRNG of int*int
-| TYPMEMBER of typetable_t
-| TYPENUM of string * int * (int*int)
-| TYPDEF
-| RECTYP of typetable_t
-
-and typetable_t = typenc*string*typmap*typmap list
-and typ_t = typenc*string*typmap*rw list
-and rw =
-| UNKNOWN
-| XML of rw list
-| EITM of string * string * string * int * rw list
-| IO of string * string list * typetable_t * dirop * string * rw list
-| VAR of string * string list * typetable_t * string
-| IVAR of string * string * int * rw list * int
-| TMPVAR of string * string * typetable_t * rw list
-| CNST of (int * cexp) * int * rw list
-| VRF of string * typetable_t * rw list
-| TYP of int * typ_t
-| FNC of string * string * typetable_t * rw list
-| TASK of string * string * rw list
-| TASKRF of string * string * rw list
-| INST of string * string list * (string * rw list)
-| SFMT of string * rw list
-| SYS of string * string * rw list
-| TPLSRGS of string * string * int * rw list
-| VPLSRGS of string * int * rw list
-| PORT of string * string * dirop * rw list
-| CA of string * rw list
-| UNRY of unaryop * rw list
-| SEL of string * rw list
-| ASEL of rw list
-| SNITM of string * rw list
-| ASGN of bool * string * rw list
-| ARITH of arithop * rw list
-| LOGIC of logop * rw list
-| CMP of cmpop * rw list
-| FRF of string * string * rw list
-| XRF of string * string * string * string * dirop
-| PKG of string * string * rw list
-| CAT of string * rw list
-| CPS of string * rw list
-| CND of string * rw list
-| REPL of string * int * rw list
-| MODUL of string * string * rw list
-| BGN of string option * rw list
-| RNG of rw list
-| ALWYS of string * rw list
-| SNTRE of rw list
-| IF of string * rw list
-| INIT of string * string * rw list
-| IRNG of string * rw list
-| IFC of string * string * rw list
-| IMP of string * string * rw list
-| IMRF of string * string * dirop * rw list
-| JMPL of string * rw list
-| JMPG of string * rw list
-| CS of string * rw list
-| CSITM of string * rw list
-| WHL of rw list
-| FORSTMT of (string * string * cmpop * rw * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
-| ARG of rw list
-| DSPLY of string * string * rw list
-| FILS of string * rw list
-| FIL of string * string
-| NTL of rw list
-| CELLS of rw list
-| CELL of string * string * string * string * rw list
-| POSPOS of string*string
-| POSNEG of string*string
-| NEGNEG of string*string
-| POSEDGE of string
-| NEGEDGE of string
-| COMB
-| MODPORTFTR of string * string
-| TYPETABLE of typetable_t array
-
 type token =
 | INVALID
 | SP
@@ -259,15 +179,94 @@ type token =
 | ENDPACKAGE
 | MODPORT
 
-type xmlattr = {
+type typmap =
+| TYPNONE
+| SUBTYP of int
+| TYPRNG of int*int
+| TYPMEMBER of typetable_t
+| TYPENUM of string * int * (int*int)
+| TYPDEF
+| RECTYP of typetable_t
+
+and typetable_t = typenc*string*typmap*typmap list
+and typ_t = typenc*string*typmap*rw list
+and xmlattr = {
     anchor: string;
     errlst: Xml.xml list ref;
     names: (string*typetable_t ref) list ref;
     typetable: typetable_t array;
     intf : (string * string) list ref;
     instances: (string*(token*string)) list ref;
-    modulexml: (string*(rw list*(string*typetable_t ref) list)) list ref;
+    modulexml: (string*(string*rw list*(string*typetable_t ref) list)) list ref;
 }
+and rw =
+| UNKNOWN
+| XML of rw list
+| EITM of string * string * string * int * rw list
+| IO of string * string list * typetable_t * dirop * string * rw list
+| VAR of string * string list * typetable_t * string
+| IVAR of string * string * int * rw list * int
+| TMPVAR of string * string * typetable_t * rw list
+| CNST of (int * cexp) * int * rw list
+| VRF of string * typetable_t * rw list
+| TYP of int * typ_t
+| FNC of string * string * typetable_t * rw list
+| TASKDEF of string * string * rw list
+| TASKRF of string * string * rw list
+| INST of string * string list * (string * rw list)
+| SFMT of string * rw list
+| SYS of string * string * rw list
+| TPLSRGS of string * string * int * rw list
+| VPLSRGS of string * int * rw list
+| PORT of string * string * dirop * rw list
+| CA of string * rw list
+| UNRY of unaryop * rw list
+| SEL of string * rw list
+| ASEL of rw list
+| SNITM of string * rw list
+| ASGN of bool * string * rw list
+| ARITH of arithop * rw list
+| LOGIC of logop * rw list
+| CMP of cmpop * rw list
+| FRF of string * string * rw list
+| XRF of string * string * string * string * dirop
+| PKG of string * string * rw list
+| CAT of string * rw list
+| CPS of string * rw list
+| CND of string * rw list
+| REPL of string * int * rw list
+| MODUL of string * string * rw list
+| BGN of string option * rw list
+| RNG of rw list
+| ALWYS of string * rw list
+| SNTRE of rw list
+| IF of string * rw list
+| INIT of string * string * rw list
+| IRNG of string * rw list
+| IFC of string * string * rw list
+| IMP of string * string * rw list
+| IMRF of string * string * dirop * rw list
+| JMPL of string * rw list
+| JMPG of string * rw list
+| CS of string * rw list
+| CSITM of string * rw list
+| WHL of rw list
+| FORSTMT of (string * string * cmpop * rw * (int * cexp) * (int * cexp) * (int * cexp) * rw list)
+| ARG of rw list
+| DSPLY of string * string * rw list
+| FILS of string * rw list
+| FIL of string * string
+| NTL of rw list
+| CELLS of rw list * xmlattr
+| CELL of string * string * string * string * rw list
+| POSPOS of string*string
+| POSNEG of string*string
+| NEGNEG of string*string
+| POSEDGE of string
+| NEGEDGE of string
+| COMB
+| MODPORTFTR of string * string
+| TYPETABLE of typetable_t array
 
 type itms = { 
   io: (string*(string*typetable_t*dirop*string*(int*cexp) list)) list ref;
@@ -287,6 +286,7 @@ type itms = {
   needed: (token*string) list ref;
   avoid_dollar_unsigned: bool;
   remove_interfaces: bool;
+  names'' : (string * typetable_t ref) list;
 }
 
 val exprothlst : rw list ref
@@ -331,9 +331,6 @@ val hierarchy : (string, (string * string) list) Hashtbl.t
 val functable : (string, string * typetable_t * rw list * itms) Hashtbl.t
 val modtokens : (string, token list * token list) Hashtbl.t
 
-val top : (string * string) list ref
-val topattr : xmlattr ref
-
 val hex_of_bigint : int -> Big_int.big_int -> string
 val hex_to_bigint : string -> Big_int.big_int
 val hex_to_ascii : int -> string -> bytes
@@ -353,7 +350,7 @@ val fortailmatch : rw -> rw list -> bool
 val needed : itms -> token*string -> token list
 val readxml : string -> int * (int * int) * Xml.xml
 val rw' : xmlattr -> Xml.xml -> rw
-val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list * token list) list
+val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list * token list) list * (string * string) list * xmlattr
 val dump : bool -> string -> string * itms -> token list
 val debug : string -> string * itms -> unit
 val comment : arrtyp list -> token list
