@@ -31,8 +31,10 @@ type unaryop =
 | Unot
 | Ulognot
 | Unegate
-| Uextend
-| Uextends
+| Uunsigned
+| Usigned
+| Uextend of (int*int)
+| Uextends of (string*int*int)
 
 type cmpop =
 | Cunknown
@@ -284,7 +286,6 @@ type itms = {
   inst: (string*(string*string*rw list)) list ref;
   cnst: (string*(bool*(int*cexp))) list ref;
   needed: (token*string) list ref;
-  avoid_dollar_unsigned: bool;
   remove_interfaces: bool;
   names'' : (string * typetable_t ref) list;
 }

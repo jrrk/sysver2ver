@@ -31,8 +31,10 @@ type unaryop =
 | Unot
 | Ulognot
 | Unegate
-| Uextend
-| Uextends
+| Uunsigned
+| Usigned
+| Uextend of (int*int)
+| Uextends of (string*int*int)
 
 type cmpop =
 | Cunknown
@@ -290,7 +292,6 @@ type itms = {
   inst: (string*(string*string*rw list)) list ref;
   cnst: (string*(bool*(int*cexp))) list ref;
   needed: (token*string) list ref;
-  avoid_dollar_unsigned: bool;
   remove_interfaces: bool;
   names'': (string * typetable_t ref) list;
 }
@@ -375,9 +376,12 @@ let dumptyp = function
 let unaryop = function
 |"not" -> Unot
 |"negate" -> Unegate
-|"extend" -> Uextend
-|"extends" -> Uextends
 |"lognot" -> Ulognot
+| _ -> Unknown
+
+let extendop anchor w wm = function
+|"extend" -> Uextend(w,wm)
+|"extends" -> Uextends(anchor,w,wm)
 | _ -> Unknown
 
 let cmpop = function
@@ -605,8 +609,10 @@ let dumpu = function
 | Unot -> "Unot"
 | Ulognot -> "Ulognot"
 | Unegate -> "Unegate"
-| Uextend -> "Uextend"
-| Uextends -> "Uextends"
+| Uunsigned -> "Uunsigned"
+| Usigned -> "Usigned"
+| Uextend(w,wm) -> "Uextend("^string_of_int w^", "^string_of_int wm^")"
+| Uextends(anchor,w,wm) -> "Uextends("^anchor^", "^string_of_int w^", "^string_of_int wm^")"
 
 let dumparith = function
 | Aadd -> "Aadd"
@@ -676,8 +682,10 @@ let unaryopv = function
 | Unot -> " ~ "
 | Ulognot -> " ! "
 | Unegate -> " - "
-| Uextend -> "$unsigned"
-| Uextends -> "$signed"
+| Uunsigned -> "$unsigned"
+| Usigned -> "$signed"
+| Uextend(w,wm) -> "__extend_"^string_of_int wm^"_"^string_of_int w
+| Uextends(anchor,w,wm) -> "__extends_"^string_of_int wm^"_"^string_of_int w
 
 let cmpopv = function
 | Cunknown -> "???"
@@ -1107,7 +1115,10 @@ let rec rw' attr = function
                
                CNST (cexp value, int_of_string tid, List.map (rw' attr) xlst)
 | Xml.Element ("contassign", [("fl", origin); ("dtype_id", tid)], xlst) -> CA (origin, List.map (rw' attr) xlst)
-| Xml.Element ("not"|"negate"|"extend"|"extends"|"lognot" as op, [("fl", origin); ("dtype_id", tid)], xlst) -> UNRY (unaryop op, List.map (rw' attr) xlst)
+| Xml.Element ("not"|"negate"|"lognot" as op, [("fl", origin); ("dtype_id", tid)], xlst) ->
+	       UNRY (unaryop op, List.map (rw' attr) xlst)
+| Xml.Element ("extend"|"extends" as op, [("fl", origin); ("dtype_id", tid); ("width", w); ("widthminv", wm)], xlst) ->
+	       UNRY (extendop attr.anchor (int_of_string w) (int_of_string wm) op, List.map (rw' attr) xlst)
 | Xml.Element ("varref", [("fl", _); ("name", nam); ("dtype_id", tid)], xlst) ->
                VRF (snd (chkvif nam), attr.typetable.(int_of_string tid), List.map (rw' attr) xlst)
 | Xml.Element ("instance", [("fl", origin); ("name", nam); ("defName", mangled); ("origName", _)], xlst) ->
@@ -1312,7 +1323,6 @@ imp=ref [];
 inst=ref [];
 cnst=ref [];
 needed=ref [];
-avoid_dollar_unsigned = true;
 remove_interfaces = false;
 names''=names'' }
 
@@ -1332,7 +1342,6 @@ imp=ref (List.rev !(prev.imp));
 inst=ref (List.rev !(prev.inst));
 cnst=ref (List.rev !(prev.cnst));
 needed=ref (List.rev !(prev.needed));
-avoid_dollar_unsigned = prev.avoid_dollar_unsigned;
 remove_interfaces = prev.remove_interfaces;
 names''=prev.names'' }
 
@@ -1352,24 +1361,43 @@ imp=ref !(prev.imp);
 inst=ref !(prev.inst);
 cnst=ref !(prev.cnst);
 needed=ref !(prev.needed);
-avoid_dollar_unsigned = prev.avoid_dollar_unsigned;
 remove_interfaces = prev.remove_interfaces;
 names''=prev.names'' }
 
 let num x = NUM (HEX x)
 
+let mkextendfunc = function
+| Uextends(a,w,wm) as op ->
+let b = (BASDTYP, "logic", TYPRNG (w-1, 0), []) in
+let c = let fref = unaryopv op in
+  [IO (a, [fref], (BASDTYP, "logic", TYPRNG (w-1, 0), []), Doutput, "logic", []);
+   IO (a, ["arg"], (BASDTYP, "logic", TYPRNG (wm-1, 0), []), Dinput, "logic", []);
+BGN (None,
+  [ASGN (false, a,
+    [CAT (a,
+      [REPL (a, 3,
+        [SEL (a,
+          [VRF ("arg", (BASDTYP, "logic", TYPRNG (wm-1, 0), []), []);
+           CNST ((32, HEX (wm-1)), 5, []); CNST ((32, HEX 1), 2, [])]);
+         CNST ((32, SHEX (w-wm)), 6, [])]);
+       VRF ("arg", (BASDTYP, "logic", TYPRNG (wm-1, 0), []), [])]);
+     VRF (fref, (BASDTYP, "logic", TYPRNG (w-1, 0), []), [])])])] in
+let d = empty_itms [] in (a,b,c,d)
+| (Unknown|Unot|Ulognot|Unegate|Uunsigned|Usigned|Uextend _) as op -> failwith (unaryopv op)
+
 let rec expr modul = function
 | VRF (id, _, []) -> IDENT id :: []
 | CNST ((s,n), tid, []) -> SIZED (s,n) :: []
-| UNRY (Uextend, expr1 :: []) when modul.avoid_dollar_unsigned -> LCURLY :: SIZED (1, BIN '0') :: COMMA :: expr modul expr1 @ [RCURLY]
-| UNRY ((Uextend|Uextends) as op, expr1 :: []) -> IDENT (unaryopv op) :: LPAREN :: expr modul expr1 @ [RPAREN]
+| UNRY (Uextend(w,wm), expr1 :: []) -> LCURLY :: SIZED (w-wm, HEX 0) :: COMMA :: expr modul expr1 @ [RCURLY]
+| UNRY (Uextends _ as op, expr1 :: []) ->
+    IDENT (unaryopv op) :: LPAREN :: expr modul expr1 @ [RPAREN]
 | UNRY (op, expr1 :: []) -> LPAREN :: IDENT (unaryopv op) :: expr modul expr1 @ [RPAREN]
 | CMP ((Clts|Cltes|Cgtes|Cgts) as op, expr1 :: expr2 :: []) ->
-    LPAREN :: expr modul (UNRY (Uextends, expr1 :: [])) @ CMPOP op :: expr modul (UNRY (Uextends, expr2 :: [])) @ [RPAREN]
+    LPAREN :: expr modul (UNRY (Usigned, expr1 :: [])) @ CMPOP op :: expr modul (UNRY (Usigned, expr2 :: [])) @ [RPAREN]
 | CMP (op, expr1 :: expr2 :: []) -> LPAREN :: expr modul expr1 @ CMPOP op :: expr modul expr2 @ [RPAREN]
 | LOGIC (op, expr1 :: []) -> LPAREN :: IDENT (logopv op) :: expr modul expr1 @ [RPAREN]
 | LOGIC (Lshiftrs as op, expr1 :: expr2 :: []) ->
-    LPAREN :: expr modul (UNRY (Uextends, expr1 :: [])) @ (IDENT (logopv op) :: expr modul expr2) @[RPAREN]
+    LPAREN :: expr modul (UNRY (Usigned, expr1 :: [])) @ (IDENT (logopv op) :: expr modul expr2) @[RPAREN]
 | LOGIC (op, expr1 :: expr2 :: []) -> LPAREN :: expr modul expr1 @ (IDENT (logopv op) :: expr modul expr2) @[RPAREN]
 | ARITH (op, expr1 :: expr2 :: []) -> LPAREN :: expr modul expr1 @ (IDENT (arithopv op) :: expr modul expr2) @[RPAREN]
 | SEL (origin, ((VRF _ | XRF _ | ASEL _) as expr1) :: (CNST((szlo, lo'),_,_)) :: (CNST((szw,wid'),_,_)) :: []) ->
@@ -1382,8 +1410,10 @@ let rec expr modul = function
     expr modul (LOGIC (Land, expr1 :: CNST ((wid', HEX ((1 lsl wid') -1)), idx, []) :: []))
 | SEL (o, CND (origin, expr1 :: lft :: rght :: []) :: expr2 :: expr3 :: []) ->
     LPAREN :: expr modul expr1 @ [QUERY] @ expr modul (SEL (o, lft :: expr2 :: expr3 :: [])) @ [COLON] @ expr modul (SEL (o, rght :: expr2 :: expr3 :: [])) @ [RPAREN]
+(*
 | SEL (orig, (UNRY (Uextend, VRF (id, typ', []) :: []) :: (CNST _ as expr2) :: (CNST _ as expr3) :: [])) ->
     expr modul (SEL (orig, VRF (id, typ', []) :: expr2 :: expr3 :: []))
+*)
 | SEL (orig, (CNST ((32, SHEX n), idx, []) :: CNST ((32, HEX lo'), _, []) :: CNST ((32, HEX wid'), _, []) :: [])) ->
     SIZED (wid', SHEX (n asr lo')) :: []
     
@@ -1597,7 +1627,7 @@ and ifcond = function
 and ewidth = function
 | CAT (_, lst) -> fold1 (+) (List.map ewidth lst)
 | SEL (_, VRF (_, _, []) :: CNST ((_,_), _, []) :: CNST ((_,HEX wid), _, []) :: []) -> wid
-| SEL (_, UNRY (Uextends, _) :: CNST ((_,_), _, []) :: CNST ((_,HEX wid), _, []) :: []) -> wid
+| SEL (_, UNRY (Uextends _, _) :: CNST ((_,_), _, []) :: CNST ((_,HEX wid), _, []) :: []) -> wid
 | CNST ((n, _), _, []) -> n
 | oth -> widthlst := oth :: !widthlst; failwith "widthlst"
 
@@ -1827,6 +1857,15 @@ let rec catitm (pth:string option) itms names' = function
     List.iter (catitm pth itms names') rw_lst;
     if not (List.mem (TASK,nam) !(itms.needed)) then
         itms.needed := (TASK,nam) :: !(itms.needed)
+| UNRY(Uextends _ as op, rw_lst) ->
+    List.iter (catitm pth itms names') rw_lst;
+    let fref = unaryopv op in
+    if not (List.mem (FUNCTION,fref) !(itms.needed)) then
+        begin
+        print_endline ("Generated function: "^fref);
+        itms.needed := (FUNCTION,fref) :: !(itms.needed);
+        Hashtbl.add functable fref (mkextendfunc op);
+        end
 | NTL(rw_lst)
 | RNG(rw_lst)
 | SNTRE(rw_lst)
@@ -1846,7 +1885,6 @@ let rec catitm (pth:string option) itms names' = function
 | SFMT(_, rw_lst)
 | SYS(_,_, rw_lst)
 | PORT(_, _, _, rw_lst)
-| UNRY(_, rw_lst)
 | SEL(_, rw_lst)
 | ASEL(rw_lst)
 | SNITM(_, rw_lst)
@@ -1859,6 +1897,7 @@ let rec catitm (pth:string option) itms names' = function
 | CND(_, rw_lst)
 | DSPLY(_, _, rw_lst)
 | VPLSRGS(_, _, rw_lst)
+| UNRY(_, rw_lst)
 | REPL(_, _, rw_lst) -> List.iter (catitm pth itms names') rw_lst
 | FRF(_, nam, rw_lst) ->
     List.iter (catitm pth itms names') rw_lst;
