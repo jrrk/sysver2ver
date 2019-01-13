@@ -1389,7 +1389,7 @@ let rec expr modul = function
 | VRF (id, _, []) -> IDENT id :: []
 | CNST ((s,n), tid, []) -> SIZED (s,n) :: []
 | UNRY (Uextend(w,wm), expr1 :: []) -> LCURLY :: SIZED (w-wm, HEX 0) :: COMMA :: expr modul expr1 @ [RCURLY]
-| UNRY (Uextends _ as op, expr1 :: []) ->
+| UNRY ((Usigned|Uunsigned|Uextends _) as op, expr1 :: []) ->
     IDENT (unaryopv op) :: LPAREN :: expr modul expr1 @ [RPAREN]
 | UNRY (op, expr1 :: []) -> LPAREN :: IDENT (unaryopv op) :: expr modul expr1 @ [RPAREN]
 | CMP ((Clts|Cltes|Cgtes|Cgts) as op, expr1 :: expr2 :: []) ->
@@ -1989,7 +1989,7 @@ let needed modul (kind,nam) = match kind with
         Hashtbl.find functable nam in
     let stg = ref FIRSTG in let lst = fsrc origin :: NL :: FUNCTION :: SP :: (varlst modul (ref NL) typ' nam) @
     List.flatten (List.map (fnstmt modul false stg) (List.tl lst)) in
-    lst @ (fndlm !stg @ [NL;ENDFUNCTION])
+    lst @ (fndlm !stg @ [NL;ENDFUNCTION;NL])
 | TASK ->
     print_endline ("Searching task: "^nam);
     let found = List.mem_assoc nam !(modul.task) in
