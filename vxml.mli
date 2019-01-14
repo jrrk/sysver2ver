@@ -186,7 +186,7 @@ type typmap =
 | SUBTYP of int
 | TYPRNG of int*int
 | TYPMEMBER of typetable_t
-| TYPENUM of string * int * (int*int)
+| TYPENUM of string * typetable_t * (int*int)
 | TYPDEF
 | RECTYP of typetable_t
 
@@ -204,12 +204,12 @@ and xmlattr = {
 and rw =
 | UNKNOWN
 | XML of rw list
-| EITM of string * string * string * int * rw list
+| EITM of string * string * string * typetable_t * rw list
 | IO of string * string list * typetable_t * dirop * string * rw list
 | VAR of string * string list * typetable_t * string
-| IVAR of string * string * int * rw list * int
+| IVAR of string * string * typetable_t * rw list * int
 | TMPVAR of string * string * typetable_t * rw list
-| CNST of (int * cexp) * int * rw list
+| CNST of (int * cexp) * typetable_t * rw list
 | VRF of string * typetable_t * rw list
 | TYP of int * typ_t
 | FNC of string * string * typetable_t * rw list
@@ -273,10 +273,9 @@ and rw =
 type itms = { 
   io: (string*(string*typetable_t*dirop*string*(int*cexp) list)) list ref;
   v: (string*(string*typetable_t*string*typetable_t)) list ref;
-  iv: (string*(string*int*rw list*int)) list ref;
+  iv: (string*(string*typetable_t*rw list*int)) list ref;
   ir: (string*string*typetable_t) list ref;
   ca: (string*rw*rw) list ref;
-  typ: (string*int*int) list ref;
   alwys: (string*rw*rw list) list ref;
   init: (string*token*rw list) list ref;
   func: (string*(string*typetable_t*rw list*itms)) list ref;
