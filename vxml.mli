@@ -186,7 +186,7 @@ type typmap =
 | SUBTYP of int
 | TYPRNG of int*int
 | TYPMEMBER of typetable_t
-| TYPENUM of string * typetable_t * (int*int)
+| TYPENUM of string * int * (int*int)
 | TYPDEF
 | RECTYP of typetable_t
 
@@ -204,12 +204,12 @@ and xmlattr = {
 and rw =
 | UNKNOWN
 | XML of rw list
-| EITM of string * string * string * typetable_t * rw list
+| EITM of string * string * string * int * rw list
 | IO of string * string list * typetable_t * dirop * string * rw list
 | VAR of string * string list * typetable_t * string
 | IVAR of string * string * typetable_t * rw list * int
 | TMPVAR of string * string * typetable_t * rw list
-| CNST of (int * cexp) * typetable_t * rw list
+| CNST of (int * cexp) * int option * rw list
 | VRF of string * typetable_t * rw list
 | TYP of int * typ_t
 | FNC of string * string * typetable_t * rw list
