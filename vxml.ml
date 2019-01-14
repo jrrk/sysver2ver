@@ -1732,11 +1732,12 @@ and cstmt modul dly = function
 | CA(origin, rght::lft::[]) -> ASSIGN :: SP :: expr modul lft @ stmtdly dly @ expr modul rght
 | VAR (origin, idlst, typ', _) -> List.flatten (List.map (fun id -> varlst modul (ref NL) typ' id) idlst)
 | FORSTMT (o,kind,cnd,VRF(ix, typ', []),strt,stop,inc,stmts) ->
+    let compnd = List.length stmts > 1 in
     FOR :: LPAREN :: (if kind = "logic" then varlst modul (ref SP) typ' ix else if kind <> "" then [IDENT kind; SP; IDENT ix] else [IDENT ix]) @
     ASSIGNMENT :: SIZED strt :: SEMI ::
     SIZED stop :: CMPOP cnd :: IDENT ix :: SEMI ::
     IDENT ix :: ASSIGNMENT :: IDENT ix :: PLUS :: SIZED inc :: RPAREN ::
-    BEGIN None :: iter2 (ref []) modul dly stmts @ [SEMI;END]
+    (if compnd then BEGIN None else SP) :: iter2 (ref []) modul dly stmts @ (if compnd then [SEMI;END] else [SEMI])
 | DSPLY (origin, typ, SFMT (fmt, arglst) :: []) -> IDENT typ :: LPAREN :: DQUOTE :: IDENT fmt :: DQUOTE :: eiter modul COMMA arglst @ [RPAREN]
 | DSPLY (origin, typ, SFMT (fmt, arglst) :: expr1 :: []) ->
     IDENT typ :: LPAREN :: expr modul expr1 @ (COMMA :: DQUOTE :: IDENT fmt :: DQUOTE :: COMMA :: eiter modul SP arglst) @ [RPAREN]
