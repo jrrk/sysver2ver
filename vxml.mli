@@ -155,6 +155,7 @@ type token =
 | ELSE
 | LOGIC
 | WIRE
+| VSTRING
 | ASSIGN
 | ASSIGNMENT
 | ASSIGNDLY
@@ -209,7 +210,7 @@ and rw =
 | VAR of string * string list * typetable_t * string
 | IVAR of string * string * typetable_t * rw list * int
 | TMPVAR of string * string * typetable_t * rw list
-| CNST of (int * cexp) * int option * rw list
+| CNST of (int * cexp)
 | VRF of string * typetable_t * rw list
 | TYP of int * typ_t
 | FNC of string * string * typetable_t * rw list
@@ -329,7 +330,7 @@ val packages : (string, string * itms) Hashtbl.t
 val interfaces : (string, string * itms) Hashtbl.t
 val hierarchy : (string, (string * string) list) Hashtbl.t
 val functable : (string, string * typetable_t * rw list * itms) Hashtbl.t
-val modtokens : (string, token list * token list) Hashtbl.t
+val modtokens : (string, token list * token list * token list) Hashtbl.t
 
 val hex_of_bigint : int -> Big_int.big_int -> string
 val hex_to_bigint : string -> Big_int.big_int
@@ -350,7 +351,7 @@ val fortailmatch : rw -> rw list -> bool
 val needed : itms -> token*string -> token list
 val readxml : string -> int * (int * int) * Xml.xml
 val rw' : xmlattr -> Xml.xml -> rw
-val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list * token list) list * (string * string) list * xmlattr
+val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list * token list * token list) list * (string * string) list * xmlattr
 val dump : bool -> string -> string * itms -> token list
 val debug : string -> string * itms -> unit
 val comment : arrtyp list -> token list
