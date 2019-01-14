@@ -201,6 +201,8 @@ and xmlattr = {
     intf : (string * string) list ref;
     instances: (string*(token*string)) list ref;
     modulexml: (string*(string*rw list*(string*typetable_t ref) list)) list ref;
+    tmpvar: (string*(string*typetable_t)) list ref;
+    tmpasgn: (string*rw) list ref;
 }
 and rw =
 | UNKNOWN
@@ -209,7 +211,6 @@ and rw =
 | IO of string * string list * typetable_t * dirop * string * rw list
 | VAR of string * string list * typetable_t * string
 | IVAR of string * string * typetable_t * rw list * int
-| TMPVAR of string * string * typetable_t * rw list
 | CNST of (int * cexp)
 | VRF of string * typetable_t * rw list
 | TYP of int * typ_t
@@ -238,7 +239,7 @@ and rw =
 | CPS of string * rw list
 | CND of string * rw list
 | REPL of string * int * rw list
-| MODUL of string * string * rw list
+| MODUL of string * string * rw list * (string * (string * typetable_t)) list
 | BGN of string option * rw list
 | RNG of rw list
 | ALWYS of string * rw list
@@ -319,7 +320,7 @@ val arropt : arrtyp list option ref
 val optopt : (rw list * rw list) option ref
 val forlst : (rw * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
-val ternothlst : (rw * rw) list ref
+val ternothlst : (rw * rw * rw * rw * rw list * rw) list ref
 val widthlst : rw list ref
 val smpothlst : rw list ref
 val optitmlst : (rw list * rw list) list ref
@@ -344,8 +345,9 @@ val cntmembers : typmap -> arrtyp
 val findmembers : typetable_t -> arrtyp list
 val findmembers' : typetable_t -> arrtyp list * bool * bool
 val optitm : rw list -> rw list
-val simplify_exp : string -> rw list ref -> rw -> rw
-val simplify_asgn : bool -> string -> rw -> rw -> rw
+val simplify_exp : xmlattr -> rw -> rw
+val simplify_exp' : rw -> (string * (string * typetable_t)) list * rw
+val simplify_asgn : bool -> xmlattr -> rw -> rw -> rw
 val jump_opt : string -> rw list -> rw
 val fortailmatch : rw -> rw list -> bool
 val needed : itms -> token*string -> token list

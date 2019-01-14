@@ -207,6 +207,8 @@ and xmlattr = {
     intf: (string*string) list ref;
     instances: (string*(token*string)) list ref;
     modulexml: (string*(string*rw list*(string*typetable_t ref) list)) list ref;
+    tmpvar: (string*(string*typetable_t)) list ref;
+    tmpasgn: (string*rw) list ref;
     }
 and rw =
 | UNKNOWN
@@ -215,7 +217,6 @@ and rw =
 | IO of string * string list * typetable_t * dirop * string * rw list
 | VAR of string * string list * typetable_t * string
 | IVAR of string * string * typetable_t * rw list * int
-| TMPVAR of string * string * typetable_t * rw list
 | CNST of (int * cexp)
 | VRF of string * typetable_t * rw list
 | TYP of int * typ_t
@@ -244,7 +245,7 @@ and rw =
 | CPS of string * rw list
 | CND of string * rw list
 | REPL of string * int * rw list
-| MODUL of string * string * rw list
+| MODUL of string * string * rw list * (string * (string * typetable_t)) list
 | BGN of string option * rw list
 | RNG of rw list
 | ALWYS of string * rw list
@@ -341,7 +342,7 @@ let optitmlst = ref []
 let widthlst = ref []
 
 let matchcnt = ref 0
-let empty_attr errlst = {anchor="a1";errlst=errlst;names=ref [];intf=ref [];instances=ref [];typetable=[||];modulexml=ref []}
+let empty_attr errlst = {anchor="a1";errlst=errlst;names=ref [];intf=ref [];instances=ref [];typetable=[||];modulexml=ref [];tmpvar=ref [];tmpasgn=ref []}
 
 let constnet = function
 | "1'h1" -> "supply1"
@@ -541,56 +542,58 @@ let rec cell_hier = function
    (nam,subnam) :: hier_lst
 | oth -> cellothlst := oth :: !cellothlst; failwith "cellothlst"
 
-let rec simplify_exp anchor tmpl = function
-| VRF (_, _, []) as vrf -> vrf
-| CNST _ as cst -> cst
-| UNRY (op, expr1 :: []) -> UNRY (op, simplify_exp anchor tmpl expr1 :: [])
-| CMP (op, expr1 :: expr2 :: []) -> CMP (op, simplify_exp anchor tmpl expr1 :: simplify_exp anchor tmpl expr2 :: [])
-| LOGIC (op, exprlst) -> LOGIC (op, List.map (simplify_exp anchor tmpl) exprlst)
-| ARITH (op, exprlst) -> ARITH (op, List.map (simplify_exp anchor tmpl) exprlst)
-| ASEL (VRF _ as vrf :: expr1 :: []) -> ASEL (vrf :: simplify_exp anchor tmpl expr1 :: [])
-| ASEL (ASEL _ as multi :: expr :: []) -> ASEL (simplify_exp anchor tmpl multi :: simplify_exp anchor tmpl expr :: [])
-| CND (origin, exprlst) -> CND (origin, List.map (simplify_exp anchor tmpl) exprlst)
-| CPS (origin, exprlst) -> CPS (origin, List.map (simplify_exp anchor tmpl) exprlst)
-| CAT (origin, exprlst) -> CAT (origin, List.map (simplify_exp anchor tmpl) exprlst) 
-| REPL (origin, tid, arg :: (CNST _ as cst) :: []) -> REPL (origin, tid, simplify_exp anchor tmpl arg :: cst :: [])
-| IRNG (origin, exprlst) -> IRNG (origin, List.map (simplify_exp anchor tmpl) exprlst)
-| FRF (origin, fref, arglst) -> FRF (origin, fref, List.map (simplify_exp anchor tmpl) arglst)
-| SFMT (fmt, exprlst) -> SFMT (fmt, List.map (simplify_exp anchor tmpl) exprlst)
-| XRF _ as xrf -> xrf
+let simpconcat = function
+| itm :: [] -> itm
+| othlst -> BGN(None, othlst)
+
+let rec simplify_exp attr = function
+| VRF (_, _, []) as vrf -> (vrf)
+| CNST _ as cst -> (cst)
+| UNRY (op, expr1 :: []) -> (UNRY (op, simplify_exp attr expr1 :: []))
+| CMP (op, expr1 :: expr2 :: []) -> (CMP (op, simplify_exp attr expr1 :: simplify_exp attr expr2 :: []))
+| LOGIC (op, exprlst) -> (LOGIC (op, List.map (simplify_exp attr) exprlst))
+| ARITH (op, exprlst) -> (ARITH (op, List.map (simplify_exp attr) exprlst))
+| ASEL (VRF _ as vrf :: expr1 :: []) -> (ASEL (vrf :: simplify_exp attr expr1 :: []))
+| ASEL (ASEL _ as multi :: expr :: []) -> (ASEL (simplify_exp attr multi :: simplify_exp attr expr :: []))
+| CND (origin, exprlst) -> (CND (origin, List.map (simplify_exp attr) exprlst))
+| CPS (origin, exprlst) -> (CPS (origin, List.map (simplify_exp attr) exprlst))
+| CAT (origin, exprlst) -> (CAT (origin, List.map (simplify_exp attr) exprlst) )
+| REPL (origin, tid, arg :: (CNST _ as cst) :: []) -> (REPL (origin, tid, simplify_exp attr arg :: cst :: []))
+| IRNG (origin, exprlst) -> (IRNG (origin, List.map (simplify_exp attr) exprlst))
+| FRF (origin, fref, arglst) -> (FRF (origin, fref, List.map (simplify_exp attr) arglst))
+| SFMT (fmt, exprlst) -> (SFMT (fmt, List.map (simplify_exp attr) exprlst))
+| XRF _ as xrf -> (xrf)
 | SEL (orig, (VRF _ | XRF _ |ASEL _ as expr1) :: expr2 :: (CNST _ as expr3) :: []) ->
-    SEL (orig, List.map (simplify_exp anchor tmpl) (expr1 :: expr2 :: expr3 :: []))
+    SEL (orig, List.map (simplify_exp attr) (expr1 :: expr2 :: expr3 :: []))
 | SEL (orig, (oth :: (CNST (_, HEX lo') as lo) :: (CNST (_, HEX wid') as wid) :: [])) ->
         let idx' = lo'+wid' in
-        let smpl = simplify_exp anchor tmpl oth in
+        let smpl = simplify_exp attr oth in
         let uniq = Hashtbl.hash smpl in
-        let t = "__tmp"^anchor^string_of_int uniq in
+        let t = "__tmp"^attr.anchor^string_of_int uniq in
         let typ' = (BASDTYP, "logic", TYPRNG(idx'-1,0), []) in
         let tmp = VRF (t, typ', []) in
-        tmpl := !tmpl @ TMPVAR(anchor, t, typ', []) :: ASGN(false, orig, smpl :: tmp :: []) :: [];
+        attr.tmpvar := (t, (attr.anchor, typ')) :: !(attr.tmpvar);
+        attr.tmpasgn := (t, ASGN(false, orig, smpl :: tmp :: [])) :: !(attr.tmpasgn);
         SEL (orig, tmp :: lo :: wid :: [])
 | SEL (origin, expr1 :: lo :: wid :: []) as sel -> smplopt := Some sel; failwith "simplify_exp: smplopt"
 | oth -> smpothlst := oth :: !smpothlst; oth
 
-let simplify_asgn dly' anchor dst = function
+let simplify_exp' arg =
+  let attr = empty_attr(ref []) in
+  let rslt = simplify_exp attr arg in
+  (!(attr.tmpvar),rslt)
+
+let simplify_asgn dly' attr dst = function
 | CND (origin, cnd :: lft :: rght :: []) -> 
             IF(origin, cnd :: ASGN(dly', origin, lft :: dst :: []) :: ASGN(dly', origin, rght :: dst :: []) :: [])
 | src ->
-        let tmpl = ref [] in
-        let src' = simplify_exp anchor tmpl src in
-        let dst' = simplify_exp anchor tmpl dst in
-        ternothlst := (src,dst) :: !ternothlst;
-        match !tmpl with
-            | [] -> ASGN(dly', anchor, src::dst::[])
-            | TMPVAR(_, t, idx, []) :: ASGN(false, _, smpl :: tmp :: []) :: [] when dst=dst' ->
-                TMPVAR(anchor, t, idx, ASGN(false, anchor, smpl :: tmp :: []) :: ASGN(dly', anchor, src' :: dst :: []) :: [])
-            | TMPVAR(_, t, idx, []) :: ASGN(false, _, smpl :: tmp :: []) :: [] when src=src' ->
-                TMPVAR(anchor, t, idx, ASGN(false, anchor, smpl :: tmp :: []) :: ASGN(dly', anchor, src :: dst' :: []) :: [])
-            | TMPVAR(_, t, idx, []) :: ASGN(false, _, smpl :: tmp :: []) ::
-              TMPVAR(_, t', idx', []) :: ASGN(false, _, smpl' :: tmp' :: []) :: [] ->
-                BGN (None, TMPVAR(anchor, t, idx, ASGN(false, anchor, smpl :: tmp :: []) :: []) ::
-                            TMPVAR(anchor, t', idx', ASGN(false, anchor, smpl' :: tmp' :: []) :: []) :: ASGN(dly', anchor, src' :: dst' :: []) :: [])
-            | _ -> failwith "simplify_asgn"
+        attr.tmpasgn := [];
+        let src' = simplify_exp attr src in
+        let dst' = simplify_exp attr dst in
+        let prep = List.map (fun (_,x) -> x) !(attr.tmpasgn) in
+        let rslt = ASGN(dly', attr.anchor, src' :: dst' :: []) in
+        if src <> src' || dst <> dst' then ternothlst := (src,dst,src',dst',prep,rslt) :: !ternothlst;
+        simpconcat (prep@rslt :: [])
 
 let dumpsized w = function
 | BIN b -> string_of_int w^"'b"^String.make w b
@@ -907,7 +910,6 @@ let rec dumpitm = function
 | IO (str1, str2lst, typ2, dirop, str3, rw_lst) -> "IO("^dumps str1^", "^dumpstrlst str2lst^", "^dumptab typ2^", "^dumpdir dirop^", "^dumps str3^", "^dumplst rw_lst^")"
 | VAR (str1, str2lst, typ2, str3) -> "VAR"^dumps str1^", "^dumpstrlst str2lst^", "^dumptab typ2^", "^dumps str3^")"
 | IVAR (str1, str2, typ2, rw_lst, int3) -> "IVAR("^dumps str1^", "^dumps str2^", "^dumptab typ2^", "^dumplst rw_lst^", "^dumpi int3^")"
-| TMPVAR (str1, str2, typ2, rw_lst) -> "TMPVAR("^dumps str1^", "^dumps str2^", "^dumptab typ2^", "^dumplst rw_lst^")"
 | CNST (int, cexp) -> "CNST("^dumpcnst (int, cexp)^")"
 | VRF (str1, typ', rw_lst) -> "VRF("^dumps str1^", "^dumptab typ'^", "^dumplst rw_lst^")"
 | TYP (idx, (typenc, str1, typmap, typ_lst)) -> "TYP("^dumptyp typenc^", "^dumps str1^", "^dumpmap typmap^", "^dumplst typ_lst^")"
@@ -936,7 +938,7 @@ let rec dumpitm = function
 | CPS (str1, rw_lst) -> "CPS("^dumps str1^", "^dumplst rw_lst^")"
 | CND (str1, rw_lst) -> "CND("^dumps str1^", "^dumplst rw_lst^")"
 | REPL (str1, int2, rw_lst) -> "REPL("^dumps str1^", "^dumpi int2^", "^dumplst rw_lst^")"
-| MODUL (str1, str2, rw_lst) -> "MODUL("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^")"
+| MODUL (str1, str2, rw_lst, tmp) -> "MODUL("^dumps str1^", "^dumps str2^", "^dumplst rw_lst^", ...)"
 | BGN (None, rw_lst) -> "BGN(None,"^dumplst rw_lst^")"
 | BGN (Some str1, rw_lst) -> "BGN(Some "^dumps str1^", "^dumplst rw_lst^")"
 | RNG (rw_lst) -> "RNG("^dumplst rw_lst^")"
@@ -1240,7 +1242,7 @@ let rec rw' attr = function
 | Xml.Element ("begin", [("fl", origin)], xlst) -> while_opt origin None (List.map (rw' attr) xlst)
 | Xml.Element (("assign"|"assigndly") as dly, [("fl", origin); ("dtype_id", tid)], hd::tl::[]) ->
     let src = rw' attr hd and dst = rw' attr tl in
-    simplify_asgn (dlyenc dly) attr.anchor dst src
+    simplify_asgn (dlyenc dly) attr dst src
 | Xml.Element ("if", [("fl", origin)], xlst) -> IF (origin, List.map (rw' attr) xlst)
 | Xml.Element ("add"|"sub"|"mul"|"muls" as op, [("fl", _); ("dtype_id", tid)], xlst) -> ARITH (arithop op, List.map (rw' attr) xlst)
 | Xml.Element ("and"|"redand"|"or"|"redor"|"xor"|"redxor"|"xnor"|"redxnor"|"shiftl"|"shiftr"|"shiftrs" as log,
@@ -1261,14 +1263,14 @@ let rec rw' attr = function
 | Xml.Element ("sformatf", [("fl", _); ("name", fmt); ("dtype_id", tid)], xlst) -> SFMT (fmt, List.map (rw' attr) xlst)
 | Xml.Element ("module", ("fl", origin) :: ("name", nam) :: ("origName", _) :: attr', xlst) ->
     let (_,nam') = List.assoc nam !(attr.instances) in
-    let attr' = {attr with anchor=origin;names=ref []} in
+    let attr' = {attr with anchor=origin;names=ref [];tmpvar=ref []} in
     let xlst' = List.map (rw' attr') xlst in
     attr.modulexml := (nam', (origin, xlst', !(attr'.names))) :: !(attr.modulexml);
     let fd = open_out (nam'^".elem") in
     output_string fd (dumplst xlst');
     output_string fd ("\n["^String.concat ";\n " (List.map (fun (k,x) -> dumps k^", "^dumptab !x) !(attr'.names))^"]\n");
     close_out fd;
-    MODUL (origin, nam', xlst')
+    MODUL (origin, nam', xlst', !(attr'.tmpvar))
 | Xml.Element ("case", [("fl", origin)], xlst) -> CS (origin, List.map (rw' attr) xlst)
 | Xml.Element ("caseitem", [("fl", origin)], xlst) -> CSITM (origin, List.map (rw' attr) xlst)
 | Xml.Element ("while", [("fl", _)], xlst) -> WHL (List.map (rw' attr) xlst)
@@ -1744,7 +1746,6 @@ and cstmt modul dly = function
 | CNST((s,n)) -> SIZED (s,n) :: []
 | TASKRF (origin, nam, arglst) -> IDENT nam :: (if arglst <> [] then eiter modul LPAREN arglst @ [RPAREN] else [])
 | JMPL(origin, rw_lst) -> BEGIN None :: iter2 (ref []) modul dly rw_lst @ [END]
-| TMPVAR (origin, nam, wid, stmtlst) -> cstmt modul dly (BGN (None, stmtlst))
 (*
 | WHL
     (CMP (cmpop, (CNST stop :: VRF (ix, _, []) :: [])) ::
@@ -1788,8 +1789,6 @@ let rec optitm3 = function
 | BGN (Some lbl, tl) :: tl' -> BGN (Some lbl, optitm3 tl) :: optitm3 tl'
 | BGN (None, tl) :: BGN (None, tl') :: tl'' -> optitm3 (BGN (None, tl @ tl') :: tl'')
 | BGN (None, tl) :: tl' -> BGN (None, optitm3 tl) :: optitm3 tl'
-| TMPVAR (o1,a,b,lst1) :: TMPVAR (o2,a',b',lst2) :: tl when b <= b' -> optitm3 (TMPVAR(o1,a,b,lst1@lst2) :: tl)
-| TMPVAR (o,a,b,lst) :: tl -> let optlst = optim2 lst in optitmlst := (lst,optlst) :: !optitmlst; optlst @ optitm3 tl
 | CS(o,rw_lst) :: tl -> CS(o,optitm3 rw_lst) :: optitm3 tl
 | CAT(o,rw_lst) :: tl -> CAT(o,optitm3 rw_lst) :: optitm3 tl
 | CSITM(o,rw_lst) :: tl -> CSITM(o,optitm3 rw_lst) :: optitm3 tl
@@ -1858,10 +1857,6 @@ let rec catitm (pth:string option) itms names' = function
     if not (List.mem_assoc str1 !(itms.v)) then
         itms.v := (str1, (origin, typ1, str2, (UNKDTYP,"",TYPNONE,[]))) :: !(itms.v)) str1lst
 | IVAR(origin, str1, typ', rwlst, int2) -> itms.iv := (str1, (origin, typ', rwlst, int2)) :: !(itms.iv)
-| TMPVAR(origin, str1, typ1, stmtlst) ->
-    List.iter (catitm pth itms names') stmtlst;
-    if not (List.mem_assoc str1 !(itms.v)) then
-        itms.v := (str1, (origin, typ1, str1, (UNKDTYP,"",TYPNONE,[]))) :: !(itms.v)
 | CA(origin, (rght::lft::[] as args)) ->
     List.iter (catitm pth itms names') args;
     itms.ca := (origin, lft, rght) :: !(itms.ca)
@@ -1979,9 +1974,11 @@ let rec catitm (pth:string option) itms names' = function
         itms.needed := (FUNCTION,nam) :: !(itms.needed);
         end
 | XRF(origin, str1, str2, str3, dirop) -> ()
-| MODUL(origin, nam', rw_lst) ->
+| MODUL(origin, nam', rw_lst, tmpvar) ->
     let (orig'', xlst'', names'') = List.assoc nam' names' in
     let itms = empty_itms names'' in
+    List.iter (fun (str1, (str2, typ1)) ->
+        itms.v := (str1, (origin, typ1, str1, (UNKDTYP,"",TYPNONE,[]))) :: !(itms.v)) tmpvar;
     List.iter (catitm None itms names') rw_lst;
     let itms' = rev_itms itms in
     Hashtbl.add modules nam' (origin, itms')
