@@ -562,11 +562,11 @@ let rec simplify_exp anchor tmpl = function
     SEL (orig, List.map (simplify_exp anchor tmpl) (expr1 :: expr2 :: expr3 :: []))
 | SEL (orig, (oth :: (CNST ((_, HEX lo'), _, []) as lo) :: (CNST ((_, HEX wid'), _, []) as wid) :: [])) ->
         let idx' = lo'+wid' in
-        let uniq = 1000000 + List.length !tmpl * 1000 + idx' in
-        let t = "__tmp"^string_of_int uniq in
+        let smpl = simplify_exp anchor tmpl oth in
+        let uniq = Hashtbl.hash smpl in
+        let t = "__tmp"^anchor^string_of_int uniq in
         let typ' = (BASDTYP, "logic", TYPRNG(idx'-1,0), []) in
         let tmp = VRF (t, typ', []) in
-        let smpl = simplify_exp anchor tmpl oth in
         tmpl := !tmpl @ TMPVAR(anchor, t, typ', []) :: ASGN(false, orig, smpl :: tmp :: []) :: [];
         SEL (orig, tmp :: lo :: wid :: [])
 | SEL (origin, expr1 :: lo :: wid :: []) as sel -> smplopt := Some sel; failwith "simplify_exp: smplopt"
@@ -1367,22 +1367,23 @@ names''=prev.names'' }
 let num x = NUM (HEX x)
 
 let mkextendfunc = function
-| Uextends(a,w,wm) as op ->
-let b = (BASDTYP, "logic", TYPRNG (w-1, 0), []) in
-let c = let fref = unaryopv op in
-  [IO (a, [fref], (BASDTYP, "logic", TYPRNG (w-1, 0), []), Doutput, "logic", []);
-   IO (a, ["arg"], (BASDTYP, "logic", TYPRNG (wm-1, 0), []), Dinput, "logic", []);
-BGN (None,
-  [ASGN (false, a,
-    [CAT (a,
-      [REPL (a, 3,
-        [SEL (a,
-          [VRF ("arg", (BASDTYP, "logic", TYPRNG (wm-1, 0), []), []);
-           CNST ((32, HEX (wm-1)), 5, []); CNST ((32, HEX 1), 2, [])]);
-         CNST ((32, SHEX (w-wm)), 6, [])]);
-       VRF ("arg", (BASDTYP, "logic", TYPRNG (wm-1, 0), []), [])]);
-     VRF (fref, (BASDTYP, "logic", TYPRNG (w-1, 0), []), [])])])] in
-let d = empty_itms [] in (a,b,c,d)
+| Uextends(anchor,w,wm) as op ->
+let fref = unaryopv op in
+let typ1 = (BASDTYP, "logic", TYPRNG (w-1, 0), []) in
+let typ2 = (BASDTYP, "logic", TYPRNG (wm-1, 0), []) in
+let arg = VRF ("arg", typ2, []) in
+let cext = CNST ((32, SHEX (w-wm)), 6, []) in
+let wid1 = CNST ((32, HEX 1), 2, []) in
+let wmin = CNST ((32, HEX (wm-1)), 5, []) in
+let sel = SEL (anchor, arg :: wmin :: wid1 :: []) in
+let repl = if w-wm > 1 then REPL (anchor, 3, sel :: cext :: []) else sel in
+let body = 
+  [IO (anchor, [fref], typ1, Doutput, "logic", []);
+   IO (anchor, ["arg"], typ2, Dinput, "logic", []);
+   BGN (None,
+  [ASGN (false, anchor,
+    [CAT (anchor, repl :: arg :: []);
+     VRF (fref, typ1, [])])])] in (anchor,typ1,body,empty_itms [])
 | (Unknown|Unot|Ulognot|Unegate|Uunsigned|Usigned|Uextend _) as op -> failwith (unaryopv op)
 
 let rec expr modul = function
