@@ -59,6 +59,6 @@ picorv32_wrapper_mixed.v: picorv32_wrapper_opt.v
 	sed -e 's=\(\ picorv32_wrapper\)_opt=\1_mixed\ =' $< > $@
 
 clean:
-	rm -rf old vout vopt voutopt edited debug debugopt elem *.v *.tcl *.elem *.names *.debug *.fss a.out traverse.cell \
+	rm -rf old vout vopt voutopt edited debug debugopt elem *.v *.tcl *.elem *.names *.debug *.fss *.tok a.out traverse.cell \
 	.restartSimSession.tcl.old .swave_codegen_notneeded csrc inter.vpd simv simv.daidir swave_compile_done ucli.key \
 	FM_WORK FM_WORK1 formality1.lck  formality1.log  formality2.log  formality.lck   formality.log fm_shell_command.lck fm_shell_command1.lck

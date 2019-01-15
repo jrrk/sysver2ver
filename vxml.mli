@@ -217,7 +217,7 @@ and rw =
 | FNC of string * string * typetable_t * rw list
 | TASKDEF of string * string * rw list
 | TASKRF of string * string * rw list
-| INST of string * string list * (string * rw list)
+| INST of string * token * string list * (string * rw list)
 | SFMT of string * rw list
 | SYS of string * string * rw list
 | TPLSRGS of string * string * int * rw list
@@ -307,6 +307,7 @@ val subothlst : rw list ref
 val mapothlst : (string * string) list list ref
 val tskothlst : rw list ref
 val optothlst : rw list ref
+val optitmopt : rw list option ref
 val xrflst : rw list ref
 val smplopt : rw option ref
 val selopt : rw option ref
@@ -318,9 +319,12 @@ val cellopt : rw option ref
 val instopt : Xml.xml option ref
 val arropt : arrtyp list option ref
 val optopt : (rw list * rw list) option ref
+val asciiopt : rw option ref
+val itmopt : rw list option ref
+val ntlopt : rw list option ref
+val xmlopt : rw option ref
 val forlst : (rw * rw * rw list) list ref
 val ternlst : (rw * rw * rw * rw) list ref
-val ternothlst : (rw * rw * rw * rw * rw list * rw) list ref
 val widthlst : rw list ref
 val smpothlst : rw list ref
 val optitmlst : (rw list * rw list) list ref
@@ -345,14 +349,16 @@ val cntmembers : typmap -> arrtyp
 val findmembers : typetable_t -> arrtyp list
 val findmembers' : typetable_t -> arrtyp list * bool * bool
 val optitm : rw list -> rw list
+val optitm' : bool -> rw list -> rw list
 val simplify_exp : xmlattr -> rw -> rw
 val simplify_exp' : rw -> (string * (string * typetable_t)) list * rw
-val simplify_asgn : bool -> xmlattr -> rw -> rw -> rw
+val simplify_asgn : bool -> xmlattr -> rw -> rw -> rw list
 val jump_opt : string -> rw list -> rw
 val fortailmatch : rw -> rw list -> bool
 val needed : itms -> token*string -> token list
 val readxml : string -> int * (int * int) * Xml.xml
 val rw' : xmlattr -> Xml.xml -> rw
+val rewrite : Xml.xml list ref -> string -> int * (int * int) * Xml.xml * rw
 val translate : Xml.xml list ref -> string -> int * (int * int) * rw * Xml.xml * (string * token list * token list * token list) list * (string * string) list * xmlattr
 val dump : bool -> string -> string * itms -> token list
 val debug : string -> string * itms -> unit
