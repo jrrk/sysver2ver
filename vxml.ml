@@ -1618,12 +1618,9 @@ let stmtdly = function
 
 let rec reformat0 = function
 | [] -> []
-| END :: SEMI :: ENDCASE :: tl -> END :: reformat0 ( ENDCASE :: tl )
+| END :: SEMI :: (ENDCASE|ENDFUNCTION|ELSE|DEFAULT|SP as tok) :: tl -> END :: reformat0 ( tok :: tl )
 | ENDCASE :: SEMI :: ELSE :: tl -> ENDCASE :: reformat0 ( ELSE :: tl )
-| END :: SEMI :: ELSE :: tl -> END :: reformat0 ( ELSE :: tl )
 | SEMI :: SEMI :: END :: tl -> SEMI :: reformat0 ( END :: tl )
-| END :: SEMI :: SP :: tl -> END :: reformat0 (SP :: tl)
-| END :: SEMI :: DEFAULT :: tl -> END :: reformat0 (DEFAULT :: tl)
 | oth :: tl -> oth :: reformat0 tl
 
 let rec reformat1 = function
@@ -1763,7 +1760,7 @@ let rec iter2 delim modul dly lst =
     List.flatten (List.map (fun itm -> let lst = !delim @ cstmt modul dly itm in delim := [SEMI;NL]; lst) lst)
 
 and csitm modul dly origin cexplst =
-        let lbl, stmts = List.partition (function CNST _ | VRF _ | LOGIC _ | IRNG _ -> true | _ -> false) cexplst in
+        let lbl, stmts = List.partition (function CNST _ | VRF _ | LOGIC _ | IRNG _ | SEL _ -> true | _ -> false) cexplst in
         (if lbl <> [] then (eiter modul SP lbl) else DEFAULT :: []) @
         COLON :: (match stmts with
                         | [] -> []
@@ -1829,7 +1826,7 @@ and cstmt modul dly = function
 | CNST((s,n)) -> SIZED (s,n) :: []
 | TASKRF (origin, nam, arglst) -> IDENT nam :: (if arglst <> [] then eiter modul LPAREN arglst @ [RPAREN] else [])
 | JMPL(origin, rw_lst) -> BEGIN None :: iter2 (ref []) modul dly rw_lst @ [END]
-| oth -> stmtothlst := oth :: !stmtothlst; failwith "stmtothlst"
+| oth -> stmtothlst := oth :: !stmtothlst; failwith ("stmtothlst: "^dumpitm oth)
 
 let flatten1 modul dly = function
 | BGN _ :: tl as lst -> let delim = ref SP in List.flatten (List.map (fun itm -> let lst' = !delim :: cstmt modul dly itm in delim := SEMI; lst') lst)
@@ -2139,7 +2136,7 @@ let needed modul (kind,nam) = match kind with
         Hashtbl.find functable nam in
     let stg = ref FIRSTG in let lst = fsrc origin :: FUNCTION :: SP :: (varlst modul (ref NL) typ' nam) @
     List.flatten (List.map (fnstmt modul false stg) (List.tl lst)) in
-    lst @ (fndlm !stg @ [ENDFUNCTION])
+    lst @ (fndlm !stg @ [ENDFUNCTION;NL])
 | TASK ->
     print_endline ("Searching task: "^nam);
     let found = List.mem_assoc nam !(modul.task) in
