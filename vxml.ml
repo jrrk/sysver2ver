@@ -191,9 +191,9 @@ type token =
 type typmap =
 | TYPNONE
 | SUBTYP of int
-| TYPRNG of int*int
+| TYPRNG of cexp*cexp
 | TYPMEMBER of typetable_t
-| TYPENUM of string * int * (int*int)
+| TYPENUM of string * int * (int*cexp)
 | TYPDEF
 | RECTYP of typetable_t
 
@@ -475,11 +475,12 @@ let cexp exp = match exp.[0] with
     try Scanf.sscanf exp "%d'h%s" (fun b s -> (b, decode b s)) with err ->
     try Scanf.sscanf exp "%d'sh%x" (fun b n -> (b, SHEX n)) with err ->
     try Scanf.sscanf exp "%d'bx" (fun b -> (b, BIN 'x')) with err ->
+    try Scanf.sscanf exp "%d" (fun n -> (32, SHEX n)) with err ->
     try Scanf.sscanf exp "%f" (fun f -> (64, FLT f)) with err -> (-1,ERR exp)
 
 let rec typmap = function
 | [] -> TYPNONE
-| [("left", lft); ("right", rght)] -> TYPRNG(int_of_string lft, int_of_string rght)
+| [("left", lft); ("right", rght)] -> TYPRNG(HEX(int_of_string lft), HEX(int_of_string rght))
 | oth -> mapothlst := oth :: !mapothlst; failwith "mapothlst"
 
 let fortailmatch ix' = function
@@ -711,12 +712,28 @@ let rec simplify_exp attr = function
         let idx' = lo'+wid' in
         let smpl = simplify_exp attr oth in
         let t = ascii_exp oth idx' in
-        let typ' = (BASDTYP, "logic", TYPRNG(idx'-1,0), []) in
+        let typ' = (BASDTYP, "logic", TYPRNG(HEX(idx'-1),HEX 0), []) in
         let tmp = VRF (t, typ', []) in
         if not (List.mem_assoc t !(attr.tmpvar)) then
             attr.tmpvar := (t, (attr.anchor, typ')) :: !(attr.tmpvar);
         attr.tmpasgn := (t, ASGN(false, orig, smpl :: tmp :: [])) :: !(attr.tmpasgn);
         SEL (orig, tmp :: lo :: wid :: [])
+| SEL (orig,
+     [LOGIC (Lshiftl,
+       [VRF ("j", (BASDTYP, "int", TYPRNG (HEX 31, HEX 0), []), []); CNST (32, SHEX 32)]);
+      CNST (32, SHEX 32); CNST (32, SHEX 32)]) -> SEL(orig, [])
+| SEL (orig,
+     [UNRY (Uextend (32, 6),
+       [VRF ("i", (BASDTYP, "logic", TYPRNG (HEX 5, HEX 0), []), [])]);
+      CNST (32, SHEX 32); CNST (32, SHEX 32)]) -> SEL(orig, [])
+| SEL (orig,
+     [LOGIC (Lshiftl,
+       [ARITH (Asub,
+         [UNRY (Uextend (32, 6),
+           [VRF ("r", (BASDTYP, "logic", TYPRNG (HEX 5, HEX 0), []), [])]);
+          CNST (32, SHEX 32)]);
+        CNST (32, SHEX 32)]);
+      CNST (32, SHEX 32); CNST (32, SHEX 32)]) -> SEL(orig, [])
 | SEL (origin, expr1 :: lo :: wid :: []) as sel -> smplopt := Some sel; failwith "simplify_exp: smplopt"
 | oth -> smpothlst := oth :: !smpothlst; oth
 
@@ -738,13 +755,21 @@ let simplify_asgn dly' attr dst = function
 
 let dumpi n = string_of_int n
 let dumpcnst (w,n) = dumpsized w n
+let dumpr = function
+| HEX n -> string_of_int n
+| SHEX n -> string_of_int n
+| ERR _ -> "ERR"
+| BIN b -> String.make 1 b
+| STRING s -> s
+| FLT f -> string_of_float f
+| BIGINT i -> hex_of_bigint 64 i
 
 let rec dumpmap = function
 | TYPNONE -> "TYPNONE"
 | SUBTYP int1 -> "SUBTYP "^string_of_int int1
-| TYPRNG(int1,int2) -> "TYPRNG("^string_of_int int1^", "^string_of_int int2^")"
+| TYPRNG(int1,int2) -> "TYPRNG("^dumpr int1^", "^dumpr int2^")"
 | TYPMEMBER (tab) -> "TYPMEMBER"^dumptab tab
-| TYPENUM(str1, int1, (int2,int3)) -> "TYPENUM("^dumps str1^", "^string_of_int int1^", ("^string_of_int int2^", "^string_of_int int3^"))"
+| TYPENUM(str1, int1, (exp2,exp3)) -> "TYPENUM("^dumps str1^", "^string_of_int int1^", ("^string_of_int exp2^", "^dumpr exp3^"))"
 | TYPDEF -> "TYPDEF"
 | RECTYP tab -> "RECTYP"^dumptab tab
 
@@ -1232,7 +1257,7 @@ let rec rw' attr = function
     let (vif, sub) = chkvif nam in
     let nam' = if vif then sub else nam in
     let rslt = match attr.typetable.(int_of_string tid) with
-               | (UNPACKADTYP, _, RECTYP attr', [TYPRNG (hi, lo)]) ->
+               | (UNPACKADTYP, _, RECTYP attr', [TYPRNG (HEX hi, HEX lo)]) ->
                    (match attr' with
                        | (IFCRFDTYP _, dir, TYPNONE, []) as typ' ->
                            attr.names := expandbraket lo hi (fun istr ->
@@ -1278,7 +1303,7 @@ let rec rw' attr = function
                List.iter (function
                    | PORT (orig, nam, Dvif _, [VRF (nam', typ', [])]) as port when List.mem_assoc nam' !(attr.names) -> 
                        (match !(List.assoc nam' !(attr.names)) with
-                           | (IFCRFDTYP _, dir, TYPRNG(hi,lo), []) ->
+                           | (IFCRFDTYP _, dir, TYPRNG(HEX hi, HEX lo), []) ->
                                exportlst := expandbraket lo hi (fun istr -> PORT (orig, nam^istr, Dvif (ref dir), [VRF (nam'^istr, typ', [])])) @ !exportlst
                            | (IFCRFDTYP _, dir, TYPNONE, []) -> exportlst := port :: !exportlst
                            | oth -> typopt := Some oth; failwith ("typopt;;599: "^dumptab oth))
@@ -1297,7 +1322,7 @@ let rec rw' attr = function
                    | (INTERFACE, RNG (CNST (_, (HEX hi|SHEX hi)) :: CNST (_, (HEX lo|SHEX lo)) :: []) :: []) ->
                        begin
                        print_endline ("@"^nam^"["^string_of_int hi^":"^string_of_int lo^"]");
-                       attr.names := (nam, ref (IFCRFDTYP nam, dnam, TYPRNG(hi,lo), [])) :: !(attr.names);
+                       attr.names := (nam, ref (IFCRFDTYP nam, dnam, TYPRNG(HEX hi, HEX lo), [])) :: !(attr.names);
                        INST (origin, instkind, expandbraket lo hi (fun istr -> nam^istr), (dnam, attrlst))
                        end
                    | (INTERFACE, []) -> attr.names := (nam, ref (IFCRFDTYP nam, dnam, TYPNONE, [])) :: !(attr.names);
@@ -1439,8 +1464,8 @@ let rec rw' attr = function
     let max = fold1 (max) (List.map (function (ix,_) -> ix) types) in
     let typarr = Array.make (max+1) (UNKDTYP, "", TYPNONE, []) in
     let rec subtypmap = function
-    | RNG [CNST (b,(HEX n|SHEX n)); CNST (b',(HEX n'|SHEX n'))] -> TYPRNG(n,n')
-    | EITM ("enumitem", itm, "", n, [CNST (w',(HEX n'|SHEX n'))]) -> TYPENUM(itm, n, (w',n'))
+    | RNG [CNST (b,n); CNST (b',n')] -> TYPRNG(n,n')
+    | EITM ("enumitem", itm, "", n, [CNST (w',n')]) -> TYPENUM(itm, n, (w',n'))
     | TYP (idx, ((MEMBDTYP, id, SUBTYP idx', []) as typ')) -> typarr.(idx) <- maptyp' typ'; TYPMEMBER(maptyp idx')
     | oth -> subothlst := oth :: !subothlst; failwith "subothlst"
     and lookup ix = if List.mem_assoc ix types then List.assoc ix types else (UNKDTYP, "", TYPNONE, [])
@@ -1515,8 +1540,8 @@ let num x = NUM (HEX x)
 let mkextendfunc = function
 | Uextends(anchor,w,wm) as op ->
 let fref = unaryopv op in
-let typ1 = (BASDTYP, "logic", TYPRNG (w-1, 0), []) in
-let typ2 = (BASDTYP, "logic", TYPRNG (wm-1, 0), []) in
+let typ1 = (BASDTYP, "logic", TYPRNG (HEX(w-1), HEX 0), []) in
+let typ2 = (BASDTYP, "logic", TYPRNG (HEX(wm-1), HEX 0), []) in
 let arg = VRF ("arg", typ2, []) in
 let cext = CNST (32, SHEX (w-wm)) in
 let wid1 = CNST (32, HEX 1) in
@@ -1557,11 +1582,22 @@ let rec expr modul = function
     expr modul (LOGIC (Land, expr1 :: CNST (wid', HEX ((1 lsl wid') - 1)) :: []))
 | SEL (o, CND (origin, expr1 :: lft :: rght :: []) :: expr2 :: expr3 :: []) ->
     LPAREN :: expr modul expr1 @ [QUERY] @ expr modul (SEL (o, lft :: expr2 :: expr3 :: [])) @ [COLON] @ expr modul (SEL (o, rght :: expr2 :: expr3 :: [])) @ [RPAREN]
-(*
-| SEL (orig, (UNRY (Uextend, VRF (id, typ', []) :: []) :: (CNST _ as expr2) :: (CNST _ as expr3) :: [])) ->
+(* *)
+| SEL (orig, (UNRY (Uextend (n,n'), VRF (id, typ', []) :: []) :: (CNST _ as expr2) :: (CNST _ as expr3) :: [])) ->
     expr modul (SEL (orig, VRF (id, typ', []) :: expr2 :: expr3 :: []))
-*)
-| SEL (orig, (CNST (32, SHEX n) :: CNST (32, HEX lo') :: CNST (32, HEX wid') :: [])) ->
+(* *)
+| SEL (orig,
+     (LOGIC (Lshiftl,
+       (UNRY (Uextend (n, n'),
+         (VRF (id, typ', []) :: [])) ::
+        (CNST _ as expr1) ::[])) ::
+      (CNST _ as expr2) :: (CNST _ as expr3) :: [])) ->
+  let exp' = LOGIC (Lshiftl,
+       (UNRY (Uextend (n, n'),
+         (VRF (id, typ', []) :: [])) ::
+        (expr1) ::[])) in
+  expr modul (SEL(orig, LOGIC (Lshiftl, VRF (id, typ', []) :: expr1 :: []) :: expr2 :: expr3 :: []))
+| SEL (orig, (CNST (32, SHEX n) :: CNST (32, (HEX lo'|SHEX lo')) :: CNST (32, (HEX wid'|SHEX wid')) :: [])) ->
     SIZED (wid', SHEX (n asr lo')) :: []
     
 | ASEL (VRF (lval, _, []) :: expr1 :: []) -> IDENT lval :: LBRACK :: expr modul expr1 @ [RBRACK]
@@ -1589,9 +1625,9 @@ let rec expr modul = function
 | SYS (origin, fn, arglst) -> IDENT fn :: LPAREN :: eiter modul SP arglst @ [RPAREN]
 
 | SEL (origin, expr1 :: lo :: wid :: []) as sel -> selopt := Some sel; failwith "expr: selopt"
-
+| SEL _ as sel -> IDENT (dumpitm sel) :: []
 | TIM (origin) -> IDENT "$time" :: []
-| oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
+| oth -> exprothlst := oth :: !exprothlst; failwith (dumpitm oth)
 and eiter modul tok = function
 | IRNG (_, [CNST (w, HEX lo); CNST (w', HEX hi)]) :: [] ->
     eiter modul SP (Array.to_list (Array.init (hi-lo+1) (fun x -> CNST (w, HEX (x+lo)))))
@@ -1655,15 +1691,15 @@ let reviter modul lst =
     List.rev (List.flatten (List.map (fun itm -> let lst' = !delim :: expr modul itm in delim := COMMA; lst') lst))
 
 let rec cntbasic = function
-| (BASDTYP, typ, TYPRNG(hi, lo), []) when (function "logic"|"integer"|"int"|"bit"|"wire" -> true | _ -> false) typ -> ARNG (hi, lo) :: []
+| (BASDTYP, typ, TYPRNG(HEX hi, HEX lo), []) when (function "logic"|"integer"|"int"|"bit"|"wire" -> true | _ -> false) typ -> ARNG (hi, lo) :: []
 | (STRDTYP,_,typmap,rw_lst) -> ADD (List.map cntmembers rw_lst) :: []
 | (UNIDTYP,_,typmap,rw_lst) -> MAX (List.map cntmembers rw_lst) :: []
 | (BASDTYP, ("logic"|"bit"|"wire"), TYPNONE, []) -> BIT :: []
 | (BASDTYP, "real", TYPNONE, []) -> REAL :: []
 | (BASDTYP, "string", TYPNONE, []) -> STRING :: []
 | (IFCRFDTYP _, _, TYPNONE, []) -> UNKARR :: []
-| (PACKADTYP, _, RECTYP subtyp, TYPRNG(n,n')::_) -> PACKED(n, n') :: findmembers subtyp
-| (UNPACKADTYP, _, RECTYP subtyp, TYPRNG (n,n')::_) -> UNPACKED(n, n') :: findmembers subtyp
+| (PACKADTYP, _, RECTYP subtyp, TYPRNG((HEX n|SHEX n), (HEX n'|SHEX n'))::_) -> PACKED(n, n') :: findmembers subtyp
+| (UNPACKADTYP, _, RECTYP subtyp, TYPRNG ((HEX n|SHEX n), (HEX n'|SHEX n'))::_) -> UNPACKED(n, n') :: findmembers subtyp
 | (MEMBDTYP, id, SUBTYP subtyp, []) -> failwith ("SUBTYP")
 | oth -> typopt := Some oth; failwith ("typopt;;1425:"^dumptab oth)
 

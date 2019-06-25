@@ -185,9 +185,9 @@ type token =
 type typmap =
 | TYPNONE
 | SUBTYP of int
-| TYPRNG of int*int
+| TYPRNG of cexp*cexp
 | TYPMEMBER of typetable_t
-| TYPENUM of string * int * (int*int)
+| TYPENUM of string * int * (int*cexp)
 | TYPDEF
 | RECTYP of typetable_t
 
