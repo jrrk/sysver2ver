@@ -244,6 +244,7 @@ and rw =
 | CAT of string * rw list
 | CPS of string * rw list
 | CND of string * rw list
+| TIM of string
 | REPL of string * int * rw list
 | MODUL of string * string * rw list * (string * (string * typetable_t)) list
 | BGN of string option * rw list
@@ -1048,6 +1049,7 @@ let rec dumpitm = function
 | COMB -> "COMB"
 | MODPORTFTR (str1, str2) -> "MODPORTFTR("^dumps str1^", "^dumps str2^")"
 | TYPETABLE arr -> "[|"^String.concat ";\n\t" (Array.to_list (Array.mapi (fun idx (typenc, str1, typmap, typ_lst) -> string_of_int idx^": TYP("^dumptyp typenc^", "^dumps str1^", "^dumpmap typmap^", "^dumpmlst typ_lst^")") arr))^"|]"
+| TIM _ -> "TIM"
  
 and dumplst lst = "["^String.concat ";\n\t" (List.map dumpitm lst)^"]"
 and dumpcstlst lst = "["^String.concat ";\n\t" (List.map dumpcnst lst)^"]"
@@ -1340,6 +1342,7 @@ let rec rw' attr = function
 | Xml.Element ("concat", [("fl", origin); ("dtype_id", tid)], xlst) -> CAT (origin, List.map (rw' attr) xlst)
 | Xml.Element ("cvtpackstring", [("fl", origin); ("dtype_id", tid)], xlst) -> CPS (origin, List.map (rw' attr) xlst)
 | Xml.Element ("cond", [("fl", origin); ("dtype_id", tid)], xlst) -> CND (origin, List.map (rw' attr) xlst)
+| Xml.Element ("time", [("fl", origin); ("dtype_id", tid)], []) -> TIM (origin)
 | Xml.Element ("sformatf", [("fl", _); ("name", fmt); ("dtype_id", tid)], xlst) -> SFMT (fmt, List.map (rw' attr) xlst)
 | Xml.Element ("module", ("fl", origin) :: ("name", nam) :: ("origName", _) :: attr', xlst) ->
     let (_,nam') = List.assoc nam !(attr.instances) in
@@ -1587,6 +1590,7 @@ let rec expr modul = function
 
 | SEL (origin, expr1 :: lo :: wid :: []) as sel -> selopt := Some sel; failwith "expr: selopt"
 
+| TIM (origin) -> IDENT "$time" :: []
 | oth -> exprothlst := oth :: !exprothlst; failwith "exprothlst"
 and eiter modul tok = function
 | IRNG (_, [CNST (w, HEX lo); CNST (w', HEX hi)]) :: [] ->
@@ -2075,6 +2079,7 @@ let rec catitm (pth:string option) itms names' = function
 | TPLSRGS (_, id, tid, []) -> ()
 | TYPETABLE _ -> ()
 | TYP _ -> ()
+| TIM _ -> ()
 | oth -> itmothlst := oth :: !itmothlst; failwith "itmothlst;;1508"
 
 let chktyp = function

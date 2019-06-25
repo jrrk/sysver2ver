@@ -238,6 +238,7 @@ and rw =
 | CAT of string * rw list
 | CPS of string * rw list
 | CND of string * rw list
+| TIM of string
 | REPL of string * int * rw list
 | MODUL of string * string * rw list * (string * (string * typetable_t)) list
 | BGN of string option * rw list
